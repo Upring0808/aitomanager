@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -17,18 +17,19 @@ import { Ionicons, MaterialIcons, Feather } from "@expo/vector-icons";
 import { auth, storage } from "../config/firebaseconfig";
 import { ref, getDownloadURL, listAll, getMetadata } from "firebase/storage";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import Home from "../components/tabs/Home";
-import Fines from "../components/tabs/Fines";
-import Officers from "../components/tabs/Officers";
-import Profile from "../components/tabs/Profile";
-import Events from "../components/tabs/Events";
-import Header from "./Header";
+
+import AdminFines from "../admin/tabs/AdminFines";
+import AdminOfficers from "../components/tabs/Officers";
+import AdminProfile from "../admin/tabs/AdminProfile";
+import AdminEvents from "../admin/tabs/AdminEvents";
+import Header from "../components/Header";
+import AdminHome from "../admin/tabs/AdminHome";
 
 const { width } = Dimensions.get("window");
 const tabWidth = width / 5;
 const underlineWidth = tabWidth * 0.8;
 
-const Dashboard = ({ navigation }) => {
+const AdminDashboard = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState("Home");
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [translateX] = useState(new Animated.Value(0));
@@ -36,13 +37,16 @@ const Dashboard = ({ navigation }) => {
   const [loadingAvatar, setLoadingAvatar] = useState(true);
   const insets = useSafeAreaInsets();
 
-  const tabs = [
-    { name: "Home", icon: "home", component: Ionicons },
-    { name: "Events", icon: "calendar-outline", component: Ionicons },
-    { name: "Fines", icon: "receipt", component: MaterialIcons },
-    { name: "Officers", icon: "users", component: Feather },
-    { name: "Profile", icon: "person-circle-outline", component: Ionicons },
-  ];
+  const tabs = useMemo(
+    () => [
+      { name: "Home", icon: "home", component: Ionicons },
+      { name: "Events", icon: "calendar-outline", component: Ionicons },
+      { name: "Fines", icon: "receipt", component: MaterialIcons },
+      { name: "Officers", icon: "users", component: Feather },
+      { name: "Profile", icon: "person-circle-outline", component: Ionicons },
+    ],
+    []
+  );
 
   const fetchAvatar = useCallback(async (user) => {
     if (!user) {
@@ -53,7 +57,7 @@ const Dashboard = ({ navigation }) => {
 
     setLoadingAvatar(true);
     try {
-      const avatarFolderRef = ref(storage, `avatars/${user.uid}`);
+      const avatarFolderRef = ref(storage, `admin/${user.uid}`);
       const listResult = await listAll(avatarFolderRef);
 
       if (listResult.items.length > 0) {
@@ -73,7 +77,7 @@ const Dashboard = ({ navigation }) => {
         const url = await getDownloadURL(mostRecentItem);
         setAvatarUrl(url);
       } else {
-        console.log("No avatar found for user");
+        console.log("No avatar found for admin");
         setAvatarUrl(null);
       }
     } catch (error) {
@@ -86,11 +90,13 @@ const Dashboard = ({ navigation }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      fetchAvatar(user);
-      if (!user) {
-        // Reset to "Home" when user logs out
+      if (user) {
+        fetchAvatar(user);
+      } else {
         setActiveTab("Home");
         setActiveTabIndex(0);
+        setAvatarUrl(null);
+        setLoadingAvatar(false);
       }
     });
 
@@ -103,73 +109,80 @@ const Dashboard = ({ navigation }) => {
       useNativeDriver: true,
       friction: 8,
     }).start();
-  }, [activeTabIndex]);
+  }, [activeTabIndex, translateX]);
 
-  const handleTabPress = (tabName, index) => {
+  const handleTabPress = useCallback((tabName, index) => {
     setActiveTab(tabName);
     setActiveTabIndex(index);
-  };
+  }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       await signOut(auth);
       navigation.navigate("Login");
     } catch (error) {
       console.error("Error during logout:", error);
     }
-  };
+  }, [navigation]);
 
-  const renderContent = () => {
+  const renderContent = useCallback(() => {
     switch (activeTab) {
       case "Home":
-        return <Home />;
+        return <AdminHome />;
       case "Fines":
-        return <Fines />;
+        return <AdminFines />;
       case "Officers":
-        return <Officers />;
+        return <AdminOfficers />;
       case "Profile":
-        return <Profile onAvatarUpdate={() => fetchAvatar(auth.currentUser)} />;
+        return (
+          <AdminProfile onAvatarUpdate={() => fetchAvatar(auth.currentUser)} />
+        );
       case "Events":
-        return <Events />;
+        return <AdminEvents />;
       default:
-        return <Home />;
+        return <AdminHome />;
     }
-  };
+  }, [activeTab, fetchAvatar]);
 
-  const renderTab = ({ name, icon, component: IconComponent }, index) => (
-    <TouchableOpacity
-      key={name}
-      onPress={() => handleTabPress(name, index)}
-      style={styles.tab}
-      activeOpacity={0.7}
-    >
-      {name === "Profile" && !loadingAvatar ? (
-        avatarUrl ? (
-          <Image
-            source={{ uri: avatarUrl }}
-            style={styles.avatar}
-            onError={() => setAvatarUrl(null)}
-          />
+  const renderTab = useCallback(
+    ({ name, icon, component: IconComponent }, index) => (
+      <TouchableOpacity
+        key={name}
+        onPress={() => handleTabPress(name, index)}
+        style={styles.tab}
+        activeOpacity={0.7}
+      >
+        {name === "Profile" && !loadingAvatar ? (
+          avatarUrl ? (
+            <Image
+              source={{ uri: avatarUrl }}
+              style={styles.avatar}
+              onError={() => setAvatarUrl(null)}
+            />
+          ) : (
+            <IconComponent
+              name={icon}
+              size={24}
+              color={activeTab === name ? "#3652AD" : "#aaa"}
+            />
+          )
+        ) : loadingAvatar && name === "Profile" ? (
+          <ActivityIndicator size="small" color="#aaa" />
         ) : (
           <IconComponent
             name={icon}
             size={24}
             color={activeTab === name ? "#3652AD" : "#aaa"}
           />
-        )
-      ) : loadingAvatar && name === "Profile" ? (
-        <ActivityIndicator size="small" color="#aaa" />
-      ) : (
-        <IconComponent
-          name={icon}
-          size={24}
-          color={activeTab === name ? "#3652AD" : "#aaa"}
-        />
-      )}
-      <Text style={activeTab === name ? styles.activeTabText : styles.tabText}>
-        {name}
-      </Text>
-    </TouchableOpacity>
+        )}
+        <Text
+          style={activeTab === name ? styles.activeTabText : styles.tabText}
+        >
+          {name}
+        </Text>
+      </TouchableOpacity>
+    ),
+    [activeTab, avatarUrl, handleTabPress, loadingAvatar]
   );
 
   return (
@@ -246,8 +259,8 @@ const styles = StyleSheet.create({
   avatar: {
     width: 25,
     height: 25,
-    borderRadius: 12,
+    borderRadius: 12.5,
   },
 });
 
-export default Dashboard;
+export default AdminDashboard;

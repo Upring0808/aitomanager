@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import Toast from "react-native-toast-message";
 import { auth, db } from "../config/firebaseconfig";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
+import { useNavigation } from "@react-navigation/native";
 
 const Register = () => {
   const [username, setUsername] = useState("");
@@ -26,6 +27,7 @@ const Register = () => {
   const [phone, setPhone] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const navigation = useNavigation();
 
   const showWarning = (message) => {
     Toast.show({
@@ -48,7 +50,6 @@ const Register = () => {
   };
 
   const handleRegister = async () => {
-    // Input validation (unchanged)
     if (!username || !email || !phone || !password) {
       showWarning("All fields are required.");
       return;
@@ -63,7 +64,6 @@ const Register = () => {
     setIsSubmitting(true);
 
     try {
-      // Check if username already exists
       const usernameQuery = query(
         collection(db, "users"),
         where("username", "==", username)
@@ -75,14 +75,12 @@ const Register = () => {
         return;
       }
 
-      // Attempt to create user
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
         password
       );
 
-      // If successful, add user details to Firestore
       await addDoc(collection(db, "users"), {
         uid: userCredential.user.uid,
         username,
@@ -92,6 +90,8 @@ const Register = () => {
       });
 
       showSuccess("Registration successful!");
+
+      navigation.navigate("Login");
     } catch (error) {
       console.error("Error during registration:", error);
 
@@ -199,6 +199,14 @@ const Register = () => {
                 {isSubmitting ? "Registering..." : "Register"}
               </Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.loginLink}
+              onPress={() => navigation.navigate("Login")}
+            >
+              <Text style={styles.loginLinkText}>
+                Already have an account? Login here
+              </Text>
+            </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
@@ -208,6 +216,15 @@ const Register = () => {
 };
 
 const styles = StyleSheet.create({
+  loginLink: {
+    marginTop: 15,
+    alignItems: "center",
+  },
+  loginLinkText: {
+    color: "#16325B",
+    fontSize: 14,
+    textDecorationLine: "underline",
+  },
   gradient: {
     flex: 1,
   },
@@ -260,7 +277,7 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   button: {
-    backgroundColor: "#257180",
+    backgroundColor: "#16325B",
     paddingVertical: 15,
     borderRadius: 25,
     alignItems: "center",

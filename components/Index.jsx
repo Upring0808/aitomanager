@@ -5,14 +5,15 @@ import {
   TouchableOpacity,
   StyleSheet,
   Image,
-  SafeAreaView,
   StatusBar,
   Dimensions,
   ScrollView,
 } from "react-native";
+
 import { LinearGradient } from "expo-linear-gradient";
 import aito from "../assets/aito.png";
 import BackgroundImage from "../components/ImageBackground";
+import Toast from "react-native-toast-message";
 
 const { width } = Dimensions.get("window");
 
@@ -23,55 +24,61 @@ const Index = ({ navigation }) => {
         colors={["#ffffffaa", "#e6f2f3dd"]}
         style={styles.gradient}
       >
-        <SafeAreaView style={styles.safeArea}>
-          <StatusBar barStyle="dark-content" />
-
-          <ScrollView contentContainerStyle={styles.scrollView}>
-            <View style={styles.container}>
-              {/* Logo Section */}
-              <View style={styles.logoContainer}>
-                <Image source={aito} style={styles.logo} resizeMode="contain" />
-              </View>
-
-              {/* Text Section */}
-              <View style={styles.contentContainer}>
-                <Text style={styles.header}>AITO CHECK</Text>
-                <Text style={styles.subHeader}>
-                  Alliance of Information Technologists Organization
-                </Text>
-                <Text style={styles.description}>
-                  Manage your organization effortlessly with the AITO app.
-                  Simplifying tasks, communication, and events in one platform.
-                </Text>
-              </View>
-
-              {/* Buttons Section */}
-              <View style={styles.buttonContainer}>
-                <TouchableOpacity
-                  style={styles.button}
-                  onPress={() => navigation.navigate("Login")}
-                >
-                  <Text style={styles.buttonText}>Login</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.buttonOutline}
-                  onPress={() => navigation.navigate("Register")}
-                >
-                  <Text style={styles.buttonOutlineText}>Register</Text>
-                </TouchableOpacity>
-              </View>
+        <StatusBar barStyle="dark-content" />
+        <ScrollView contentContainerStyle={styles.scrollView}>
+          <View style={styles.container}>
+            <View style={styles.logoContainer}>
+              <Image source={aito} style={styles.logo} resizeMode="contain" />
             </View>
-          </ScrollView>
-        </SafeAreaView>
+
+            <View style={styles.contentContainer}>
+              <Text style={styles.header}>AITO CHECK</Text>
+              <Text style={styles.subHeader}>
+                Alliance of Information Technologists Organization
+              </Text>
+              <Text style={styles.description}>
+                Manage your organization effortlessly with the AITO app.
+                Simplifying tasks, communication, and events in one platform.
+              </Text>
+            </View>
+
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => navigation.navigate("Login")}
+              >
+                <Text style={styles.buttonText}>Login</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.buttonOutline}
+                onPress={() => navigation.navigate("Register")}
+              >
+                <Text style={styles.buttonOutlineText}>Register</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={styles.loginLink}
+              onPress={() => navigation.navigate("AdminLogin")}
+            >
+              <Text style={styles.loginLinkText}>Login as admin?</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </LinearGradient>
     </BackgroundImage>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
+  loginLink: {
+    marginTop: 15,
+    alignItems: "center",
+  },
+  loginLinkText: {
+    color: "#16325B",
+    fontSize: 14,
+    textDecorationLine: "underline",
   },
   gradient: {
     flex: 1,
@@ -101,7 +108,7 @@ const styles = StyleSheet.create({
   },
   header: {
     fontSize: width > 600 ? 48 : 36,
-    color: "#257180",
+    color: "#16325B",
     fontWeight: "bold",
     textAlign: "center",
     marginBottom: 10,
@@ -126,7 +133,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   button: {
-    backgroundColor: "#257180",
+    backgroundColor: "#16325B",
     paddingVertical: 15,
     borderRadius: 30,
     alignItems: "center",
@@ -141,14 +148,14 @@ const styles = StyleSheet.create({
   },
   buttonOutline: {
     borderWidth: 2,
-    borderColor: "#257180",
+    borderColor: "#16325B",
     paddingVertical: 15,
     borderRadius: 30,
     alignItems: "center",
     width: "90%",
   },
   buttonOutlineText: {
-    color: "#257180",
+    color: "#16325B",
     fontSize: width > 600 ? 20 : 18,
     fontWeight: "bold",
   },

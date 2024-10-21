@@ -26,9 +26,9 @@ import * as ImagePicker from "expo-image-picker";
 import { Feather } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 
-const Profile = () => {
+const AdminProfile = () => {
   const navigation = useNavigation();
-  const [userData, setUserData] = useState(null);
+  const [adminData, setAdminData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [docId, setDocId] = useState(null);
   const [avatarUrl, setAvatarUrl] = useState(null);
@@ -41,7 +41,7 @@ const Profile = () => {
   const [modalVisible, setModalVisible] = useState(false);
 
   useEffect(() => {
-    const fetchUserData = async () => {
+    const fetchAdminData = async () => {
       const currentUser = auth.currentUser;
       if (!currentUser) {
         setLoading(false);
@@ -49,24 +49,26 @@ const Profile = () => {
       }
 
       try {
-        const userQuery = query(
-          collection(db, "users"),
+        const adminQuery = query(
+          collection(db, "admin"),
           where("uid", "==", currentUser.uid)
         );
-        const userSnapshot = await getDocs(userQuery);
-        if (!userSnapshot.empty) {
-          const userDoc = userSnapshot.docs[0];
-          setUserData(userDoc.data());
-          setDocId(userDoc.id);
-          setTempData(userDoc.data());
+        const adminSnapshot = await getDocs(adminQuery);
+        if (!adminSnapshot.empty) {
+          const adminDoc = adminSnapshot.docs[0];
+          setAdminData(adminDoc.data());
+          setDocId(adminDoc.id);
+          setTempData(adminDoc.data());
+          setAvatarUrl(adminDoc.data().avatarUrl);
         } else {
           Toast.show({
             type: "error",
             text1: "Error",
-            text2: "User data not found.",
+            text2: "Admin data not found.",
           });
         }
       } catch (error) {
+        console.error("Error fetching admin data:", error);
         Toast.show({
           type: "error",
           text1: "Error",
@@ -77,21 +79,22 @@ const Profile = () => {
       }
     };
 
-    fetchUserData();
+    fetchAdminData();
   }, []);
 
   const handleSave = async (field) => {
     try {
-      const userDocRef = doc(db, "users", docId);
-      await updateDoc(userDocRef, { [field]: tempData[field] });
-      setUserData((prevState) => ({ ...prevState, [field]: tempData[field] }));
+      const adminDocRef = doc(db, "admin", docId);
+      await updateDoc(adminDocRef, { [field]: tempData[field] });
+      setAdminData((prevState) => ({ ...prevState, [field]: tempData[field] }));
       setEditingField(null);
       Toast.show({
         type: "success",
         text1: "Saved",
-        text2: "Profile updated!",
+        text2: "Admin profile updated!",
       });
     } catch (error) {
+      console.error("Error updating admin profile:", error);
       Toast.show({ type: "error", text1: "Error", text2: "Update failed." });
     }
   };
@@ -134,21 +137,21 @@ const Profile = () => {
       setLoading(true);
       const response = await fetch(uri);
       const blob = await response.blob();
-      const filename = `avatars/${auth.currentUser.uid}/${Date.now()}.jpg`;
+      const filename = `admin/${auth.currentUser.uid}/${Date.now()}.jpg`;
       const storageRef = ref(storage, filename);
 
       await uploadBytes(storageRef, blob);
       const downloadURL = await getDownloadURL(storageRef);
 
-      const userDocRef = doc(db, "users", docId);
-      await updateDoc(userDocRef, { avatarUrl: downloadURL });
-      setUserData((prevState) => ({ ...prevState, avatarUrl: downloadURL }));
+      const adminDocRef = doc(db, "admin", docId);
+      await updateDoc(adminDocRef, { avatarUrl: downloadURL });
+      setAdminData((prevState) => ({ ...prevState, avatarUrl: downloadURL }));
       setAvatarUrl(downloadURL);
 
       Toast.show({
         type: "success",
         text1: "Success",
-        text2: "Avatar updated!",
+        text2: "Admin avatar updated!",
       });
     } catch (error) {
       console.error("Error uploading image:", error);
@@ -201,7 +204,7 @@ const Profile = () => {
               <Text style={styles.modalButtonText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.modalButton, { backgroundColor: "#203562" }]}
+              style={[styles.modalButton, { backgroundColor: "black" }]}
               onPress={() => {
                 handleSave(editingField);
                 setModalVisible(false);
@@ -233,8 +236,8 @@ const Profile = () => {
             <TouchableOpacity onPress={pickImage}>
               <Image
                 source={
-                  userData?.avatarUrl
-                    ? { uri: userData.avatarUrl }
+                  avatarUrl
+                    ? { uri: avatarUrl }
                     : require("../../assets/aito.png")
                 }
                 style={styles.avatar}
@@ -244,7 +247,7 @@ const Profile = () => {
               </TouchableOpacity>
             </TouchableOpacity>
           </View>
-          <Text style={styles.username}>{userData?.username || "User"}</Text>
+          <Text style={styles.username}>{adminData?.username || "Admin"}</Text>
         </View>
 
         <View style={styles.contentContainer}>
@@ -261,7 +264,7 @@ const Profile = () => {
                 {field.charAt(0).toUpperCase() + field.slice(1)}
               </Text>
               <View style={styles.fieldValueContainer}>
-                <Text style={styles.value}>{userData[field]}</Text>
+                <Text style={styles.value}>{adminData[field]}</Text>
                 <Feather name="edit" size={18} color="gray" />
               </View>
             </TouchableOpacity>
@@ -301,7 +304,7 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 80,
     borderWidth: 3,
-    borderColor: "#F7F7F7",
+    borderColor: "grey",
   },
   editIcon: {
     position: "absolute",
@@ -341,7 +344,7 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     marginTop: 30,
-    backgroundColor: "#16325B",
+    backgroundColor: "#493628",
     padding: 15, // Reduced padding for a smaller button
     borderRadius: 30,
     width: 300,
@@ -393,4 +396,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Profile;
+export default AdminProfile;

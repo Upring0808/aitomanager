@@ -8,6 +8,9 @@ import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
 import Toast from "react-native-toast-message";
 import CustomToast from "./Toast/CustomToast";
+import AdminLogin from "./admin/AdminLogin";
+import RegisterAdmin from "./admin/RegisterAdmin";
+import AdminDashboard from "./admin/AdminDashboard";
 
 const Stack = createStackNavigator();
 
@@ -37,10 +40,17 @@ const App = () => {
         <Stack.Screen name="Index" component={Index} />
         <Stack.Screen name="Register" component={Register} />
         <Stack.Screen name="Login" component={Login} />
+        <Stack.Screen name="AdminLogin" component={AdminLogin} />
+        <Stack.Screen name="RegisterAdmin" component={RegisterAdmin} />
         <Stack.Screen
           name="Dashboard"
           component={Dashboard}
-          options={{ gestureEnabled: false }} // Disable back gesture
+          options={{ gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="AdminDashboard"
+          component={AdminDashboard}
+          options={{ gestureEnabled: false }}
         />
       </Stack.Navigator>
       <Toast

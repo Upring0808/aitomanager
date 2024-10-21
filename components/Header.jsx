@@ -1,7 +1,7 @@
-// Header.js
-import React from "react";
-import { View, Text, StyleSheet, Platform, StatusBar } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, Text, StyleSheet, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 
 const Header = ({ title = "AitoCheck" }) => {
   const insets = useSafeAreaInsets();
@@ -11,11 +11,16 @@ const Header = ({ title = "AitoCheck" }) => {
       style={[
         styles.header,
         {
-          paddingTop:
-            Platform.OS === "ios" ? insets.top : StatusBar.currentHeight,
+          paddingTop: Platform.OS === "ios" ? insets.top : 10,
         },
       ]}
     >
+      <Ionicons
+        name="checkmark-done-outline"
+        size={28}
+        color="#59B4C3"
+        style={styles.icon}
+      />
       <Text style={styles.title}>{title}</Text>
     </View>
   );
@@ -30,11 +35,16 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#e0e0e0",
+    // Fixed minimum height for consistency
+    minHeight: 56,
+  },
+  icon: {
+    marginRight: 8,
   },
   title: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "black", // Facebook blue color
+    color: "#003366",
   },
 });
 
