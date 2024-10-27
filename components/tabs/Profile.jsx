@@ -220,7 +220,7 @@ const Profile = () => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="maroon" />
+        <ActivityIndicator size="large" color="#3E588Faa" />
       </View>
     );
   }
@@ -278,7 +278,6 @@ const Profile = () => {
   );
 };
 
-// Styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -342,12 +341,12 @@ const styles = StyleSheet.create({
   logoutButton: {
     marginTop: 30,
     backgroundColor: "#16325B",
-    padding: 15, // Reduced padding for a smaller button
+    padding: 15,
     borderRadius: 30,
     width: 300,
     alignItems: "center",
-    justifyContent: "center", // Center the content inside the button
-    alignSelf: "center", // Center the button itself
+    justifyContent: "center",
+    alignSelf: "center",
   },
   logoutButtonText: {
     color: "white",

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   ScrollView,
@@ -9,9 +9,16 @@ import {
   Animated,
   ActivityIndicator,
   Dimensions,
+  RefreshControl,
 } from "react-native";
 import { db } from "../../config/firebaseconfig";
-import { collection, getDocs } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  onSnapshot,
+} from "firebase/firestore";
 import { Card } from "react-native-paper";
 import Toast from "react-native-toast-message";
 import { FontAwesome } from "@expo/vector-icons";
@@ -24,37 +31,45 @@ const Events = () => {
   const [filter, setFilter] = useState("All");
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const arrowRotation = useRef(new Animated.Value(0)).current;
   const dropdownHeight = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        const eventsCollection = collection(db, "events");
-        const eventsSnapshot = await getDocs(eventsCollection);
-        let eventsList = eventsSnapshot.docs.map((doc) => ({
+  const fetchEvents = useCallback(async () => {
+    if (!refreshing) setLoading(true); // Set loading only if it's not a refresh
+    try {
+      const eventsCollection = collection(db, "events");
+      const eventsQuery = query(eventsCollection, orderBy("createdAt", "desc"));
+
+      const unsubscribe = onSnapshot(eventsQuery, (snapshot) => {
+        const eventsList = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
-
-        eventsList.sort(
-          (a, b) =>
-            new Date(b.createdAt.seconds * 1000) -
-            new Date(a.createdAt.seconds * 1000)
-        );
-
         setEvents(eventsList);
-      } catch (error) {
-        console.error("Error fetching events:", error);
-      } finally {
-        setLoading(false);
         animateEventsEntrance();
-      }
-    };
-    fetchEvents();
-  }, []);
+        setLoading(false);
+        setRefreshing(false);
+      });
 
+      return unsubscribe;
+    } catch (error) {
+      console.error("Error fetching events:", error);
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [refreshing]);
+
+  useEffect(() => {
+    const unsubscribe = fetchEvents();
+    return () => unsubscribe;
+  }, [fetchEvents]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchEvents();
+  }, [fetchEvents]);
   const toggleDropdown = () => {
     setShowDropdown(!showDropdown);
     Animated.parallel([
@@ -64,14 +79,13 @@ const Events = () => {
         useNativeDriver: true,
       }),
       Animated.spring(dropdownHeight, {
-        toValue: showDropdown ? 0 : 180,
-        friction: 10,
-        tension: 50,
+        toValue: showDropdown ? 0 : 160,
+        friction: 12,
+        tension: 40,
         useNativeDriver: false,
       }),
     ]).start();
   };
-
   const animateEventsEntrance = () => {
     fadeAnim.setValue(0);
     Animated.timing(fadeAnim, {
@@ -158,47 +172,89 @@ const Events = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.pickerWrapper}>
-          <TouchableOpacity
-            style={styles.pickerButton}
-            onPress={toggleDropdown}
-          >
-            <Text style={styles.pickerText}>Filter: {filter}</Text>
-            <Animated.View style={{ transform: [{ rotate: rotateArrow }] }}>
-              <FontAwesome name="chevron-down" size={18} color="#333" />
-            </Animated.View>
-          </TouchableOpacity>
+      <View style={styles.mainContainer}>
+        {loading && !refreshing && (
+          <ActivityIndicator
+            size="large"
+            color="#3E588Faa"
+            style={styles.centerLoading}
+          />
+        )}
 
-          <Animated.View
-            style={[styles.customDropdown, { height: dropdownHeight }]}
-          >
-            <BlurView intensity={90} tint="light" style={styles.blurView}>
-              {["All", "Today", "Past"].map((option) => (
-                <TouchableOpacity
-                  key={option}
-                  style={styles.customDropdownItem}
-                  onPress={() => {
-                    setFilter(option);
-                    toggleDropdown();
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#D3D6DB"]}
+              tintColor="#D3D6DB"
+            />
+          }
+        >
+          <View style={styles.filterContainer}>
+            <View style={styles.pickerWrapper}>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={toggleDropdown}
+              >
+                <Text style={styles.pickerText}>Filter: {filter}</Text>
+                <Animated.View
+                  style={{
+                    transform: [
+                      {
+                        rotate: arrowRotation.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ["0deg", "180deg"],
+                        }),
+                      },
+                    ],
                   }}
                 >
-                  <Text style={styles.dropdownItemText}>{option} Events</Text>
-                </TouchableOpacity>
-              ))}
-            </BlurView>
-          </Animated.View>
-        </View>
+                  <FontAwesome name="chevron-down" size={15} color="#333" />
+                </Animated.View>
+              </TouchableOpacity>
 
-        {loading ? (
-          <ActivityIndicator size="large" color="#3E588F" />
-        ) : filteredEvents.length > 0 ? (
-          filteredEvents.map(renderEventCard)
-        ) : (
-          <Text style={styles.noEvent}>No events available.</Text>
-        )}
+              <Animated.View
+                style={[
+                  styles.customDropdown,
+                  {
+                    height: dropdownHeight,
+                    opacity: dropdownHeight.interpolate({
+                      inputRange: [0, 160],
+                      outputRange: [0, 1],
+                    }),
+                  },
+                ]}
+              >
+                <View style={styles.dropdownContent}>
+                  {["All", "Today", "Past"].map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={styles.customDropdownItem}
+                      onPress={() => {
+                        setFilter(option);
+                        toggleDropdown();
+                      }}
+                    >
+                      <Text style={styles.dropdownItemText}>
+                        {option} Events
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </Animated.View>
+            </View>
+          </View>
+
+          {filteredEvents.length > 0 ? (
+            filteredEvents.map(renderEventCard)
+          ) : (
+            <Text style={styles.noEvent}>No events available.</Text>
+          )}
+        </ScrollView>
         <Toast />
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 };
@@ -211,9 +267,22 @@ const styles = StyleSheet.create({
   container: {
     padding: 16,
   },
+  mainContainer: {
+    flex: 1,
+    position: "relative",
+  },
+  scrollContainer: {
+    padding: 16,
+    minHeight: "100%",
+  },
   pickerWrapper: {
-    marginBottom: 20,
+    position: "relative",
     zIndex: 1000,
+  },
+  filterContainer: {
+    position: "relative",
+    zIndex: 1000,
+    marginBottom: 20,
   },
   pickerButton: {
     flexDirection: "row",
@@ -234,12 +303,19 @@ const styles = StyleSheet.create({
     color: "#333",
     fontWeight: "600",
   },
-  customDropdown: {
+  dropdownOverlay: {
     position: "absolute",
-    top: 60,
+    top: "100%",
     left: 0,
     right: 0,
-    backgroundColor: "transparent",
+    zIndex: 1000,
+  },
+  customDropdown: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    backgroundColor: "#233c60",
     borderRadius: 12,
     overflow: "hidden",
     shadowColor: "#000",
@@ -247,20 +323,25 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 5,
+    zIndex: 1000,
   },
   blurView: {
     borderRadius: 12,
     overflow: "hidden",
+    backgroundColor: "#233c60",
   },
   customDropdownItem: {
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.1)",
   },
   dropdownItemText: {
+    color: "#fff",
     fontSize: 16,
-    color: "#333",
+  },
+  noEvent: {
     textAlign: "center",
+    marginTop: 50,
+    color: "#888",
+    fontSize: 18,
   },
   cardContainer: {
     marginBottom: 16,
@@ -268,50 +349,51 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#fff",
     borderRadius: 12,
+    padding: 16,
     shadowColor: "#000",
     shadowOpacity: 0.1,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    elevation: 5,
   },
   cardContent: {
     flexDirection: "row",
-    padding: 16,
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   dateTimeContainer: {
-    marginRight: 16,
     alignItems: "center",
-    justifyContent: "center",
-    width: 60,
   },
   dateText: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#3E588F",
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
   },
   timeText: {
-    fontSize: 12,
-    color: "#666",
-    marginTop: 4,
+    fontSize: 14,
+    color: "#888",
   },
   eventDetails: {
     flex: 1,
+    marginLeft: 16,
   },
   eventTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
+    fontSize: 16,
+    fontWeight: "600",
     color: "#333",
-    marginBottom: 4,
   },
   eventTimeframe: {
     fontSize: 14,
-    color: "#666",
+    color: "#888",
+    marginTop: 4,
   },
-  noEvent: {
-    textAlign: "center",
-    fontSize: 16,
-    color: "#666",
-    marginTop: 20,
+  centerLoading: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    marginLeft: -25, // half of size
+    marginTop: -25, // half of size
+    zIndex: 10,
   },
 });
 

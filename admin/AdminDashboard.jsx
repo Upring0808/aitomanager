@@ -19,7 +19,7 @@ import { ref, getDownloadURL, listAll, getMetadata } from "firebase/storage";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 
 import AdminFines from "../admin/tabs/AdminFines";
-import AdminOfficers from "../components/tabs/Officers";
+import AdminPeople from "../admin/tabs/AdminPeople";
 import AdminProfile from "../admin/tabs/AdminProfile";
 import AdminEvents from "../admin/tabs/AdminEvents";
 import Header from "../components/Header";
@@ -42,7 +42,7 @@ const AdminDashboard = ({ navigation }) => {
       { name: "Home", icon: "home", component: Ionicons },
       { name: "Events", icon: "calendar-outline", component: Ionicons },
       { name: "Fines", icon: "receipt", component: MaterialIcons },
-      { name: "Officers", icon: "users", component: Feather },
+      { name: "People", icon: "users", component: Feather },
       { name: "Profile", icon: "person-circle-outline", component: Ionicons },
     ],
     []
@@ -131,8 +131,8 @@ const AdminDashboard = ({ navigation }) => {
         return <AdminHome />;
       case "Fines":
         return <AdminFines />;
-      case "Officers":
-        return <AdminOfficers />;
+      case "People":
+        return <AdminPeople />;
       case "Profile":
         return (
           <AdminProfile onAvatarUpdate={() => fetchAvatar(auth.currentUser)} />

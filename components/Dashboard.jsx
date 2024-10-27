@@ -19,7 +19,7 @@ import { ref, getDownloadURL, listAll, getMetadata } from "firebase/storage";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import Home from "../components/tabs/Home";
 import Fines from "../components/tabs/Fines";
-import Officers from "../components/tabs/Officers";
+import People from "../components/tabs/People";
 import Profile from "../components/tabs/Profile";
 import Events from "../components/tabs/Events";
 import Header from "./Header";
@@ -40,7 +40,7 @@ const Dashboard = ({ navigation }) => {
     { name: "Home", icon: "home", component: Ionicons },
     { name: "Events", icon: "calendar-outline", component: Ionicons },
     { name: "Fines", icon: "receipt", component: MaterialIcons },
-    { name: "Officers", icon: "users", component: Feather },
+    { name: "People", icon: "users", component: Feather },
     { name: "Profile", icon: "person-circle-outline", component: Ionicons },
   ];
 
@@ -125,8 +125,8 @@ const Dashboard = ({ navigation }) => {
         return <Home />;
       case "Fines":
         return <Fines />;
-      case "Officers":
-        return <Officers />;
+      case "People":
+        return <People />;
       case "Profile":
         return <Profile onAvatarUpdate={() => fetchAvatar(auth.currentUser)} />;
       case "Events":
