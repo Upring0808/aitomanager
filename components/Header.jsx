@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Platform } from "react-native";
+import React from "react";
+import { View, Text, StyleSheet, Platform, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons"; // Import an icon library (e.g., Ionicons)
+import logo from "../assets/aito.png"; // Use your logo image
 
-const Header = ({ title = "AitoCheck" }) => {
+const Header = ({ title = "Aito Check" }) => {
   const insets = useSafeAreaInsets();
 
   return (
@@ -16,11 +17,12 @@ const Header = ({ title = "AitoCheck" }) => {
       ]}
     >
       <Ionicons
-        name="checkmark-done-outline"
-        size={28}
-        color="#59B4C3"
+        name="checkmark-circle-outline" // Choose an icon fitting the app's purpose
+        size={32}
+        color="#2F2A56"
         style={styles.icon}
       />
+      {/* <Image source={logo} style={styles.logo} resizeMode="contain" /> */}
       <Text style={styles.title}>{title}</Text>
     </View>
   );
@@ -28,23 +30,32 @@ const Header = ({ title = "AitoCheck" }) => {
 
 const styles = StyleSheet.create({
   header: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "#F8F9FA",
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
-    // Fixed minimum height for consistency
+    borderBottomColor: "#dcdcdc",
     minHeight: 56,
   },
   icon: {
-    marginRight: 8,
+    marginRight: 2.5,
+  },
+  logo: {
+    width: 36,
+    height: 36,
+    marginRight: 10,
   },
   title: {
     fontSize: 24,
-    fontWeight: "bold",
-    color: "#003366",
+    fontWeight: "600",
+    color: "#2F2A56",
+    letterSpacing: -0.5,
+    lineHeight: 30,
+    textShadowColor: "#00000020",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   Modal,
   Platform,
 } from "react-native";
-import { auth, db, storage } from "../../config/firebaseconfig";
+import { auth, db, storage } from "../../../config/firebaseconfig";
 import {
   collection,
   query,
@@ -25,6 +25,7 @@ import Toast from "react-native-toast-message";
 import * as ImagePicker from "expo-image-picker";
 import { Feather } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
+import { dashboardServices } from "../../services/dashboardServices";
 
 const AdminProfile = () => {
   const navigation = useNavigation();
@@ -39,6 +40,7 @@ const AdminProfile = () => {
     phone: "",
   });
   const [modalVisible, setModalVisible] = useState(false);
+  const [unsubscribeAvatar, setUnsubscribeAvatar] = useState(null);
 
   useEffect(() => {
     const fetchAdminData = async () => {
@@ -60,6 +62,15 @@ const AdminProfile = () => {
           setDocId(adminDoc.id);
           setTempData(adminDoc.data());
           setAvatarUrl(adminDoc.data().avatarUrl);
+
+          // real-time avatar subscription
+          const unsubscribe = dashboardServices.subscribeToAvatarUpdates(
+            currentUser,
+            (newAvatarUrl) => {
+              setAvatarUrl(newAvatarUrl);
+            }
+          );
+          setUnsubscribeAvatar(() => unsubscribe);
         } else {
           Toast.show({
             type: "error",
@@ -80,6 +91,13 @@ const AdminProfile = () => {
     };
 
     fetchAdminData();
+
+    return () => {
+      // Clean up the avatar subscription
+      if (unsubscribeAvatar) {
+        unsubscribeAvatar();
+      }
+    };
   }, []);
 
   const handleSave = async (field) => {
@@ -148,6 +166,8 @@ const AdminProfile = () => {
       setAdminData((prevState) => ({ ...prevState, avatarUrl: downloadURL }));
       setAvatarUrl(downloadURL);
 
+      // Notify the dashboard of the avatar update
+      dashboardServices.updateAvatarUrl(auth.currentUser, downloadURL);
       Toast.show({
         type: "success",
         text1: "Success",
@@ -238,7 +258,7 @@ const AdminProfile = () => {
                 source={
                   avatarUrl
                     ? { uri: avatarUrl }
-                    : require("../../assets/aito.png")
+                    : require("../../../assets/aito.png")
                 }
                 style={styles.avatar}
               />
@@ -304,7 +324,7 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 80,
     borderWidth: 3,
-    borderColor: "grey",
+    borderColor: "#EEEDED",
   },
   editIcon: {
     position: "absolute",

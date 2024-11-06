@@ -47,7 +47,6 @@ const RegisterAdmin = ({ navigation }) => {
     setIsSubmitting(true);
 
     try {
-      // Register the admin using Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
@@ -55,7 +54,6 @@ const RegisterAdmin = ({ navigation }) => {
       );
       const user = userCredential.user;
 
-      // Add the admin to the Firestore 'admin' collection
       await setDoc(doc(db, "admin", user.uid), {
         uid: user.uid,
         email: email,

@@ -10,7 +10,7 @@ import Toast from "react-native-toast-message";
 import CustomToast from "./Toast/CustomToast";
 import AdminLogin from "./admin/AdminLogin";
 import RegisterAdmin from "./admin/RegisterAdmin";
-import AdminDashboard from "./admin/AdminDashboard";
+import AdminDashboard from "./admin/screens/AdminDashboard";
 
 const Stack = createStackNavigator();
 
@@ -18,7 +18,7 @@ const App = () => {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="Index"
+        initialRouteName="AdminDashboard"
         screenOptions={{
           headerShown: false,
           cardStyleInterpolator: ({ current, layouts }) => {

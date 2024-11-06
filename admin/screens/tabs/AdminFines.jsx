@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, FlatList, TextInput } from "react-native";
-import { db } from "../../config/firebaseconfig";
+import { db } from "../../../config/firebaseconfig";
 import { collection, getDocs, query, where } from "firebase/firestore";
 
 const AdminFines = () => {

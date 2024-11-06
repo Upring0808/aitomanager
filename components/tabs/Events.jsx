@@ -21,7 +21,9 @@ import {
 } from "firebase/firestore";
 import { Card } from "react-native-paper";
 import Toast from "react-native-toast-message";
+
 import { FontAwesome } from "@expo/vector-icons";
+import { Styles } from "../styles/Styles";
 import { BlurView } from "expo-blur";
 
 const { width } = Dimensions.get("window");
@@ -119,22 +121,30 @@ const Events = () => {
     outputRange: ["0deg", "180deg"],
   });
 
-  const renderEventCard = (event, index) => {
-    const eventDate = new Date(event.createdAt.seconds * 1000);
-    const formattedDate = eventDate.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-    const formattedTime = eventDate.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  const renderEventCard = (event) => {
+    const eventDate = event.dueDate
+      ? new Date(event.dueDate.seconds * 1000)
+      : null;
+
+    const formattedDate = eventDate
+      ? eventDate.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        })
+      : "No Date";
+    const formattedDay = eventDate
+      ? eventDate.toLocaleDateString("en-US", { weekday: "long" })
+      : "No Day";
+
+    const createdAt = event.createdAt
+      ? new Date(event.createdAt.seconds * 1000).toLocaleString()
+      : "Unknown";
 
     return (
       <Animated.View
         key={event.id}
         style={[
-          styles.cardContainer,
+          Styles.cardContainer,
           {
             opacity: fadeAnim,
             transform: [
@@ -154,15 +164,21 @@ const Events = () => {
           },
         ]}
       >
-        <Card style={styles.card}>
-          <View style={styles.cardContent}>
-            <View style={styles.dateTimeContainer}>
-              <Text style={styles.dateText}>{formattedDate}</Text>
-              <Text style={styles.timeText}>{formattedTime}</Text>
+        <Card key={event.id} style={Styles.card}>
+          <View style={Styles.cardContent}>
+            <View style={Styles.dateTimeContainer}>
+              <Text style={Styles.dateText}>{formattedDate}</Text>
+              <Text style={Styles.dayText}>{formattedDay}</Text>
             </View>
-            <View style={styles.eventDetails}>
-              <Text style={styles.eventTitle}>{event.title}</Text>
-              <Text style={styles.eventTimeframe}>{event.timeframe}</Text>
+            <View style={Styles.intersection} />
+            <View style={Styles.eventDetails}>
+              <View style={Styles.eventRow}>
+                <View style={Styles.eventTitleContainer}>
+                  <Text style={Styles.eventTitle}>{event.title}</Text>
+                  <Text style={Styles.eventTimeframe}>{event.timeframe}</Text>
+                  <Text style={Styles.timestampText}>{createdAt}</Text>
+                </View>
+              </View>
             </View>
           </View>
         </Card>
@@ -171,18 +187,18 @@ const Events = () => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.mainContainer}>
+    <SafeAreaView style={Styles.safeArea}>
+      <View style={Styles.mainContainer}>
         {loading && !refreshing && (
           <ActivityIndicator
             size="large"
             color="#3E588Faa"
-            style={styles.centerLoading}
+            style={Styles.centerLoading}
           />
         )}
 
         <ScrollView
-          contentContainerStyle={styles.scrollContainer}
+          contentContainerStyle={Styles.scrollContainer}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -192,13 +208,13 @@ const Events = () => {
             />
           }
         >
-          <View style={styles.filterContainer}>
-            <View style={styles.pickerWrapper}>
+          <View style={Styles.filterContainer}>
+            <View style={Styles.pickerWrapper}>
               <TouchableOpacity
-                style={styles.pickerButton}
+                style={Styles.pickerButton}
                 onPress={toggleDropdown}
               >
-                <Text style={styles.pickerText}>Filter: {filter}</Text>
+                <Text style={Styles.pickerText}>Filter: {filter}</Text>
                 <Animated.View
                   style={{
                     transform: [
@@ -217,7 +233,7 @@ const Events = () => {
 
               <Animated.View
                 style={[
-                  styles.customDropdown,
+                  Styles.customDropdown,
                   {
                     height: dropdownHeight,
                     opacity: dropdownHeight.interpolate({
@@ -227,17 +243,17 @@ const Events = () => {
                   },
                 ]}
               >
-                <View style={styles.dropdownContent}>
+                <View style={Styles.dropdownContent}>
                   {["All", "Today", "Past"].map((option) => (
                     <TouchableOpacity
                       key={option}
-                      style={styles.customDropdownItem}
+                      style={Styles.customDropdownItem}
                       onPress={() => {
                         setFilter(option);
                         toggleDropdown();
                       }}
                     >
-                      <Text style={styles.dropdownItemText}>
+                      <Text style={Styles.dropdownItemText}>
                         {option} Events
                       </Text>
                     </TouchableOpacity>
@@ -250,7 +266,7 @@ const Events = () => {
           {filteredEvents.length > 0 ? (
             filteredEvents.map(renderEventCard)
           ) : (
-            <Text style={styles.noEvent}>No events available.</Text>
+            <Text style={Styles.noEvent}>No events available.</Text>
           )}
         </ScrollView>
         <Toast />
@@ -258,143 +274,5 @@ const Events = () => {
     </SafeAreaView>
   );
 };
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#f9f9f9",
-  },
-  container: {
-    padding: 16,
-  },
-  mainContainer: {
-    flex: 1,
-    position: "relative",
-  },
-  scrollContainer: {
-    padding: 16,
-    minHeight: "100%",
-  },
-  pickerWrapper: {
-    position: "relative",
-    zIndex: 1000,
-  },
-  filterContainer: {
-    position: "relative",
-    zIndex: 1000,
-    marginBottom: 20,
-  },
-  pickerButton: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: "#fff",
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
-  },
-  pickerText: {
-    fontSize: 16,
-    color: "#333",
-    fontWeight: "600",
-  },
-  dropdownOverlay: {
-    position: "absolute",
-    top: "100%",
-    left: 0,
-    right: 0,
-    zIndex: 1000,
-  },
-  customDropdown: {
-    position: "absolute",
-    top: "100%",
-    left: 0,
-    right: 0,
-    backgroundColor: "#233c60",
-    borderRadius: 12,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
-    zIndex: 1000,
-  },
-  blurView: {
-    borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: "#233c60",
-  },
-  customDropdownItem: {
-    padding: 16,
-  },
-  dropdownItemText: {
-    color: "#fff",
-    fontSize: 16,
-  },
-  noEvent: {
-    textAlign: "center",
-    marginTop: 50,
-    color: "#888",
-    fontSize: 18,
-  },
-  cardContainer: {
-    marginBottom: 16,
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
-  },
-  cardContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  dateTimeContainer: {
-    alignItems: "center",
-  },
-  dateText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#333",
-  },
-  timeText: {
-    fontSize: 14,
-    color: "#888",
-  },
-  eventDetails: {
-    flex: 1,
-    marginLeft: 16,
-  },
-  eventTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-  },
-  eventTimeframe: {
-    fontSize: 14,
-    color: "#888",
-    marginTop: 4,
-  },
-  centerLoading: {
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    marginLeft: -25, // half of size
-    marginTop: -25, // half of size
-    zIndex: 10,
-  },
-});
 
 export default Events;

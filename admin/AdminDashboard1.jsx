@@ -18,12 +18,12 @@ import { auth, storage } from "../config/firebaseconfig";
 import { ref, getDownloadURL, listAll, getMetadata } from "firebase/storage";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 
-import AdminFines from "../admin/tabs/AdminFines";
-import AdminPeople from "../admin/tabs/AdminPeople";
-import AdminProfile from "../admin/tabs/AdminProfile";
-import AdminEvents from "../admin/tabs/AdminEvents";
+import AdminFines from "./screens/tabs/AdminFines";
+import AdminPeople from "./screens/tabs/AdminPeople";
+import AdminProfile from "./screens/tabs/AdminProfile";
+import AdminEvents from "./tabs/AdminEvents";
 import Header from "../components/Header";
-import AdminHome from "../admin/tabs/AdminHome";
+import AdminHome from "./screens/tabs/AdminHome";
 
 const { width } = Dimensions.get("window");
 const tabWidth = width / 5;

@@ -12,7 +12,7 @@ import {
   PanResponder,
   searchTranslateY,
 } from "react-native";
-import { db, storage } from "../../config/firebaseconfig";
+import { db, storage } from "../../../config/firebaseconfig";
 import { collection, query, getDocs, orderBy } from "firebase/firestore";
 import { ref, getDownloadURL } from "firebase/storage";
 import Toast from "react-native-toast-message";
@@ -23,8 +23,6 @@ const SPACING = 16;
 const AVATAR_SIZE = 50;
 const HEADER_HEIGHT = 80;
 const SCROLL_THRESHOLD = 50;
-
-// SearchBar, SortButton, PersonCard components remain the same...
 
 const SearchBar = memo(({ onSearch }) => (
   <View style={styles.searchContainer}>
@@ -122,7 +120,6 @@ const AdminPeople = () => {
   const lastScrollY = useRef(0);
   const timeoutRef = useRef(null);
 
-  // Improved header animation with spring configuration
   const toggleHeader = (show) => {
     Animated.spring(headerAnimatedValue, {
       toValue: show ? 1 : 0,
@@ -139,7 +136,6 @@ const AdminPeople = () => {
       listener: (event) => {
         const currentScrollY = event.nativeEvent.contentOffset.y;
 
-        // Clear any existing timeout
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
         }
@@ -148,12 +144,10 @@ const AdminPeople = () => {
           isScrolling.current = true;
         }
 
-        // Determine scroll direction and toggle header
         if (
           currentScrollY > lastScrollY.current &&
           currentScrollY > SCROLL_THRESHOLD
         ) {
-          // Scrolling down
           if (showSearch) {
             setShowSearch(false);
             toggleHeader(false);
@@ -162,7 +156,6 @@ const AdminPeople = () => {
           currentScrollY < lastScrollY.current ||
           currentScrollY < SCROLL_THRESHOLD
         ) {
-          // Scrolling up or near top
           if (!showSearch) {
             setShowSearch(true);
             toggleHeader(true);
@@ -171,10 +164,9 @@ const AdminPeople = () => {
 
         lastScrollY.current = currentScrollY;
 
-        // Set timeout to detect scroll end
         timeoutRef.current = setTimeout(() => {
           isScrolling.current = false;
-          // If we're at the top, always show the header
+
           if (currentScrollY <= SCROLL_THRESHOLD) {
             setShowSearch(true);
             toggleHeader(true);
@@ -184,7 +176,6 @@ const AdminPeople = () => {
     }
   );
 
-  // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
@@ -193,7 +184,7 @@ const AdminPeople = () => {
     };
   }, []);
 
-  const defaultAvatarUri = require("../../assets/aito.png");
+  const defaultAvatarUri = require("../../../assets/aito.png");
 
   const panResponder = PanResponder.create({
     onMoveShouldSetPanResponder: (_, gestureState) => {
@@ -415,7 +406,7 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: "#FFFFFF",
     zIndex: 1000,
-    paddingTop: 10, // Safe area padding
+    paddingTop: 10,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(0,0,0,0.05)",
   },
@@ -475,8 +466,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: SPACING, // Reduce this if necessary
-    marginTop: 0, // Add this line to ensure no margin at the top
+    marginBottom: SPACING,
+    marginTop: 0,
   },
   sectionTitle: {
     fontSize: 24,
