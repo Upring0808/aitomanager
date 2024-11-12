@@ -11,7 +11,7 @@ import {
   Modal,
   Platform,
 } from "react-native";
-import { auth, db, storage } from "../../../config/firebaseconfig";
+import { auth, db, storage } from "../../../../config/firebaseconfig";
 import {
   collection,
   query,
@@ -25,7 +25,7 @@ import Toast from "react-native-toast-message";
 import * as ImagePicker from "expo-image-picker";
 import { Feather } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import { dashboardServices } from "../../services/dashboardServices";
+import { dashboardServices } from "../../../../services/dashboardServices";
 
 const AdminProfile = () => {
   const navigation = useNavigation();
@@ -258,7 +258,7 @@ const AdminProfile = () => {
                 source={
                   avatarUrl
                     ? { uri: avatarUrl }
-                    : require("../../../assets/aito.png")
+                    : require("../../../../assets/aito.png")
                 }
                 style={styles.avatar}
               />

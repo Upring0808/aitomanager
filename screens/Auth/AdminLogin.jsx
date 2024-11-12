@@ -9,15 +9,16 @@ import {
   Platform,
   ScrollView,
   Image,
-  SafeAreaView, // Added SafeAreaView
+  SafeAreaView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import aito from "../assets/aito.png";
-import BackgroundImage from "../components/ImageBackground";
+import aito from "../../assets/aito.png";
+import BackgroundImage from "../../components/ImageBackground";
 import Toast from "react-native-toast-message";
-import { auth } from "../config/firebaseconfig";
+import { auth, db } from "../../config/firebaseconfig";
 import { signInWithEmailAndPassword } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore"; // import Firestore functions
 
 const Login = ({ navigation }) => {
   const [email, setEmail] = useState("");
@@ -44,9 +45,27 @@ const Login = ({ navigation }) => {
     setIsSubmitting(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      showToast("success", "Login successful!");
-      navigation.navigate("Dashboard", { screen: "Home" });
+      // Sign in using Firebase Authentication
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      const user = userCredential.user;
+
+      // Fetch the user from the admin collection to check if they are an admin
+      const adminRef = doc(db, "admin", user.uid); // Fetch based on user's UID
+      const adminDoc = await getDoc(adminRef);
+
+      if (adminDoc.exists()) {
+        showToast("success", "Admin login successful!");
+        // Navigate to the Admin Dashboard
+        navigation.navigate("AdminDashboard", { screen: "AdminHome" });
+      } else {
+        showToast("error", "You do not have admin privileges.");
+        // Optionally, sign out the user since they are not an admin
+        // auth.signOut();
+      }
     } catch (error) {
       console.error("Error during login:", error);
       let errorMessage = "An error occurred. Please try again.";
@@ -89,7 +108,7 @@ const Login = ({ navigation }) => {
               <Text style={styles.subHeader}>
                 Alliance of Information Technologists Organization
               </Text>
-              <Text style={styles.header}>LOGIN</Text>
+              <Text style={styles.header}>LOGIN(admin)</Text>
 
               <View style={styles.inputContainer}>
                 <View style={styles.inputWrapper}>
@@ -136,15 +155,6 @@ const Login = ({ navigation }) => {
               >
                 <Text style={styles.buttonText}>
                   {isSubmitting ? "Logging in..." : "Login"}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.registerLink}
-                onPress={() => navigation.navigate("Register")}
-              >
-                <Text style={styles.registerLinkText}>
-                  Don't have an account? Register here
                 </Text>
               </TouchableOpacity>
             </ScrollView>

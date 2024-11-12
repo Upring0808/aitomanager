@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Animated,
   ActivityIndicator,
-  Dimensions,
 } from "react-native";
 import {
   collection,
@@ -15,8 +14,9 @@ import {
   query,
   getDocs,
   where,
+  Timestamp,
 } from "firebase/firestore";
-import { auth, db } from "../../../config/firebaseconfig";
+import { auth, db } from "../../../../config/firebaseconfig";
 import {
   format,
   startOfWeek,
@@ -24,49 +24,34 @@ import {
   addWeeks,
   subWeeks,
   isSameDay,
-  parse,
+  startOfDay,
+  endOfDay,
+  isWithinInterval,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 
 const TIMELINE_HEIGHT = 660;
 const EVENT_COLORS = [
-  "#7C3AED80",
-  "#3B82F680",
-  "#10B98180",
-  "#F59E0B80",
-  "#EC489980",
-  "#F472B680",
-  "#FBBF2480",
-  "#34D39980",
-  "#60A5FA80",
-  "#A78BFA80",
-];
-const TIME_SLOTS = [
-  "7:00 AM",
-  "7:30 AM",
-  "8:00 AM",
-  "8:30 AM",
-  "9:00 AM",
-  "9:30 AM",
-
-  "10:00 AM",
-  "10:30 AM",
-  "11:00 AM",
-  "11:30 AM",
-  "12:00 PM",
-  "NOON",
-  "1:00 PM",
-  "1:30 PM",
-  "2:00 PM",
-  "2:30 PM",
-  "3:00 PM",
-  "3:30 PM",
-  "4:00 PM",
-  "4:30 PM",
-  "5:00 PM",
-  "5:30 PM",
-  "6:00 PM",
-  "6:30 PM",
+  "#4F46E580", // Indigo
+  "#6D28D980", // Purple
+  "#475569C0", // Slate
+  "#22D3EE80", // Cyan
+  "#064E3BC0", // Blue
+  "#14532DC0", // Emerald
+  "#713F12C0", // Amber
+  "#78350FC0", // Fuchsia
+  "#762B91C0", // Violet
+  "#3F3F46C0", // Neutral
+  "#5B21B6C0", // Indigo
+  "#4338CA80", // Indigo
+  "#1E293BC0", // Slate
+  "#15803DC0", // Emerald
+  "#854D0EC0", // Orange
+  "#831843C0", // Pink
+  "#881337C0", // Fuchsia
+  "#57534EC0", // Neutral
+  "#525252C0", // Neutral
+  "#994F0FC0", // Orange
 ];
 
 const Home = () => {
@@ -81,7 +66,6 @@ const Home = () => {
   );
   const [scrollY] = useState(new Animated.Value(0));
 
-  //loader while fetching
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -101,27 +85,34 @@ const Home = () => {
   }, []);
 
   const setupRealtimeUpdates = useCallback(() => {
-    const dayStart = new Date(selectedDate);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(selectedDate);
-    dayEnd.setHours(23, 59, 59, 999);
-
     const eventsRef = collection(db, "events");
-    const q = query(
-      eventsRef,
-      where("createdAt", ">=", dayStart),
-      where("createdAt", "<=", dayEnd)
-    );
+    const q = query(eventsRef);
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const filteredEvents = snapshot.docs.map((doc) => ({
+      const allEvents = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
         color: EVENT_COLORS[Math.floor(Math.random() * EVENT_COLORS.length)],
       }));
 
-      setEvents(filteredEvents);
-      updateWeekDaysWithEvents(filteredEvents);
+      // Filter events for the selected date
+      const selectedDayEvents = allEvents.filter((event) => {
+        const eventDate = event.dueDate?.toDate() || new Date();
+        return isSameDay(eventDate, selectedDate);
+      });
+
+      setEvents(selectedDayEvents);
+
+      // Update week days with events
+      const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+      const weekEnd = addDays(weekStart, 6);
+
+      const eventsInWeek = allEvents.filter((event) => {
+        const eventDate = event.dueDate?.toDate() || new Date();
+        return isWithinInterval(eventDate, { start: weekStart, end: weekEnd });
+      });
+
+      updateWeekDaysWithEvents(eventsInWeek);
     });
 
     return () => unsubscribe();
@@ -132,22 +123,19 @@ const Home = () => {
     const [hours, minutes] = time.split(":").map(Number);
     let decimalHours = hours;
 
-    // Convert minutes to decimal
     if (minutes) {
       decimalHours += minutes / 60;
     }
 
-    // Handle PM conversion
     if (period === "PM" && hours !== 12) {
       decimalHours += 12;
     } else if (period === "AM" && hours === 12) {
-      decimalHours = minutes / 60; // For 12 AM, start from 0 plus any minutes
+      decimalHours = minutes / 60;
     }
 
     return decimalHours;
   };
 
-  // Check user role and fetch username
   const checkUserAndFetchData = async () => {
     try {
       const currentUser = auth.currentUser;
@@ -173,12 +161,6 @@ const Home = () => {
     }
   };
 
-  const timeSlots = useMemo(
-    () => Array.from({ length: 12 }, (_, i) => i + 7),
-    []
-  );
-
-  // Generate week days
   const generateWeekDays = useCallback(
     (startDate) => {
       return Array.from({ length: 7 }, (_, i) => {
@@ -195,57 +177,59 @@ const Home = () => {
     [selectedDate]
   );
 
-  // event fetching
-  const fetchEvents = useCallback(async (date) => {
-    try {
-      const eventsRef = collection(db, "events");
-      const eventsSnapshot = await getDocs(eventsRef);
+  const fetchEvents = useCallback(
+    async (date) => {
+      try {
+        const eventsRef = collection(db, "events");
+        const eventsSnapshot = await getDocs(eventsRef);
 
-      const dayStart = new Date(date);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(date);
-      dayEnd.setHours(23, 59, 59, 999);
+        const targetDate = date || selectedDate;
+        const dayStart = startOfDay(targetDate);
+        const dayEnd = endOfDay(targetDate);
 
-      const dayEvents = eventsSnapshot.docs
-        .map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          color: EVENT_COLORS[Math.floor(Math.random() * EVENT_COLORS.length)],
-        }))
-        .filter((event) => {
-          const eventDate = new Date(event.createdAt.seconds * 1000);
-          return eventDate >= dayStart && eventDate <= dayEnd;
-        })
-        .sort((a, b) => {
-          const getStartTime = (event) => {
-            if (event.timeframe) {
-              const [start] = event.timeframe.split("-");
-              const [hours] = start.split(":").map(Number);
-              return hours;
-            }
-            return new Date(event.createdAt.seconds * 1000).getHours();
-          };
-          return getStartTime(a) - getStartTime(b);
-        });
+        const dayEvents = eventsSnapshot.docs
+          .map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+            color:
+              EVENT_COLORS[Math.floor(Math.random() * EVENT_COLORS.length)],
+          }))
+          .filter((event) => {
+            const eventDate = event.dueDate?.toDate() || new Date();
+            return isWithinInterval(eventDate, {
+              start: dayStart,
+              end: dayEnd,
+            });
+          })
+          .sort((a, b) => {
+            const getStartTime = (event) => {
+              if (event.timeframe) {
+                const [start] = event.timeframe.split("-");
+                const [hours] = start.split(":").map(Number);
+                return hours;
+              }
+              return event.dueDate?.toDate().getHours() || 0;
+            };
+            return getStartTime(a) - getStartTime(b);
+          });
 
-      setEvents(dayEvents);
-      updateWeekDaysWithEvents(dayEvents);
-    } catch (error) {
-      console.error("Error fetching events:", error);
-    }
-  }, []);
+        setEvents(dayEvents);
+        updateWeekDaysWithEvents(dayEvents);
+      } catch (error) {
+        console.error("Error fetching events:", error);
+      }
+    },
+    [selectedDate]
+  );
 
-  // Update week days with events
   const updateWeekDaysWithEvents = useCallback(
-    (dayEvents) => {
+    (allEvents) => {
       setWeekDays(
         generateWeekDays(weekStart).map((day) => ({
           ...day,
-          hasEvents: dayEvents.some((event) => {
-            const eventDate = new Date(event.createdAt.seconds * 1000);
-            return (
-              format(eventDate, "yyyy-MM-dd") === format(day.date, "yyyy-MM-dd")
-            );
+          hasEvents: allEvents.some((event) => {
+            const eventDate = event.dueDate?.toDate() || new Date();
+            return isSameDay(eventDate, day.date);
           }),
         }))
       );
@@ -253,7 +237,6 @@ const Home = () => {
     [generateWeekDays, weekStart]
   );
 
-  // Navigation handlers
   const handlePreviousWeek = useCallback(() => {
     setWeekStart((prev) => subWeeks(prev, 1));
   }, []);
@@ -268,12 +251,21 @@ const Home = () => {
         toValue: 0,
         useNativeDriver: true,
       }).start();
+
       setSelectedDate(date);
+      fetchEvents(date); // Fetch events for the selected date
     },
-    [scrollY]
+    [scrollY, fetchEvents]
   );
 
-  //greetings
+  const getSectionTitle = useCallback(() => {
+    const today = new Date();
+    const isToday = isSameDay(selectedDate, today);
+    const formattedDate = format(selectedDate, "MMMM d, yyyy");
+
+    return isToday ? "Schedule Today" : `Schedule as of: ${formattedDate}`;
+  }, [selectedDate]);
+
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) {
@@ -285,51 +277,12 @@ const Home = () => {
     }
   };
 
-  // Get event style with position calculation
-  const getEventStyle = (event, index) => {
-    let startDecimalHour, endDecimalHour;
-
-    if (event.timeframe) {
-      const [start, end] = event.timeframe
-        .split("-")
-        .map((time) => time.trim());
-      startDecimalHour = timeToDecimalHours(start);
-      endDecimalHour = timeToDecimalHours(end);
-    } else {
-      const eventDate = new Date(event.createdAt.seconds * 1000);
-      startDecimalHour = eventDate.getHours() + eventDate.getMinutes() / 60;
-      endDecimalHour = startDecimalHour + 1;
-    }
-
-    // Calculate position relative to 7 AM (our starting time)
-    const startPosition = (startDecimalHour - 7) * (TIMELINE_HEIGHT / 12);
-    const duration = endDecimalHour - startDecimalHour;
-    const height = duration * (TIMELINE_HEIGHT / 12);
-
-    return {
-      position: "absolute",
-      top: startPosition,
-      height: Math.max(height, 30), // Minimum height of 30px for visibility
-      left: 8 + (index % 3) * 90, // Distribute events horizontally
-      width: 80,
-      backgroundColor: event.color,
-      borderRadius: 8,
-      padding: 8,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-
-      zIndex: 1,
-    };
-  };
-  // Initial data fetch
   useEffect(() => {
     checkUserAndFetchData();
-    fetchEvents(selectedDate);
-  }, []);
+    const unsubscribe = setupRealtimeUpdates();
+    return () => unsubscribe();
+  }, [selectedDate]);
 
-  // Update week days when week changes
   useEffect(() => {
     updateWeekDaysWithEvents(events);
   }, [weekStart, updateWeekDaysWithEvents, events]);
@@ -378,7 +331,7 @@ const Home = () => {
     monthTitle: {
       fontSize: 18,
       fontWeight: "bold",
-      color: "#333",
+      color: "#4C4B16",
     },
     weekRow: {
       flexDirection: "row",
@@ -411,7 +364,6 @@ const Home = () => {
     },
     selectedText: {
       color: "#024CAA",
-
       fontWeight: "bold",
     },
     eventDot: {
@@ -422,65 +374,55 @@ const Home = () => {
       marginTop: 4,
     },
     timelineContainer: {
-      flexDirection: "row",
+      flexDirection: "column",
       paddingHorizontal: 20,
       marginBottom: 20,
       position: "relative",
       borderRadius: 20,
-      height: TIMELINE_HEIGHT,
-      borderWidth: 0.5,
-      borderColor: "#B7B7B7",
-      margin: 10,
-    },
-    timelineHours: {
-      width: "60",
-      paddingRight: 10,
-    },
-    timeSlot: {
-      height: TIMELINE_HEIGHT / 24, // Divide by number of time slots
-      justifyContent: "flex-start",
-      paddingTop: 5,
-      borderTopWidth: 1,
-      width: "100%",
-      borderTopColor: "#f0f0f0",
-    },
-    timeText: {
-      fontSize: 12,
-      color: "#999",
-    },
-    eventsContainer: {
-      flex: 1,
-      position: "relative",
-      borderLeftWidth: 1,
-      borderLeftColor: "#f0f0f0",
-    },
-    eventCard: {
-      position: "absolute",
-      padding: 5,
-      marginTop: 30,
-      borderRadius: 8,
-      width: "auto", // Set to auto or a specific width
-      maxWidth: "30%", // Ensure it doesn't exceed the card's width
+      borderWidth: 1,
+      borderColor: "#E5E7EB",
+      backgroundColor: "#F9FAFB",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+      margin: 18,
+      alignSelf: "stretch", // Adjust to the full width of the container
+      height: "auto", // Allow dynamic height based on content
     },
 
+    eventsContainer: {
+      flexDirection: "column", // Stack event cards vertically
+      paddingTop: 20,
+    },
+
+    eventCard: {
+      borderRadius: 15,
+      backgroundColor: "#7C3AED80",
+      padding: 15,
+      marginBottom: 20,
+      flexDirection: "row",
+      alignItems: "center",
+    },
+
+    eventContent: {
+      flex: 1,
+    },
     eventTitle: {
-      fontSize: 11,
+      fontSize: 14,
       fontWeight: "bold",
       color: "#fff",
+      marginBottom: 4,
     },
-
     eventTime: {
-      fontSize: 10,
+      fontSize: 12,
       color: "#f3f3f3",
-      width: "100%", // Set to 100% to take full width of the card
-      flexWrap: "wrap", // Allow text to wrap to the next line
-      overflow: "hidden", // Hide overflow text
-      textOverflow: "ellipsis", // Show ellipsis for overflowing text (if needed)
-      whiteSpace: "normal", // Allow wrapping (default behavior)
     },
     sectionTitle: {
       marginLeft: 20,
       marginTop: 5,
+      marginBottom: 5,
       fontSize: 24,
       fontWeight: "bold",
       color: "#333",
@@ -514,7 +456,6 @@ const Home = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Week Row */}
       <View style={styles.weekRow}>
         {weekDays.map((day, index) => (
           <TouchableOpacity
@@ -536,37 +477,46 @@ const Home = () => {
             >
               {day.dayName}
             </Text>
-
             {day.hasEvents && <View style={styles.eventDot} />}
           </TouchableOpacity>
         ))}
       </View>
       <View>
-        <Text style={styles.sectionTitle}>Schedule Today</Text>
+        <Text style={styles.sectionTitle}>{getSectionTitle()}</Text>
       </View>
 
       {/* Timeline and Events */}
       <View style={styles.timelineContainer}>
-        {/* Timeline Hours */}
-        <View style={styles.timelineHours}>
-          {TIME_SLOTS.map((time, index) => (
-            <View key={time} style={styles.timeSlot}>
-              <Text style={styles.timeText}>{time}</Text>
-            </View>
-          ))}
-        </View>
-
         {/* Events Column */}
         <View style={styles.eventsContainer}>
-          {events.map((event, index) => (
-            <View
-              key={event.id}
-              style={[getEventStyle(event, index), styles.eventCard]}
-            >
-              <Text style={styles.eventTitle}>{event.title}</Text>
-              <Text style={styles.eventTime}>{event.timeframe}</Text>
-            </View>
-          ))}
+          {events
+            .sort((a, b) => {
+              const convertToTimeValue = (time) => {
+                const [hour, minute, period] = time
+                  .match(/(\d+):(\d+)\s?(AM|PM)/i)
+                  .slice(1);
+                let hours = parseInt(hour, 10);
+                const minutes = parseInt(minute, 10);
+                if (period.toUpperCase() === "PM" && hours !== 12) hours += 12;
+                if (period.toUpperCase() === "AM" && hours === 12) hours = 0;
+                return hours * 60 + minutes; // Total minutes since midnight
+              };
+              return (
+                convertToTimeValue(a.timeframe) -
+                convertToTimeValue(b.timeframe)
+              );
+            })
+            .map((event, index) => (
+              <View
+                key={event.id}
+                style={[styles.eventCard, { backgroundColor: event.color }]}
+              >
+                <View style={styles.eventContent}>
+                  <Text style={styles.eventTitle}>{event.title}</Text>
+                  <Text style={styles.eventTime}>{event.timeframe}</Text>
+                </View>
+              </View>
+            ))}
         </View>
       </View>
     </ScrollView>

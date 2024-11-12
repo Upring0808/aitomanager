@@ -11,7 +11,7 @@ import {
   Modal,
   Platform,
 } from "react-native";
-import { auth, db, storage } from "../../config/firebaseconfig";
+import { auth, db, storage } from "../../../../config/firebaseconfig";
 import {
   collection,
   query,
@@ -235,7 +235,7 @@ const Profile = () => {
                 source={
                   userData?.avatarUrl
                     ? { uri: userData.avatarUrl }
-                    : require("../../assets/aito.png")
+                    : require("../../../../assets/aito.png")
                 }
                 style={styles.avatar}
               />

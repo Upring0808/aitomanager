@@ -17,11 +17,12 @@ import { Ionicons, MaterialIcons, Feather } from "@expo/vector-icons";
 import { auth, storage } from "../config/firebaseconfig";
 import { ref, getDownloadURL, listAll, getMetadata } from "firebase/storage";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import Home from "../components/tabs/Home";
-import Fines from "../components/tabs/Fines";
-import People from "../components/tabs/People";
-import Profile from "../components/tabs/Profile";
-import Events from "../components/tabs/Events";
+
+import Home from "./../screens/Auth/Dashboard/User/Home";
+import Fines from "./../screens/Auth/Dashboard/User/Fines";
+import People from "../screens/Auth/Dashboard/User/People";
+import Profile from "../screens/Auth/Dashboard/User/Profile";
+import Events from "../screens/Auth/Dashboard/User/Events";
 import Header from "./Header";
 
 const { width } = Dimensions.get("window");

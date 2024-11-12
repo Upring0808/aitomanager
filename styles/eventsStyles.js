@@ -171,6 +171,12 @@ export const eventsStyles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
+  qrCodeImage: {
+    width: 100,
+    height: 100,
+    marginTop: 10,
+  },
+
   editContainer: {
     width: "100%",
   },
@@ -297,5 +303,47 @@ export const eventsStyles = StyleSheet.create({
     textAlign: "lefts",
     paddingRight: 16,
     paddingBottom: 0,
+  },
+  yearLevelContainer: {
+    marginVertical: 10,
+    zIndex: 1000,
+  },
+  yearLevelButton: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 12,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  yearLevelButtonText: {
+    fontSize: 16,
+    color: "#333",
+  },
+  yearLevelDropdown: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    overflow: "hidden",
+    zIndex: 1000,
+  },
+  yearLevelOption: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  yearLevelOptionText: {
+    fontSize: 16,
+    color: "#333",
   },
 });

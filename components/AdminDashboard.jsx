@@ -1,27 +1,27 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  TouchableOpacity,
+  ActivityIndicator,
   Animated,
   Image,
-  ActivityIndicator,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { auth, db } from "../../config/firebaseconfig";
-import { doc, onSnapshot } from "firebase/firestore";
-import AdminFines from "../screens/tabs/AdminFines";
-import AdminPeople from "../screens/tabs/AdminPeople";
-import AdminProfile from "../screens/tabs/AdminProfile";
-import AdminEvents from "../screens/tabs/AdminEvents";
-import AdminHome from "../screens/tabs/AdminHome";
-import Header from "../../components/Header";
-import { dashboardStyles, constants } from "../styles/dashboardStyles";
 import { dashboardServices } from "../services/dashboardServices";
-import { ADMIN_TABS } from "../constants/adminTabs";
+import { auth } from "../config/firebaseconfig";
+
+import { constants, dashboardStyles } from "../styles/dashboardStyles";
+import Header from "./Header";
+import { ADMIN_TABS } from "./adminTabs";
+import AdminHome from "../screens/Auth/Dashboard/Admin/AdminHome";
+import AdminFines from "../screens/Auth/Dashboard/Admin/AdminFines";
+import AdminPeople from "../screens/Auth/Dashboard/Admin/AdminPeople";
+import AdminProfile from "../screens/Auth/Dashboard/Admin/AdminProfile";
+import AdminEvents from "../screens/Auth/Dashboard/Admin/AdminEvents";
 
 const AdminDashboard = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState("Home");

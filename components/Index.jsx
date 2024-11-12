@@ -12,7 +12,7 @@ import {
 
 import { LinearGradient } from "expo-linear-gradient";
 import aito from "../assets/aito.png";
-import BackgroundImage from "../components/ImageBackground";
+import BackgroundImage from "./ImageBackground";
 import Toast from "react-native-toast-message";
 
 const { width } = Dimensions.get("window");

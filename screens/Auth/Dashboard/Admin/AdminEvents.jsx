@@ -1,28 +1,28 @@
-import React, { useState, useEffect, useRef } from "react";
-import {
-  View,
-  TextInput,
-  ScrollView,
-  Text,
-  SafeAreaView,
-  TouchableOpacity,
-  Animated,
-  Alert,
-  ActivityIndicator,
-  Platform,
-  KeyboardAvoidingView,
-} from "react-native";
-import { eventsStyles } from "../../styles/eventsStyles";
-import {
-  fetchEvents,
-  addEvent,
-  deleteEvent,
-  handleSaveEvent,
-} from "../../services/admineventsServices";
-import { Button, Card } from "react-native-paper";
-import Toast from "react-native-toast-message";
 import { FontAwesome } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { Button, Card } from "react-native-paper";
+import Toast from "react-native-toast-message";
+import {
+  addEvent,
+  deleteEvent,
+  fetchEvents,
+  handleSaveEvent,
+} from "../../../../services/admineventsServices";
+import { eventsStyles } from "../../../../styles/eventsStyles";
 
 const AdminEvents = () => {
   const [editingEventId, setEditingEventId] = useState(null);

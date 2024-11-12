@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { auth, db } from "../config/firebaseconfig"; // Import Firebase Auth and Firestore
+import { auth, db } from "../../config/firebaseconfig"; // Import Firebase Auth and Firestore
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import Toast from "react-native-toast-message";

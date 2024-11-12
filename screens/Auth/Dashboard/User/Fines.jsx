@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, FlatList, TextInput } from "react-native";
-import { db } from "../../../config/firebaseconfig";
+import { db } from "../../../../config/firebaseconfig";
 import { collection, getDocs, query, where } from "firebase/firestore";
 
-const AdminFines = () => {
+const Fines = () => {
   const [fines, setFines] = useState([]);
   const [searchText, setSearchText] = useState("");
   const [events, setEvents] = useState([]);
@@ -109,4 +109,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default AdminFines;
+export default Fines;

@@ -3,14 +3,13 @@ import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import Index from "./components/Index";
-import Register from "./components/Register";
-import Login from "./components/Login";
+import Register from "./screens/Auth/Register";
+import Login from "./screens/Auth/Login";
+import RegisterAdmin from "./screens/Auth/RegisterAdmin";
+import AdminLogin from "./screens/Auth/AdminLogin";
 import Dashboard from "./components/Dashboard";
+import AdminDashboard from "./components/AdminDashboard";
 import Toast from "react-native-toast-message";
-import CustomToast from "./Toast/CustomToast";
-import AdminLogin from "./admin/AdminLogin";
-import RegisterAdmin from "./admin/RegisterAdmin";
-import AdminDashboard from "./admin/screens/AdminDashboard";
 
 const Stack = createStackNavigator();
 

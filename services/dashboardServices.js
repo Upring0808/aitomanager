@@ -1,4 +1,4 @@
-import { auth, storage, db } from "../../config/firebaseconfig";
+import { auth, storage, db } from "../config/firebaseconfig";
 import { ref, getDownloadURL, listAll, getMetadata } from "firebase/storage";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";

@@ -11,7 +11,7 @@ import {
   Dimensions,
   RefreshControl,
 } from "react-native";
-import { db } from "../../config/firebaseconfig";
+import { db } from "../../../../config/firebaseconfig";
 import {
   collection,
   getDocs,
@@ -23,7 +23,7 @@ import { Card } from "react-native-paper";
 import Toast from "react-native-toast-message";
 
 import { FontAwesome } from "@expo/vector-icons";
-import { Styles } from "../styles/Styles";
+import { Styles } from "../../../../styles/Styles";
 import { BlurView } from "expo-blur";
 
 const { width } = Dimensions.get("window");
@@ -98,9 +98,10 @@ const Events = () => {
   };
 
   const filteredEvents = events.filter((event) => {
-    const eventDate = new Date(event.createdAt.seconds * 1000);
+    const eventDate = new Date(event.dueDate.seconds * 1000);
     const today = new Date();
-    if (filter === "Today") {
+
+    if (filter === "Current") {
       return (
         eventDate.getDate() === today.getDate() &&
         eventDate.getMonth() === today.getMonth() &&
@@ -108,8 +109,10 @@ const Events = () => {
       );
     } else if (filter === "Past") {
       return eventDate < today;
+    } else if (filter === "Upcoming") {
+      return eventDate > today;
     }
-    return true;
+    return true; // for "All"
   });
 
   useEffect(() => {
@@ -140,6 +143,10 @@ const Events = () => {
       ? new Date(event.createdAt.seconds * 1000).toLocaleString()
       : "Unknown";
 
+    // Add an onPress function to trigger the QR scanner
+    const onScanPress = () => {
+      // Code to open the QR scanner will go here
+    };
     return (
       <Animated.View
         key={event.id}
@@ -178,6 +185,13 @@ const Events = () => {
                   <Text style={Styles.eventTimeframe}>{event.timeframe}</Text>
                   <Text style={Styles.timestampText}>{createdAt}</Text>
                 </View>
+                {/* Add Scanner Icon */}
+                <TouchableOpacity
+                  onPress={onScanPress}
+                  style={Styles.iconContainer}
+                >
+                  <FontAwesome name="qrcode" size={24} color="#333" />
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -244,7 +258,7 @@ const Events = () => {
                 ]}
               >
                 <View style={Styles.dropdownContent}>
-                  {["All", "Today", "Past"].map((option) => (
+                  {["All", "Current", "Upcoming"].map((option) => (
                     <TouchableOpacity
                       key={option}
                       style={Styles.customDropdownItem}
