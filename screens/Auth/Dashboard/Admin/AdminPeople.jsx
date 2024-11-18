@@ -454,9 +454,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingBottom: SPACING,
-    marginTop: -57,
-
-    paddingTop: -57,
+    marginTop: -27,
   },
   section: {
     paddingHorizontal: SPACING,

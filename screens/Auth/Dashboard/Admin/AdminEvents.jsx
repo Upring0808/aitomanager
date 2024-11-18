@@ -14,7 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Button, Card } from "react-native-paper";
+import { Button } from "react-native-paper";
 import Toast from "react-native-toast-message";
 import {
   addEvent,
@@ -23,6 +23,7 @@ import {
   handleSaveEvent,
 } from "../../../../services/admineventsServices";
 import { eventsStyles } from "../../../../styles/eventsStyles";
+import AdminEventCard from "../../../../components/AdminEventCard";
 
 const AdminEvents = () => {
   const [editingEventId, setEditingEventId] = useState(null);
@@ -39,6 +40,11 @@ const AdminEvents = () => {
   const [selectedTimeType, setSelectedTimeType] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [dueDate, setDueDate] = useState(new Date());
+
+  const [editValues, setEditValues] = useState({
+    newTitle: "",
+    newTimeframe: "",
+  });
 
   const arrowRotation = useRef(new Animated.Value(0)).current;
   const dropdownHeight = useRef(new Animated.Value(0)).current;
@@ -172,115 +178,44 @@ const AdminEvents = () => {
     inputRange: [0, 1],
     outputRange: ["0deg", "180deg"],
   });
+  const handleEditStart = (event) => {
+    setEditingEventId(event.id);
+    setEditValues({ newTitle: event.title, newTimeframe: event.timeframe });
+  };
 
+  const handleTitleChange = (value) => {
+    setEditValues((prev) => ({ ...prev, newTitle: value }));
+  };
+
+  const handleTimeframeChange = (value) => {
+    setEditValues((prev) => ({ ...prev, newTimeframe: value }));
+  };
   const renderEventCard = (event) => {
-    const eventDate = event.dueDate
-      ? new Date(event.dueDate.seconds * 1000)
-      : null;
-
-    const formattedDate = eventDate
-      ? eventDate.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        })
-      : "No Date";
-    const formattedDay = eventDate
-      ? eventDate.toLocaleDateString("en-US", { weekday: "long" })
-      : "No Day";
-
-    const createdAt = event.createdAt
-      ? new Date(event.createdAt.seconds * 1000).toLocaleString()
-      : "Unknown";
-
     return (
-      // <View key={event.id} style={{ marginBottom: 0 }}>
-      <Card key={event.id} style={eventsStyles.card}>
-        <View style={eventsStyles.cardContent}>
-          <View style={eventsStyles.dateTimeContainer}>
-            <Text style={eventsStyles.dateText}>{formattedDate}</Text>
-            <Text style={eventsStyles.dayText}>{formattedDay}</Text>
-          </View>
-          <View style={eventsStyles.intersection} />
-          <View style={eventsStyles.eventDetails}>
-            {editingEventId === event.id ? (
-              <View style={eventsStyles.editContainer}>
-                <TextInput
-                  style={eventsStyles.editInput}
-                  value={newTitle}
-                  onChangeText={setNewTitle}
-                  placeholder="Event Title"
-                />
-                <TextInput
-                  style={eventsStyles.editInput}
-                  value={newTimeframe}
-                  onChangeText={setNewTimeframe}
-                  placeholder="Time Frame"
-                />
-                <View style={eventsStyles.editButtonsContainer}>
-                  <TouchableOpacity
-                    style={[
-                      eventsStyles.editActionButton,
-                      eventsStyles.cancelButton,
-                    ]}
-                    onPress={() => setEditingEventId(null)}
-                  >
-                    <Text style={eventsStyles.cancelButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      eventsStyles.editActionButton,
-                      eventsStyles.saveButton,
-                    ]}
-                    onPress={() =>
-                      handleSaveEvent(
-                        event.id,
-                        newTitle,
-                        newTimeframe,
-                        events,
-                        setEvents,
-                        setEditingEventId
-                      )
-                    }
-                  >
-                    <Text style={eventsStyles.saveButtonText}>Save</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <View style={eventsStyles.eventRow}>
-                <View style={eventsStyles.eventTitleContainer}>
-                  <Text style={eventsStyles.eventTitle}>{event.title}</Text>
-                  <Text style={eventsStyles.eventTimeframe}>
-                    {event.timeframe}
-                  </Text>
-                  <Text style={eventsStyles.timestampText}>{createdAt}</Text>
-                </View>
-                <View style={eventsStyles.actionButtonsContainer}>
-                  <TouchableOpacity
-                    style={[eventsStyles.actionButton, eventsStyles.editButton]}
-                    onPress={() =>
-                      handleEditEvent(event.id, event.title, event.timeframe)
-                    }
-                  >
-                    <FontAwesome name="edit" size={20} color="#3E588F" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      eventsStyles.actionButton,
-                      eventsStyles.deleteButton,
-                    ]}
-                    onPress={() => handleDeleteEvent(event.id)}
-                  >
-                    <FontAwesome name="trash" size={20} color="#CC2B52" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          </View>
-        </View>
-      </Card>
-      /*
-      </View> */
+      <AdminEventCard
+        key={event.id}
+        event={event}
+        isEditing={editingEventId === event.id}
+        newTitle={editingEventId === event.id ? editValues.newTitle : ""}
+        newTimeframe={
+          editingEventId === event.id ? editValues.newTimeframe : ""
+        }
+        onEditTitle={handleTitleChange}
+        onEditTimeframe={handleTimeframeChange}
+        onSave={() =>
+          handleSaveEvent(
+            event.id,
+            editValues.newTitle,
+            editValues.newTimeframe,
+            events,
+            setEvents,
+            setEditingEventId
+          )
+        }
+        onCancel={() => setEditingEventId(null)}
+        onDelete={() => handleDeleteEvent(event.id)}
+        onStartEditing={() => handleEditStart(event)}
+      />
     );
   };
 

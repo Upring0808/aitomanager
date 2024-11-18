@@ -85,7 +85,6 @@ export const handleSaveEvent = async (
   id,
   newTitle,
   newTimeframe,
-  newYearLevels,
   events,
   setEvents,
   setEditingEventId
@@ -96,18 +95,13 @@ export const handleSaveEvent = async (
   }
 
   try {
-    // Validate yearLevels is an array
-    if (!Array.isArray(newYearLevels)) {
-      newYearLevels = [newYearLevels];
-    }
-
     const eventDocRef = doc(db, "events", id);
     await updateDoc(eventDocRef, {
       title: newTitle,
       timeframe: newTimeframe,
-      yearLevel: newYearLevels,
     });
 
+    // Update the event in the local state
     setEvents(
       events.map((event) =>
         event.id === id
@@ -115,11 +109,11 @@ export const handleSaveEvent = async (
               ...event,
               title: newTitle,
               timeframe: newTimeframe,
-              yearLevel: newYearLevels,
             }
           : event
       )
     );
+
     setEditingEventId(null);
     Toast.show({ type: "success", text1: "Event updated successfully" });
   } catch (error) {

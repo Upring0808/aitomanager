@@ -24,8 +24,6 @@ const AVATAR_SIZE = 50;
 const HEADER_HEIGHT = 80;
 const SCROLL_THRESHOLD = 50;
 
-// SearchBar, SortButton, PersonCard components remain the same...
-
 const SearchBar = memo(({ onSearch }) => (
   <View style={styles.searchContainer}>
     <Ionicons name="search" size={20} color="#666" />
@@ -54,15 +52,19 @@ const SortButton = memo(({ isAscending, onToggleSort }) => (
 
 const PersonCard = memo(({ item, defaultAvatarUri }) => (
   <View style={styles.card}>
-    <Image
-      source={item.avatarUrl ? { uri: item.avatarUrl } : defaultAvatarUri}
-      style={styles.avatar}
-      defaultSource={defaultAvatarUri}
-    />
-    <View style={styles.userInfo}>
-      <Text style={styles.username} numberOfLines={1}>
-        {item.username}
-      </Text>
+    <View style={styles.cardContent}>
+      <Image
+        source={item.avatarUrl ? { uri: item.avatarUrl } : defaultAvatarUri}
+        style={styles.avatar}
+        defaultSource={defaultAvatarUri}
+      />
+      <View style={styles.userInfo}>
+        <Text style={styles.username} numberOfLines={1}>
+          {item.username}
+        </Text>
+        {item.role && <Text style={styles.roleText}>{item.role}</Text>}
+      </View>
+      <View style={styles.statusIndicator} />
     </View>
   </View>
 ));
@@ -103,7 +105,7 @@ const Section = memo(({ title, data, defaultAvatarUri, showCount = true }) => {
   );
 });
 
-const People = () => {
+const Profile = () => {
   const [officers, setOfficers] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -118,7 +120,6 @@ const People = () => {
   const lastScrollY = useRef(0);
   const timeoutRef = useRef(null);
 
-  // Improved header animation with spring configuration
   const toggleHeader = (show) => {
     Animated.spring(headerAnimatedValue, {
       toValue: show ? 1 : 0,
@@ -135,7 +136,6 @@ const People = () => {
       listener: (event) => {
         const currentScrollY = event.nativeEvent.contentOffset.y;
 
-        // Clear any existing timeout
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
         }
@@ -144,12 +144,10 @@ const People = () => {
           isScrolling.current = true;
         }
 
-        // Determine scroll direction and toggle header
         if (
           currentScrollY > lastScrollY.current &&
           currentScrollY > SCROLL_THRESHOLD
         ) {
-          // Scrolling down
           if (showSearch) {
             setShowSearch(false);
             toggleHeader(false);
@@ -158,7 +156,6 @@ const People = () => {
           currentScrollY < lastScrollY.current ||
           currentScrollY < SCROLL_THRESHOLD
         ) {
-          // Scrolling up or near top
           if (!showSearch) {
             setShowSearch(true);
             toggleHeader(true);
@@ -167,10 +164,9 @@ const People = () => {
 
         lastScrollY.current = currentScrollY;
 
-        // Set timeout to detect scroll end
         timeoutRef.current = setTimeout(() => {
           isScrolling.current = false;
-          // If we're at the top, always show the header
+
           if (currentScrollY <= SCROLL_THRESHOLD) {
             setShowSearch(true);
             toggleHeader(true);
@@ -180,7 +176,6 @@ const People = () => {
     }
   );
 
-  // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
@@ -401,6 +396,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f9f9f9",
+
+    marginBottom: -57,
   },
   header: {
     position: "absolute",
@@ -409,7 +406,7 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: "#FFFFFF",
     zIndex: 1000,
-    paddingTop: 10, // Safe area padding
+    paddingTop: 10,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(0,0,0,0.05)",
   },
@@ -457,16 +454,18 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingBottom: SPACING,
-    marginTop: -57,
+    marginTop: -27,
   },
   section: {
     paddingHorizontal: SPACING,
+    paddingTop: 0,
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: SPACING,
+    marginTop: 0,
   },
   sectionTitle: {
     fontSize: 24,
@@ -477,7 +476,7 @@ const styles = StyleSheet.create({
   sectionLine: {
     marginTop: 50,
     width: "100%",
-    borderBottomWidth: 0.8,
+    borderBottomWidth: 1,
     borderBottomColor: "#3E588Fcc",
     marginHorizontal: -100,
   },
@@ -504,36 +503,49 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   card: {
+    backgroundColor: "#FFFFFF",
+    marginBottom: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    overflow: "hidden",
+  },
+  cardContent: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    marginBottom: 12,
-    padding: SPACING,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 3.84,
-    elevation: 2,
+    padding: 12,
+    backgroundColor: "white",
   },
   avatar: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: "#F5F5F5",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   userInfo: {
     flex: 1,
-    marginLeft: SPACING,
+    marginLeft: 12,
+    justifyContent: "center",
   },
   username: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#2C3E50",
+    fontSize: 15,
+    fontWeight: "500",
+    color: "#111827",
     letterSpacing: -0.3,
+  },
+  roleText: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 2,
+  },
+  statusIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#10B981",
+    marginLeft: 8,
   },
   loader: {
     flex: 1,
@@ -549,4 +561,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default People;
+export default Profile;

@@ -32,29 +32,29 @@ import { ChevronLeft, ChevronRight } from "lucide-react-native";
 
 const TIMELINE_HEIGHT = 660;
 const EVENT_COLORS = [
-  "#4F46E580", // Indigo
-  "#6D28D980", // Purple
-  "#475569C0", // Slate
-  "#22D3EE80", // Cyan
-  "#064E3BC0", // Blue
-  "#14532DC0", // Emerald
-  "#713F12C0", // Amber
-  "#78350FC0", // Fuchsia
-  "#762B91C0", // Violet
-  "#3F3F46C0", // Neutral
-  "#5B21B6C0", // Indigo
-  "#4338CA80", // Indigo
-  "#1E293BC0", // Slate
-  "#15803DC0", // Emerald
-  "#854D0EC0", // Orange
-  "#831843C0", // Pink
-  "#881337C0", // Fuchsia
-  "#57534EC0", // Neutral
-  "#525252C0", // Neutral
-  "#994F0FC0", // Orange
+  "#4F46E580",
+  "#6D28D980",
+  "#475569C0",
+  "#22D3EE80",
+  "#064E3BC0",
+  "#14532DC0",
+  "#713F12C0",
+  "#78350FC0",
+  "#762B91C0",
+  "#3F3F46C0",
+  "#5B21B6C0",
+  "#4338CA80",
+  "#1E293BC0",
+  "#15803DC0",
+  "#854D0EC0",
+  "#831843C0",
+  "#881337C0",
+  "#57534EC0",
+  "#525252C0",
+  "#994F0FC0",
 ];
 
-const Home = () => {
+const AdminHome = () => {
   const [username, setUsername] = useState("");
   const [events, setEvents] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -292,10 +292,7 @@ const Home = () => {
       flex: 1,
       backgroundColor: "#fff",
     },
-    container: {
-      flex: 1,
-      paddingTop: 40,
-    },
+    container: { flex: 1, padding: 20 },
     loader: {
       flex: 1,
       justifyContent: "center",
@@ -398,34 +395,41 @@ const Home = () => {
     },
 
     eventCard: {
-      borderRadius: 15,
-      backgroundColor: "#7C3AED80",
-      padding: 15,
-      marginBottom: 20,
+      borderRadius: 12,
+      backgroundColor: "#4F46E5", // Custom color for a reminder look
+      padding: 16,
+      marginBottom: 16,
       flexDirection: "row",
       alignItems: "center",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 5,
+      elevation: 3,
     },
 
     eventContent: {
       flex: 1,
     },
-    eventTitle: {
-      fontSize: 14,
-      fontWeight: "bold",
-      color: "#fff",
-      marginBottom: 4,
-    },
-    eventTime: {
-      fontSize: 12,
-      color: "#f3f3f3",
-    },
+    eventIcon: { marginRight: 10 },
+    eventTitle: { fontSize: 16, fontWeight: "bold", color: "#fff" },
+    eventTime: { fontSize: 12, color: "#f0f0f0" },
     sectionTitle: {
       marginLeft: 20,
       marginTop: 5,
-      marginBottom: 5,
-      fontSize: 24,
-      fontWeight: "bold",
+      marginBottom: -10,
+      fontSize: 20,
+      fontWeight: "500",
       color: "#333",
+    },
+    noEventsText: {
+      textAlign: "center",
+      color: "#888",
+      marginTop: 0,
+      marginBottom: 20,
+      paddingVertical: 100,
+      fontSize: 16,
+      fontStyle: "italic",
     },
   });
 
@@ -439,13 +443,13 @@ const Home = () => {
 
   return (
     <ScrollView style={styles.mainContainer}>
-      {/* Header */}
+      {/* Header with Greeting and Username */}
       <View style={styles.header}>
-        <Text style={styles.greeting}> {getGreeting()}</Text>
+        <Text style={styles.greeting}>{getGreeting()}</Text>
         <Text style={styles.username}>{username}</Text>
       </View>
 
-      {/* Calendar Header */}
+      {/* Calendar Header with Week Navigation */}
       <View style={styles.calendarHeader}>
         <TouchableOpacity onPress={handlePreviousWeek}>
           <ChevronLeft size={24} color="#666" />
@@ -456,14 +460,15 @@ const Home = () => {
         </TouchableOpacity>
       </View>
 
+      {/* Week Row with Days */}
       <View style={styles.weekRow}>
         {weekDays.map((day, index) => (
           <TouchableOpacity
             key={index}
             style={[
               styles.dayColumn,
-              day.isSelected && styles.selectedColumn,
-              day.hasEvents && styles.hasEventsColumn,
+              day.isSelected && styles.selectedColumn, // Highlight selected day
+              day.hasEvents && styles.hasEventsColumn, // Highlight day with events
             ]}
             onPress={() => handleDateSelect(day.date)}
           >
@@ -477,10 +482,13 @@ const Home = () => {
             >
               {day.dayName}
             </Text>
+            {/* Event Indicator Dot */}
             {day.hasEvents && <View style={styles.eventDot} />}
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* Section Title */}
       <View>
         <Text style={styles.sectionTitle}>{getSectionTitle()}</Text>
       </View>
@@ -489,38 +497,44 @@ const Home = () => {
       <View style={styles.timelineContainer}>
         {/* Events Column */}
         <View style={styles.eventsContainer}>
-          {events
-            .sort((a, b) => {
-              const convertToTimeValue = (time) => {
-                const [hour, minute, period] = time
-                  .match(/(\d+):(\d+)\s?(AM|PM)/i)
-                  .slice(1);
-                let hours = parseInt(hour, 10);
-                const minutes = parseInt(minute, 10);
-                if (period.toUpperCase() === "PM" && hours !== 12) hours += 12;
-                if (period.toUpperCase() === "AM" && hours === 12) hours = 0;
-                return hours * 60 + minutes; // Total minutes since midnight
-              };
-              return (
-                convertToTimeValue(a.timeframe) -
-                convertToTimeValue(b.timeframe)
-              );
-            })
-            .map((event, index) => (
-              <View
-                key={event.id}
-                style={[styles.eventCard, { backgroundColor: event.color }]}
-              >
-                <View style={styles.eventContent}>
-                  <Text style={styles.eventTitle}>{event.title}</Text>
-                  <Text style={styles.eventTime}>{event.timeframe}</Text>
+          {events.length > 0 ? (
+            events
+              .sort((a, b) => {
+                // Convert time string (e.g., "10:30 AM") to total minutes for sorting
+                const convertToTimeValue = (time) => {
+                  const [hour, minute, period] = time
+                    .match(/(\d+):(\d+)\s?(AM|PM)/i)
+                    .slice(1);
+                  let hours = parseInt(hour, 10);
+                  const minutes = parseInt(minute, 10);
+                  if (period.toUpperCase() === "PM" && hours !== 12)
+                    hours += 12;
+                  if (period.toUpperCase() === "AM" && hours === 12) hours = 0;
+                  return hours * 60 + minutes; // Total minutes since midnight
+                };
+                return (
+                  convertToTimeValue(a.timeframe) -
+                  convertToTimeValue(b.timeframe)
+                );
+              })
+              .map((event, index) => (
+                <View
+                  key={event.id}
+                  style={[styles.eventCard, { backgroundColor: event.color }]}
+                >
+                  <View style={styles.eventContent}>
+                    <Text style={styles.eventTitle}>{event.title}</Text>
+                    <Text style={styles.eventTime}>{event.timeframe}</Text>
+                  </View>
                 </View>
-              </View>
-            ))}
+              ))
+          ) : (
+            // Fallback message when there are no events
+            <Text style={styles.noEventsText}>No scheduled events yet</Text>
+          )}
         </View>
       </View>
     </ScrollView>
   );
 };
-
-export default Home;
+export default AdminHome;

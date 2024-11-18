@@ -3,13 +3,92 @@ import { StyleSheet, Dimensions } from "react-native";
 const { width } = Dimensions.get("window");
 
 export const Styles = StyleSheet.create({
+  cardContainer: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.22,
+    shadowRadius: 2.22,
+  },
+  cardContent: {
+    padding: 16,
+  },
+  dateTimeContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  dateText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#3E588F",
+  },
+  dayText: {
+    fontSize: 14,
+    color: "#666",
+  },
+  intersection: {
+    height: 1,
+    backgroundColor: "#EBEBEB",
+    marginVertical: 12,
+  },
+  eventDetails: {
+    flex: 1,
+  },
+  eventRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  eventTitleContainer: {
+    flex: 1,
+  },
+  eventTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  eventTimeframe: {
+    fontSize: 14,
+    color: "#666",
+    marginTop: 4,
+  },
+  timestampText: {
+    fontSize: 12,
+    color: "#999",
+    marginTop: 4,
+  },
+  arrowContainer: {
+    padding: 8,
+  },
+  eventDescription: {
+    marginTop: 16,
+  },
+  descriptionSubheading: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 8,
+  },
+  eventDescriptionText: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: "#555",
+  },
   safeArea: {
     flex: 1,
     backgroundColor: "#f9f9f9",
   },
-  container: {
-    padding: 16,
-  },
+
   mainContainer: {
     flex: 1,
     position: "relative",
@@ -64,6 +143,7 @@ export const Styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 5,
     zIndex: 1000,
+    marginTop: 5,
   },
   dropdownContent: {
     backgroundColor: "#233c60",
@@ -74,62 +154,6 @@ export const Styles = StyleSheet.create({
   dropdownItemText: {
     color: "white",
     fontSize: 16,
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-    marginBottom: 16,
-  },
-  cardContent: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  dateTimeContainer: {
-    width: 80,
-    marginRight: 16,
-  },
-  dateText: {
-    fontSize: 19,
-    fontWeight: "600",
-    color: "#536493",
-  },
-  dayText: {
-    textTransform: "uppercase",
-    fontSize: 12,
-    color: "#3C3D37",
-    textAlign: "left",
-    width: "100%",
-  },
-  eventDetails: {
-    flex: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  eventTitleContainer: {
-    flex: 1,
-  },
-  eventTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-  },
-  eventTimeframe: {
-    fontSize: 14,
-    color: "#888",
-    marginTop: 4,
-  },
-  eventRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    width: "100%",
   },
   noEvent: {
     textAlign: "center",
@@ -143,22 +167,5 @@ export const Styles = StyleSheet.create({
     left: "50%",
     marginTop: 125,
     zIndex: 10,
-  },
-  intersection: {
-    height: 50,
-    borderLeftWidth: 0.6,
-    borderLeftColor: "#B7B7B7",
-    marginVertical: 0,
-    marginHorizontal: 0,
-    marginLeft: -15.5,
-    paddingRight: 20,
-  },
-  timestampText: {
-    fontSize: 10,
-    color: "#888",
-    opacity: 0.5,
-    textAlign: "left",
-    paddingRight: 16,
-    paddingBottom: 0,
   },
 });

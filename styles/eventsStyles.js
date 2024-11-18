@@ -204,6 +204,7 @@ export const eventsStyles = StyleSheet.create({
     alignItems: "center",
     minWidth: 40,
     height: 40,
+    color: "black",
   },
   eventTitle: {
     fontSize: 16,
@@ -236,18 +237,25 @@ export const eventsStyles = StyleSheet.create({
     zIndex: 10,
   },
 
-  eventTimeframe: {
-    color: "#666",
-  },
-  editInput: {
-    borderColor: "#e0e0e0",
+  editTitleInput: {
     borderWidth: 1,
+    borderColor: "#ddd",
     borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
+    padding: 10,
+    marginBottom: 10,
     fontSize: 16,
-    backgroundColor: "#fff",
-    width: "100%",
+    color: "#333",
+    backgroundColor: "#f9f9f9", // Light background for input fields
+  },
+  editTimeframeInput: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+    fontSize: 16,
+    color: "#333",
+    backgroundColor: "#f9f9f9", // Light background for input fields
   },
 
   editButtonsContainer: {
@@ -273,18 +281,20 @@ export const eventsStyles = StyleSheet.create({
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#3E588F",
+    marginTop: 5,
   },
   saveButton: {
     backgroundColor: "#3E588F",
+    marginTop: 5,
   },
   cancelButtonText: {
-    color: "#3E588F",
-    fontSize: 16,
+    color: "#333",
+    fontSize: 14,
     fontWeight: "600",
   },
   saveButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
+    color: "white",
+    fontSize: 14,
     fontWeight: "600",
   },
   intersection: {

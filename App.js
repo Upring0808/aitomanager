@@ -17,7 +17,7 @@ const App = () => {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="AdminDashboard"
+        initialRouteName="Index"
         screenOptions={{
           headerShown: false,
           cardStyleInterpolator: ({ current, layouts }) => {

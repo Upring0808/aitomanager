@@ -24,7 +24,8 @@ import Toast from "react-native-toast-message";
 
 import { FontAwesome } from "@expo/vector-icons";
 import { Styles } from "../../../../styles/Styles";
-import { BlurView } from "expo-blur";
+
+import EventDetailsCard from "../../../../components/EventDetailsCard";
 
 const { width } = Dimensions.get("window");
 
@@ -125,79 +126,7 @@ const Events = () => {
   });
 
   const renderEventCard = (event) => {
-    const eventDate = event.dueDate
-      ? new Date(event.dueDate.seconds * 1000)
-      : null;
-
-    const formattedDate = eventDate
-      ? eventDate.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        })
-      : "No Date";
-    const formattedDay = eventDate
-      ? eventDate.toLocaleDateString("en-US", { weekday: "long" })
-      : "No Day";
-
-    const createdAt = event.createdAt
-      ? new Date(event.createdAt.seconds * 1000).toLocaleString()
-      : "Unknown";
-
-    // Add an onPress function to trigger the QR scanner
-    const onScanPress = () => {
-      // Code to open the QR scanner will go here
-    };
-    return (
-      <Animated.View
-        key={event.id}
-        style={[
-          Styles.cardContainer,
-          {
-            opacity: fadeAnim,
-            transform: [
-              {
-                translateX: fadeAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [width, 0],
-                }),
-              },
-              {
-                scale: fadeAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.8, 1],
-                }),
-              },
-            ],
-          },
-        ]}
-      >
-        <Card key={event.id} style={Styles.card}>
-          <View style={Styles.cardContent}>
-            <View style={Styles.dateTimeContainer}>
-              <Text style={Styles.dateText}>{formattedDate}</Text>
-              <Text style={Styles.dayText}>{formattedDay}</Text>
-            </View>
-            <View style={Styles.intersection} />
-            <View style={Styles.eventDetails}>
-              <View style={Styles.eventRow}>
-                <View style={Styles.eventTitleContainer}>
-                  <Text style={Styles.eventTitle}>{event.title}</Text>
-                  <Text style={Styles.eventTimeframe}>{event.timeframe}</Text>
-                  <Text style={Styles.timestampText}>{createdAt}</Text>
-                </View>
-                {/* Add Scanner Icon */}
-                <TouchableOpacity
-                  onPress={onScanPress}
-                  style={Styles.iconContainer}
-                >
-                  <FontAwesome name="qrcode" size={24} color="#333" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Card>
-      </Animated.View>
-    );
+    return <EventDetailsCard event={event} key={event.id} />;
   };
 
   return (
