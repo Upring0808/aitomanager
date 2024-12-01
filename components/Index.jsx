@@ -57,12 +57,6 @@ const Index = ({ navigation }) => {
                 <Text style={styles.buttonOutlineText}>Register</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={styles.loginLink}
-              onPress={() => navigation.navigate("AdminLogin")}
-            >
-              <Text style={styles.loginLinkText}>Login as admin?</Text>
-            </TouchableOpacity>
           </View>
         </ScrollView>
       </LinearGradient>
@@ -71,15 +65,6 @@ const Index = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  loginLink: {
-    marginTop: 15,
-    alignItems: "center",
-  },
-  loginLinkText: {
-    color: "#16325B",
-    fontSize: 14,
-    textDecorationLine: "underline",
-  },
   gradient: {
     flex: 1,
   },

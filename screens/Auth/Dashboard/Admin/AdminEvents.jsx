@@ -28,10 +28,9 @@ import AdminEventCard from "../../../../components/AdminEventCard";
 const AdminEvents = () => {
   const [editingEventId, setEditingEventId] = useState(null);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newTimeframe, setNewTimeframe] = useState("");
   const [events, setEvents] = useState([]);
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(true);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [startTime, setStartTime] = useState(new Date());
@@ -40,12 +39,11 @@ const AdminEvents = () => {
   const [selectedTimeType, setSelectedTimeType] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [dueDate, setDueDate] = useState(new Date());
-
   const [editValues, setEditValues] = useState({
     newTitle: "",
     newTimeframe: "",
+    newDescription: "",
   });
-
   const arrowRotation = useRef(new Animated.Value(0)).current;
   const dropdownHeight = useRef(new Animated.Value(0)).current;
 
@@ -65,16 +63,17 @@ const AdminEvents = () => {
   }, []);
 
   const handleAddEvent = async () => {
-    if (!title) {
-      alert("Please enter an event title");
+    if (!title || !description) {
+      alert("Please fill out all fields.");
       return;
     }
     const timeframe = `${formatTime(startTime)} - ${formatTime(endTime)}`;
     try {
-      const newEvent = await addEvent(title, timeframe, dueDate);
+      const newEvent = await addEvent(title, timeframe, dueDate, description); // Pass description
       setEvents([...events, newEvent]);
       Toast.show({ type: "success", text1: "Event created" });
       setTitle("");
+      setDescription(""); // Reset description
       setStartTime(new Date());
       setEndTime(new Date());
       setDueDate(new Date());
@@ -157,6 +156,8 @@ const AdminEvents = () => {
   };
 
   const filteredEvents = events.filter((event) => {
+    if (!event || !event.dueDate) return false;
+
     const eventDate = new Date(event.dueDate.seconds * 1000);
     const today = new Date();
 
@@ -180,7 +181,11 @@ const AdminEvents = () => {
   });
   const handleEditStart = (event) => {
     setEditingEventId(event.id);
-    setEditValues({ newTitle: event.title, newTimeframe: event.timeframe });
+    setEditValues({
+      newTitle: event.title,
+      newTimeframe: event.timeframe,
+      newDescription: event.description || "", // Initialize description
+    });
   };
 
   const handleTitleChange = (value) => {
@@ -190,23 +195,42 @@ const AdminEvents = () => {
   const handleTimeframeChange = (value) => {
     setEditValues((prev) => ({ ...prev, newTimeframe: value }));
   };
+
+  const handleDescriptionChange = (value) => {
+    setEditValues((prev) => ({ ...prev, newDescription: value }));
+  };
   const renderEventCard = (event) => {
+    if (!event) return null;
+
     return (
       <AdminEventCard
         key={event.id}
-        event={event}
+        event={{
+          ...event,
+          title: event.title || "",
+          timeframe: event.timeframe || "",
+          description: event.description || "",
+          createdBy: event.createdBy || "Unknown",
+          dueDate: event.dueDate || null,
+          createdAt: event.createdAt || null,
+        }}
         isEditing={editingEventId === event.id}
         newTitle={editingEventId === event.id ? editValues.newTitle : ""}
         newTimeframe={
           editingEventId === event.id ? editValues.newTimeframe : ""
         }
+        newDescription={
+          editingEventId === event.id ? editValues.newDescription : ""
+        }
         onEditTitle={handleTitleChange}
         onEditTimeframe={handleTimeframeChange}
+        onEditDescription={handleDescriptionChange}
         onSave={() =>
           handleSaveEvent(
             event.id,
             editValues.newTitle,
             editValues.newTimeframe,
+            editValues.newDescription,
             events,
             setEvents,
             setEditingEventId
@@ -234,6 +258,13 @@ const AdminEvents = () => {
                 placeholder="Event Title"
                 value={title}
                 onChangeText={setTitle}
+              />
+              <TextInput
+                style={[eventsStyles.input, { height: 80 }]} // Adjust height for multiline input
+                placeholder="Event Description"
+                value={description}
+                onChangeText={setDescription}
+                multiline
               />
 
               <View style={eventsStyles.timeInputContainer}>
@@ -370,7 +401,7 @@ const AdminEvents = () => {
                 style={eventsStyles.centerLoading}
               />
             ) : filteredEvents.length > 0 ? (
-              filteredEvents.map(renderEventCard)
+              filteredEvents.map((event) => renderEventCard(event))
             ) : (
               <Text style={eventsStyles.noEvent}>No events available.</Text>
             )}

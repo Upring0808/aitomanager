@@ -544,7 +544,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#10B981",
+    backgroundColor: "#none",
     marginLeft: 8,
   },
   loader: {

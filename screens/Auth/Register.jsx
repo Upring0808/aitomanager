@@ -173,6 +173,7 @@ const Register = () => {
           onValueChange={(itemValue) => setYearLevel(itemValue)}
           style={styles.picker}
           dropdownIconColor="#888"
+          dropdownStyle={{ maxHeight: 200 }} // Ensures proper dropdown height
           mode="dropdown"
         >
           {yearLevels.map((yl) => (
@@ -374,13 +375,18 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   pickerWrapper: {
-    paddingRight: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E9EFEC",
+    borderRadius: 25,
+    paddingHorizontal: 15,
+    marginBottom: 15,
+    height: 50,
   },
   picker: {
     flex: 1,
-    marginLeft: 10,
-    height: 40,
     color: "#000",
+    height: 50, // Ensure height matches the container
   },
   pickerItem: {
     fontSize: 16,

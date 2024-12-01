@@ -1,4 +1,4 @@
-import { db } from "../config/firebaseconfig";
+import { db, auth } from "../config/firebaseconfig";
 import {
   collection,
   addDoc,
@@ -9,24 +9,17 @@ import {
   Timestamp,
   query,
   where,
+  getDoc,
 } from "firebase/firestore";
 import Toast from "react-native-toast-message";
 
+// Fetch Events
 export const fetchEvents = async (yearLevel = null) => {
   try {
     const eventsCollection = collection(db, "events");
-    let eventsQuery;
-
-    if (yearLevel) {
-      // If yearLevel is provided, filter events by yearLevel
-      eventsQuery = query(
-        eventsCollection,
-        where("yearLevel", "array-contains", yearLevel)
-      );
-    } else {
-      // If no yearLevel is provided, fetch all events
-      eventsQuery = eventsCollection;
-    }
+    const eventsQuery = yearLevel
+      ? query(eventsCollection, where("yearLevel", "array-contains", yearLevel))
+      : eventsCollection;
 
     const eventsSnapshot = await getDocs(eventsQuery);
     const eventsList = eventsSnapshot.docs.map((doc) => {
@@ -34,37 +27,54 @@ export const fetchEvents = async (yearLevel = null) => {
       return {
         id: doc.id,
         ...data,
-        yearLevel: data.yearLevel || [], // Ensure yearLevel is always an array
-        dueDate: data.dueDate ? data.dueDate : null,
-        createdAt: data.createdAt ? data.createdAt : Timestamp.now(),
+        createdBy: data.createdBy || "Unknown User", // Fallback if username is missing
+        dueDate: data.dueDate || null,
+        createdAt: data.createdAt || Timestamp.now(),
       };
     });
-    return eventsList.sort(
-      (a, b) =>
-        new Date(b.createdAt.seconds * 1000) -
-        new Date(a.createdAt.seconds * 1000)
-    );
+
+    // Sort events by creation date (newest first)
+    return eventsList.sort((a, b) => b.createdAt.seconds - a.createdAt.seconds);
   } catch (error) {
     console.error("Error fetching events:", error);
     throw error;
   }
 };
 
-export const addEvent = async (title, timeframe, dueDate, yearLevels = []) => {
+// Add Event
+export const addEvent = async (
+  title,
+  timeframe,
+  dueDate,
+  description,
+  yearLevels = []
+) => {
   try {
-    const dueDateTimestamp = Timestamp.fromDate(dueDate);
-
-    // Validate yearLevels is an array
-    if (!Array.isArray(yearLevels)) {
-      yearLevels = [yearLevels];
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error("User is not authenticated.");
     }
+
+    const adminDocRef = doc(db, "admin", user.uid);
+    const adminDoc = await getDoc(adminDocRef);
+
+    if (!adminDoc.exists()) {
+      throw new Error("Admin document not found in Firestore.");
+    }
+
+    const adminData = adminDoc.data();
+    const username = adminData.username || user.email;
+
+    const dueDateTimestamp = Timestamp.fromDate(dueDate);
 
     const docRef = await addDoc(collection(db, "events"), {
       title,
       timeframe,
-      yearLevel: yearLevels, // Store which year levels this event is for
+      yearLevel: yearLevels,
       dueDate: dueDateTimestamp,
+      description, // Add description here
       createdAt: Timestamp.now(),
+      createdBy: username,
     });
 
     return {
@@ -73,7 +83,9 @@ export const addEvent = async (title, timeframe, dueDate, yearLevels = []) => {
       timeframe,
       yearLevel: yearLevels,
       dueDate: dueDateTimestamp,
+      description, // Include it in the returned event object
       createdAt: Timestamp.now(),
+      createdBy: username,
     };
   } catch (error) {
     console.error("Error adding event:", error);
@@ -81,10 +93,12 @@ export const addEvent = async (title, timeframe, dueDate, yearLevels = []) => {
   }
 };
 
+// Update Event
 export const handleSaveEvent = async (
   id,
   newTitle,
   newTimeframe,
+  newDescription,
   events,
   setEvents,
   setEditingEventId
@@ -99,6 +113,7 @@ export const handleSaveEvent = async (
     await updateDoc(eventDocRef, {
       title: newTitle,
       timeframe: newTimeframe,
+      description: newDescription,
     });
 
     // Update the event in the local state
@@ -109,6 +124,7 @@ export const handleSaveEvent = async (
               ...event,
               title: newTitle,
               timeframe: newTimeframe,
+              description: newDescription,
             }
           : event
       )
@@ -122,6 +138,7 @@ export const handleSaveEvent = async (
   }
 };
 
+// Delete Event
 export const deleteEvent = async (id) => {
   try {
     const eventDocRef = doc(db, "events", id);
@@ -133,43 +150,42 @@ export const deleteEvent = async (id) => {
   }
 };
 
-// New helper functions for year level operations
-
+// Fetch Events by Year Level
 export const fetchEventsByYearLevel = async (yearLevel) => {
   try {
     const eventsCollection = collection(db, "events");
-    const q = query(
+    const eventsQuery = query(
       eventsCollection,
       where("yearLevel", "array-contains", yearLevel)
     );
-    const querySnapshot = await getDocs(q);
 
-    const eventsList = querySnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-      dueDate: doc.data().dueDate || null,
-      createdAt: doc.data().createdAt || Timestamp.now(),
-    }));
+    const eventsSnapshot = await getDocs(eventsQuery);
+    const eventsList = eventsSnapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        dueDate: data.dueDate || null,
+        createdAt: data.createdAt || Timestamp.now(),
+      };
+    });
 
-    return eventsList.sort(
-      (a, b) =>
-        new Date(b.createdAt.seconds * 1000) -
-        new Date(a.createdAt.seconds * 1000)
-    );
+    // Sort events by creation date (newest first)
+    return eventsList.sort((a, b) => b.createdAt.seconds - a.createdAt.seconds);
   } catch (error) {
     console.error("Error fetching events by year level:", error);
     throw error;
   }
 };
 
+// Update Event Year Levels
 export const updateEventYearLevels = async (eventId, yearLevels) => {
   try {
-    // Validate yearLevels is an array
     if (!Array.isArray(yearLevels)) {
-      yearLevels = [yearLevels];
+      yearLevels = [yearLevels]; // Ensure it's an array
     }
 
-    const eventDocRef = doc(db, "events", id);
+    const eventDocRef = doc(db, "events", eventId);
     await updateDoc(eventDocRef, {
       yearLevel: yearLevels,
     });

@@ -1,6 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { signInWithEmailAndPassword } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore"; // import Firestore functions
+
 import React, { useState } from "react";
 import {
   Image,
@@ -16,7 +18,7 @@ import {
 } from "react-native";
 import Toast from "react-native-toast-message";
 import BackgroundImage from "../../components/ImageBackground";
-import { auth } from "../../config/firebaseconfig";
+import { auth, db } from "../../config/firebaseconfig";
 import aito from "../../assets/aito.png";
 
 const Login = ({ navigation }) => {
@@ -44,9 +46,27 @@ const Login = ({ navigation }) => {
     setIsSubmitting(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      showToast("success", "Login successful!");
-      navigation.navigate("Dashboard", { screen: "Home" });
+      // Sign in using Firebase Authentication
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      const user = userCredential.user;
+
+      // Fetch the user from the admin collection to check if they are an admin
+      const adminRef = doc(db, "admin", user.uid); // Fetch based on user's UID
+      const adminDoc = await getDoc(adminRef);
+
+      if (adminDoc.exists()) {
+        // User is an admin
+        showToast("success", "Admin login successful!");
+        navigation.navigate("AdminDashboard", { screen: "AdminHome" });
+      } else {
+        // User is not an admin
+        showToast("success", "Login successful!");
+        navigation.navigate("Dashboard", { screen: "Home" });
+      }
     } catch (error) {
       console.error("Error during login:", error);
       let errorMessage = "An error occurred. Please try again.";

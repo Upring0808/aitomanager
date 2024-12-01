@@ -4,42 +4,71 @@ import { FontAwesome } from "@expo/vector-icons";
 import { eventsStyles } from "../styles/eventsStyles";
 import { Button, Card } from "react-native-paper";
 
+const ActionButton = ({ onPress, icon, color, style, accessibilityLabel }) => (
+  <TouchableOpacity
+    onPress={onPress}
+    style={style}
+    accessibilityLabel={accessibilityLabel}
+    accessible
+  >
+    <FontAwesome name={icon} size={20} color={color} />
+  </TouchableOpacity>
+);
+
 const AdminEventCard = ({
   event,
   isEditing,
   newTitle,
   newTimeframe,
+  newDescription,
   onEditTitle,
   onEditTimeframe,
+  onEditDescription,
   onSave,
   onCancel,
   onDelete,
-  onStartEditing, // New handler to start editing
+  onStartEditing,
 }) => {
-  const eventDate = event.dueDate
-    ? new Date(event.dueDate.seconds * 1000)
-    : null;
-
-  const formattedDate = eventDate
-    ? eventDate.toLocaleDateString("en-US", {
+  // Safely handle dates
+  const formatDate = (dateObj) => {
+    if (!dateObj || !dateObj.seconds) return "No Date";
+    try {
+      const date = new Date(dateObj.seconds * 1000);
+      return date.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
-      })
-    : "No Date";
-  const formattedDay = eventDate
-    ? eventDate.toLocaleDateString("en-US", { weekday: "long" })
-    : "No Day";
+      });
+    } catch (error) {
+      return "Invalid Date";
+    }
+  };
 
-  const createdAt = event.createdAt
-    ? new Date(event.createdAt.seconds * 1000).toLocaleString()
-    : "Unknown";
+  const formatDay = (dateObj) => {
+    if (!dateObj || !dateObj.seconds) return "No Day";
+    try {
+      const date = new Date(dateObj.seconds * 1000);
+      return date.toLocaleDateString("en-US", { weekday: "long" });
+    } catch (error) {
+      return "Invalid Day";
+    }
+  };
+
+  const formatTimestamp = (timestampObj) => {
+    if (!timestampObj || !timestampObj.seconds) return "Unknown";
+    try {
+      const date = new Date(timestampObj.seconds * 1000);
+      return date.toLocaleString();
+    } catch (error) {
+      return "Invalid Timestamp";
+    }
+  };
 
   return (
     <Card style={eventsStyles.card}>
       <View style={eventsStyles.cardContent}>
         <View style={eventsStyles.dateTimeContainer}>
-          <Text style={eventsStyles.dateText}>{formattedDate}</Text>
-          <Text style={eventsStyles.dayText}>{formattedDay}</Text>
+          <Text style={eventsStyles.dateText}>{formatDate(event.dueDate)}</Text>
+          <Text style={eventsStyles.dayText}>{formatDay(event.dueDate)}</Text>
         </View>
         <View style={eventsStyles.intersection} />
         <View style={eventsStyles.eventDetails}>
@@ -48,44 +77,72 @@ const AdminEventCard = ({
               <TextInput
                 value={newTitle}
                 onChangeText={onEditTitle}
-                style={eventsStyles.editTitleInput} // Applying updated input field styles
+                style={eventsStyles.editTitleInput}
                 placeholder="Edit Event Title"
+                accessibilityLabel="Edit the title of the event"
               />
               <TextInput
                 value={newTimeframe}
                 onChangeText={onEditTimeframe}
-                style={eventsStyles.editTimeframeInput} // Applying updated input field styles
+                style={eventsStyles.editTimeframeInput}
                 placeholder="Edit Timeframe"
+                accessibilityLabel="Edit the timeframe of the event"
               />
-              <Button onPress={onSave} style={eventsStyles.saveButton}>
+              <TextInput
+                value={newDescription}
+                onChangeText={onEditDescription}
+                style={eventsStyles.editDescriptionInput}
+                placeholder="Edit Description"
+                multiline
+                accessibilityLabel="Edit the description of the event"
+              />
+              <Button
+                onPress={onSave}
+                style={eventsStyles.saveButton}
+                accessibilityLabel="Save changes"
+              >
                 <Text style={eventsStyles.saveButtonText}>Save</Text>
               </Button>
-              <Button onPress={onCancel} style={eventsStyles.cancelButton}>
+              <Button
+                onPress={onCancel}
+                style={eventsStyles.cancelButton}
+                accessibilityLabel="Cancel changes"
+              >
                 <Text style={eventsStyles.cancelButtonText}>Cancel</Text>
               </Button>
             </View>
           ) : (
             <View style={eventsStyles.eventRow}>
               <View style={eventsStyles.eventTitleContainer}>
-                <Text style={eventsStyles.eventTitle}>{event.title}</Text>
-                <Text style={eventsStyles.eventTimeframe}>
-                  {event.timeframe}
+                <Text style={eventsStyles.eventTitle}>
+                  {String(event.title || "")}
                 </Text>
-                <Text style={eventsStyles.timestampText}>{createdAt}</Text>
+                <Text style={eventsStyles.eventTimeframe}>
+                  {String(event.timeframe || "")}
+                </Text>
+                <Text style={eventsStyles.eventDescription}>
+                  {String(event.description || "No description provided.")}
+                </Text>
+                <Text style={eventsStyles.createdByText}>
+                  Created By: {String(event.createdBy || "Unknown")}
+                </Text>
+                <Text style={eventsStyles.timestampText}>
+                  Created: {formatTimestamp(event.createdAt)}
+                </Text>
               </View>
               <View style={eventsStyles.actionButtonsContainer}>
-                <TouchableOpacity
+                <ActionButton
+                  onPress={onStartEditing}
+                  icon="edit"
+                  color="#3E588F"
                   style={[eventsStyles.actionButton, eventsStyles.editButton]}
-                  onPress={onStartEditing} // Use a dedicated handler to start editing
-                >
-                  <FontAwesome name="edit" size={20} color="#3E588F" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[eventsStyles.actionButton, eventsStyles.deleteButton]}
+                />
+                <ActionButton
                   onPress={onDelete}
-                >
-                  <FontAwesome name="trash" size={20} color="#CC2B52" />
-                </TouchableOpacity>
+                  icon="trash"
+                  color="#CC2B52"
+                  style={[eventsStyles.actionButton, eventsStyles.deleteButton]}
+                />
               </View>
             </View>
           )}

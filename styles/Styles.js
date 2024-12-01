@@ -18,6 +18,7 @@ export const Styles = StyleSheet.create({
     },
     shadowOpacity: 0.22,
     shadowRadius: 2.22,
+    overflow: "hidden",
   },
   cardContent: {
     padding: 16,
@@ -51,6 +52,7 @@ export const Styles = StyleSheet.create({
   },
   eventTitleContainer: {
     flex: 1,
+    paddingRight: 16,
   },
   eventTitle: {
     fontSize: 18,
@@ -62,17 +64,17 @@ export const Styles = StyleSheet.create({
     color: "#666",
     marginTop: 4,
   },
-  timestampText: {
-    fontSize: 12,
-    color: "#999",
-    marginTop: 4,
-  },
   arrowContainer: {
     padding: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.05)",
+    transform: [{ rotate: "0deg" }],
   },
-  eventDescription: {
-    marginTop: 16,
-  },
+
   descriptionSubheading: {
     fontSize: 16,
     fontWeight: "bold",
@@ -88,7 +90,6 @@ export const Styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f9f9f9",
   },
-
   mainContainer: {
     flex: 1,
     position: "relative",
@@ -167,5 +168,16 @@ export const Styles = StyleSheet.create({
     left: "50%",
     marginTop: 125,
     zIndex: 10,
+  },
+  adminInfoContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  adminText: {
+    marginLeft: 5,
+    fontSize: 14,
+    color: "#333",
+    marginTop: -3,
   },
 });

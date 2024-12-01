@@ -29,6 +29,9 @@ import {
   isWithinInterval,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
+import { Card } from "react-native-paper";
+import { useNavigation } from "@react-navigation/native";
+import { MaterialIcons } from "@expo/vector-icons";
 
 const TIMELINE_HEIGHT = 660;
 const EVENT_COLORS = [
@@ -54,7 +57,7 @@ const EVENT_COLORS = [
   "#994F0FC0",
 ];
 
-const AdminHome = () => {
+const AdminHome = ({ navigation }) => {
   const [username, setUsername] = useState("");
   const [events, setEvents] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -65,6 +68,8 @@ const AdminHome = () => {
     startOfWeek(new Date(), { weekStartsOn: 1 })
   );
   const [scrollY] = useState(new Animated.Value(0));
+  //upcoming
+  const [upcomingEvents, setUpcomingEvents] = useState([]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -101,7 +106,21 @@ const AdminHome = () => {
         return isSameDay(eventDate, selectedDate);
       });
 
+      // Filter upcoming events
+      const upcomingEvents = allEvents
+        .filter((event) => {
+          const eventDate = event.dueDate?.toDate() || new Date();
+          return eventDate > new Date();
+        })
+        .sort(
+          (a, b) =>
+            (a.dueDate?.toDate() || new Date()) -
+            (b.dueDate?.toDate() || new Date())
+        )
+        .slice(0, 3); // Top 3 upcoming events
+
       setEvents(selectedDayEvents);
+      setUpcomingEvents(upcomingEvents); // New state to store upcoming events
 
       // Update week days with events
       const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -281,7 +300,7 @@ const AdminHome = () => {
     checkUserAndFetchData();
     const unsubscribe = setupRealtimeUpdates();
     return () => unsubscribe();
-  }, [selectedDate]);
+  }, [setupRealtimeUpdates]);
 
   useEffect(() => {
     updateWeekDaysWithEvents(events);
@@ -309,6 +328,7 @@ const AdminHome = () => {
     greeting: {
       fontSize: 26,
       color: "#666",
+
       fontWeight: "500",
     },
     username: {
@@ -405,7 +425,6 @@ const AdminHome = () => {
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.1,
       shadowRadius: 5,
-      elevation: 3,
     },
 
     eventContent: {
@@ -430,6 +449,107 @@ const AdminHome = () => {
       paddingVertical: 100,
       fontSize: 16,
       fontStyle: "italic",
+    },
+    //reminders card
+
+    ReminderContainer: {
+      marginBottom: 12,
+    },
+    ReminderSectionTitle: {
+      marginLeft: 20,
+      marginTop: 5,
+
+      fontSize: 20,
+      fontWeight: "600",
+      color: "#333",
+    },
+
+    ReminderCardContainer: {
+      marginBottom: 5,
+      margin: 18,
+    },
+    ReminderCard: {
+      backgroundColor: "#E7E8D8",
+      borderRadius: 20,
+      padding: 16,
+      shadowColor: "#000",
+      shadowOpacity: 0.02,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 2,
+      marginVertical: -9,
+      marginBottom: 0,
+      borderWidth: 0.25,
+      borderColor: "#B7B7B7",
+    },
+    ReminderCardContent: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    ReminderDateTimeContainer: {
+      width: 80,
+      marginRight: 16,
+    },
+    ReminderDateText: {
+      fontSize: 19,
+      fontWeight: "600",
+      color: "#D91656",
+    },
+    ReminderDayText: {
+      textTransform: "uppercase",
+      fontSize: 12,
+      color: "#3C3D37",
+      textAlign: "left",
+      width: "100%",
+    },
+    ReminderEventDetails: {
+      flex: 1,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    ReminderEventTitleContainer: {
+      flex: 1,
+    },
+    ReminderEventTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#333",
+    },
+    ReminderEventTimeframe: {
+      fontSize: 14,
+      color: "#888",
+      marginTop: 4,
+    },
+    ReminderEventRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      width: "100%",
+    },
+    ReminderIntersection: {
+      height: 50,
+      borderLeftWidth: 0.6,
+      borderLeftColor: "#B7B7B7",
+      marginVertical: 0,
+      marginHorizontal: 0,
+      marginLeft: -15.5,
+      paddingRight: 20,
+    },
+    ReminderNoEvent: {
+      textAlign: "center",
+      marginTop: 50,
+      color: "#888",
+      fontSize: 18,
+    },
+    ReminderCardContent: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between", // Helps spread out the content
+    },
+    ReminderArrowContainer: {
+      padding: 10, // Provides a larger touch area
+      marginLeft: 10, // Add some margin to the left
     },
   });
 
@@ -533,6 +653,83 @@ const AdminHome = () => {
             <Text style={styles.noEventsText}>No scheduled events yet</Text>
           )}
         </View>
+      </View>
+
+      {/* Reminders Section */}
+      <View style={styles.ReminderContainer}>
+        <View style={styles.filterContainer}>
+          <Text style={styles.ReminderSectionTitle}>Upcoming Events</Text>
+        </View>
+        <ScrollView>
+          {upcomingEvents.length > 0 ? (
+            upcomingEvents.map((event) => {
+              const eventDate = event.dueDate ? event.dueDate.toDate() : null;
+              const formattedDate = eventDate
+                ? format(eventDate, "MMM d")
+                : "No Date";
+              const formattedDay = eventDate
+                ? format(eventDate, "EEEE")
+                : "No Day";
+              const formattedTime = eventDate
+                ? format(eventDate, "h:mm a")
+                : "No Time";
+
+              return (
+                <Animated.View
+                  key={event.id}
+                  style={styles.ReminderCardContainer}
+                >
+                  <Card style={styles.ReminderCard}>
+                    <View style={styles.ReminderCardContent}>
+                      <View style={styles.ReminderDateTimeContainer}>
+                        <Text style={styles.ReminderDateText}>
+                          {formattedDate}
+                        </Text>
+                        <Text style={styles.ReminderDayText}>
+                          {formattedDay}
+                        </Text>
+                      </View>
+                      <View style={styles.ReminderIntersection} />
+                      <View style={styles.ReminderEventDetails}>
+                        <View style={styles.ReminderEventRow}>
+                          <View style={styles.ReminderEventTitleContainer}>
+                            <Text style={styles.ReminderEventTitle}>
+                              {event.title}
+                            </Text>
+                            <Text style={styles.ReminderEventTimeframe}>
+                              {formattedTime}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Add Navigation Arrow */}
+                      <TouchableOpacity
+                        style={styles.ReminderArrowContainer}
+                        onPress={() => {
+                          navigation.navigate("AdminDashboard", {
+                            screen: "AdminEvents", // Match App.js route
+                            params: {
+                              eventId: event.id, // Pass event-specific parameters
+                            },
+                          });
+                        }}
+                      >
+                        <MaterialIcons
+                          name="arrow-forward-ios"
+                          size={24}
+                          color="#888"
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </Card>
+                </Animated.View>
+              );
+            })
+          ) : (
+            <Text style={styles.ReminderNoEvent}>No upcoming events</Text>
+          )}
+        </ScrollView>
       </View>
     </ScrollView>
   );

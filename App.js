@@ -10,14 +10,14 @@ import AdminLogin from "./screens/Auth/AdminLogin";
 import Dashboard from "./components/Dashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import Toast from "react-native-toast-message";
-
+import AdminEvents from "./screens/Auth/Dashboard/Admin/AdminEvents"; // Adjust the path as needed
 const Stack = createStackNavigator();
 
 const App = () => {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="Index"
+        initialRouteName="AdminDashboard"
         screenOptions={{
           headerShown: false,
           cardStyleInterpolator: ({ current, layouts }) => {
@@ -50,6 +50,12 @@ const App = () => {
           name="AdminDashboard"
           component={AdminDashboard}
           options={{ gestureEnabled: false }}
+        />
+
+        <Stack.Screen
+          name="AdminEvents"
+          component={AdminEvents}
+          options={{ gestureEnabled: true }}
         />
       </Stack.Navigator>
       <Toast

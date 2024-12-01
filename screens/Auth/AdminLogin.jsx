@@ -20,7 +20,7 @@ import { auth, db } from "../../config/firebaseconfig";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore"; // import Firestore functions
 
-const Login = ({ navigation }) => {
+const AdminLogin = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -246,4 +246,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Login;
+export default AdminLogin;

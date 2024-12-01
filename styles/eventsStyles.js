@@ -24,62 +24,165 @@ export const eventsStyles = StyleSheet.create({
     marginBottom: 20,
   },
   form: {
-    marginBottom: 24,
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 12,
+    marginBottom: 32,
+    backgroundColor: "#ffffff",
+    padding: 24,
+    borderRadius: 24,
     shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
-  },
-  input: {
-    borderColor: "#e0e0e0",
+    shadowOpacity: 0.04,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
     borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    fontSize: 16,
-    backgroundColor: "#fff",
+    borderColor: "rgba(230, 232, 236, 0.4)",
   },
+
+  input: {
+    borderWidth: 0,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 20,
+    fontSize: 16,
+    backgroundColor: "#f8fafc",
+    color: "#1a202c",
+    fontWeight: "500",
+    shadowColor: "#000",
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+
   timeInputContainer: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12,
+    flexWrap: "wrap",
+    gap: 16,
+    marginBottom: 24,
   },
+
   timeInput: {
-    flex: 0.48,
-    borderColor: "#e0e0e0",
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: "#fff",
+    flex: 1,
+    minWidth: width * 0.4,
+    borderRadius: 16,
+    padding: 18,
+    backgroundColor: "#f8fafc",
+    shadowColor: "#000",
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+    borderWidth: 0,
   },
+
   timeInputText: {
-    fontSize: 16,
-    color: "#333",
+    fontSize: 15,
+    color: "#1a202c",
+    fontWeight: "500",
+    textAlign: "center",
   },
+
   timePickerContainer: {
     backgroundColor: "#fff",
-    borderRadius: 8,
-    marginBottom: 12,
+    borderRadius: 16,
+    marginBottom: 20,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(230, 232, 236, 0.7)",
   },
+
   timePickerButton: {
     alignItems: "center",
-    padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#e0e0e0",
+    padding: 16,
+    backgroundColor: "#f8fafc",
   },
+
   timePickerButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     color: "#3E588F",
     fontWeight: "600",
+    letterSpacing: 0.3,
   },
+
   addButton: {
-    marginTop: 8,
-    backgroundColor: "#DA7297",
+    marginTop: 16,
+    backgroundColor: "#3E588F",
+    borderRadius: 12,
+    paddingVertical: 14,
+    shadowColor: "#3E588F",
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
+  sectionTitle: {
+    fontSize: 13,
+
+    color: "#64748b",
+    fontWeight: "600",
+    marginBottom: 20,
+    marginLeft: 4,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+
+  inputGroup: {
+    marginBottom: -2,
+  },
+
+  descriptionInput: {
+    height: 120,
+    textAlignVertical: "top",
+    paddingTop: 18,
+  },
+
+  dateTimeSection: {
+    marginBottom: 4,
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: "rgba(230, 232, 236, 0.7)",
+    marginVertical: 18,
+  },
+
+  // Add these to your existing eventsStyles StyleSheet
+
+  timeInputLabel: {
+    fontSize: 13,
+    color: "#64748b",
+    fontWeight: "500",
+    marginBottom: 4,
+  },
+
+  timeInputStart: {
+    borderLeftWidth: 3,
+    borderLeftColor: "#3E588F",
+  },
+
+  timeInputEnd: {
+    borderLeftWidth: 3,
+    borderLeftColor: "#4CAF50",
+  },
+
+  timeInputDue: {
+    borderLeftWidth: 3,
+    borderLeftColor: "#FF9800",
+  },
+
+  pickerWrapper: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    overflow: "hidden",
+    marginTop: 8,
+  },
+
+  addButtonLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    textTransform: "none",
+  },
+
   pickerWrapper: {
     position: "relative",
     zIndex: 1000,
@@ -122,6 +225,7 @@ export const eventsStyles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 5,
     zIndex: 1000,
+    marginTop: 5,
   },
   dropdownContent: {
     backgroundColor: "#233c60",
@@ -245,7 +349,7 @@ export const eventsStyles = StyleSheet.create({
     marginBottom: 10,
     fontSize: 16,
     color: "#333",
-    backgroundColor: "#f9f9f9", // Light background for input fields
+    backgroundColor: "#f9f9f9",
   },
   editTimeframeInput: {
     borderWidth: 1,
@@ -255,7 +359,17 @@ export const eventsStyles = StyleSheet.create({
     marginBottom: 10,
     fontSize: 16,
     color: "#333",
-    backgroundColor: "#f9f9f9", // Light background for input fields
+    backgroundColor: "#f9f9f9",
+  },
+  editDescriptionInput: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+    fontSize: 16,
+    color: "#333",
+    backgroundColor: "#f9f9f9",
   },
 
   editButtonsContainer: {
@@ -356,4 +470,5 @@ export const eventsStyles = StyleSheet.create({
     fontSize: 16,
     color: "#333",
   },
+  createdByText: { color: "#659287" },
 });
