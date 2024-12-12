@@ -26,6 +26,7 @@ import {
   where,
 } from "firebase/firestore";
 import { MaterialIcons } from "@expo/vector-icons";
+import DropdownPicker from "../../../../components/DropdownPicker";
 
 const AdminFines = () => {
   const [users, setUsers] = useState([]);
@@ -43,6 +44,8 @@ const AdminFines = () => {
 
   const [selectedUserHistory, setSelectedUserHistory] = useState([]);
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
+
+  const [selectedYearLevel, setSelectedYearLevel] = useState("All");
 
   const calculateUnpaidFines = (userId, finesData) => {
     return finesData
@@ -194,9 +197,30 @@ const AdminFines = () => {
     }
   };
 
-  const filteredUsers = users.filter((user) =>
-    user.username?.toLowerCase().includes(searchText.toLowerCase())
-  );
+  const filteredUsers = users
+    .filter((user) => {
+      const matchesSearch = user.username
+        ?.toLowerCase()
+        .includes(searchText.toLowerCase());
+      const matchesYearLevel =
+        selectedYearLevel === "All" ||
+        (user.yearLevel && user.yearLevel.toString() === selectedYearLevel);
+
+      return matchesSearch && matchesYearLevel;
+    })
+    .sort((a, b) => {
+      if (fines[a.id] > 0 && fines[b.id] === 0) return -1;
+      if (fines[a.id] === 0 && fines[b.id] > 0) return 1;
+      return a.username.localeCompare(b.username);
+    });
+  const yearLevelOptions = ["All", "1", "2", "3", "4"];
+  const formatYearLevel = (level) => {
+    if (level === "All") return "All";
+    const suffixes = ["th", "st", "nd", "rd"];
+    const v = parseInt(level) % 100;
+    const suffix = suffixes[(v - 20) % 10] || suffixes[v] || suffixes[0];
+    return `${level}${suffix} `;
+  };
 
   const renderEventItem = (event) => (
     <TouchableOpacity
@@ -234,23 +258,29 @@ const AdminFines = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <MaterialIcons name="attach-money" size={24} color="#007BFF" />
-        <Text style={styles.title}>Fines Management System</Text>
-      </View>
-      <View style={styles.searchContainer}>
-        <MaterialIcons
-          name="search"
-          size={20}
-          color="#666"
-          style={styles.searchIcon}
-        />
-        <TextInput
-          style={styles.searchBar}
-          placeholder="Search students by username"
-          value={searchText}
-          onChangeText={setSearchText}
-        />
+      <View style={styles.searchAndFilterContainer}>
+        <View style={styles.searchContainer}>
+          <MaterialIcons
+            name="search"
+            size={20}
+            color="#666"
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={styles.searchBar}
+            placeholder="Search students by username"
+            value={searchText}
+            onChangeText={setSearchText}
+          />
+        </View>
+        <View style={styles.filterContainer}>
+          <DropdownPicker
+            options={yearLevelOptions}
+            selectedValue={selectedYearLevel}
+            onValueChange={setSelectedYearLevel}
+            formatOption={(value) => formatYearLevel(value)} // Add this prop
+          />
+        </View>
       </View>
       <FlatList
         data={filteredUsers}
@@ -298,10 +328,21 @@ const AdminFines = () => {
           </TouchableOpacity>
         )}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <MaterialIcons name="search-off" size={48} color="#666" />
-            <Text style={styles.emptyText}>No students found</Text>
-          </View>
+          selectedYearLevel === "All" ? (
+            <View style={styles.emptyContainer}>
+              <MaterialIcons name="search-off" size={48} color="#666" />
+              <Text style={styles.emptyText}>No students found</Text>
+            </View>
+          ) : (
+            <View style={styles.emptyContainer}>
+              <MaterialIcons name="person-off" size={48} color="#666" />
+              <Text style={styles.emptyText}>
+                No{" "}
+                {yearLevelOptions.find((level) => level === selectedYearLevel)}{" "}
+                Year students found
+              </Text>
+            </View>
+          )
         }
       />
       {/* Assign Fine Modal */}
@@ -331,7 +372,11 @@ const AdminFines = () => {
                 </View>
                 <Text style={styles.label}>Fine Amount (₱)</Text>
                 <View style={styles.inputContainer}>
-                  <MaterialIcons name="attach-money" size={20} color="#666" />
+                  <Text
+                    style={{ fontSize: 20, color: "#007BFF", marginRight: 5 }}
+                  >
+                    ₱
+                  </Text>
                   <TextInput
                     style={styles.input}
                     placeholderTextColor="#666"
@@ -389,11 +434,15 @@ const AdminFines = () => {
                   </View>
                   <View style={styles.historyDetails}>
                     <View style={styles.historyInfo}>
-                      <MaterialIcons
-                        name="attach-money"
-                        size={20}
-                        color="#666"
-                      />
+                      <Text
+                        style={{
+                          fontSize: 20,
+                          color: "#007BFF",
+                          marginLeft: 2.5,
+                        }}
+                      >
+                        ₱
+                      </Text>
                       <Text style={styles.historyAmount}>
                         ₱{item.amount.toFixed(2)}
                       </Text>
@@ -481,22 +530,37 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     color: "#333",
   },
+  searchAndFilterContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: -10,
+    marginBottom: 10,
+  },
+
+  filterContainer: {
+    width: 80,
+    zIndex: 9999,
+    fontSize: 10,
+  },
+
   searchContainer: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#fff",
     borderRadius: 10,
     paddingHorizontal: 15,
-    marginBottom: 20,
+    marginRight: 5,
     elevation: 2,
   },
-  searchIcon: {
-    marginRight: 10,
-  },
+
   searchBar: {
     flex: 1,
-    height: 45,
-    fontSize: 16,
+    height: 50,
+  },
+
+  searchIcon: {
+    marginRight: 10,
   },
   card: {
     backgroundColor: "#fff",

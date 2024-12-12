@@ -28,7 +28,14 @@ import {
   endOfDay,
   isWithinInterval,
 } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react-native";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  Clock,
+} from "lucide-react-native";
+
+import Icon from "react-native-vector-icons/Ionicons";
 
 const TIMELINE_HEIGHT = 660;
 const EVENT_COLORS = [
@@ -56,7 +63,8 @@ const EVENT_COLORS = [
 
 const Home = () => {
   const [username, setUsername] = useState("");
-  const [events, setEvents] = useState([]);
+  const [events, setEvents] = useState([]); // Events for the selected date
+  const [allEvents, setAllEvents] = useState([]); // All events for the week
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [weekDays, setWeekDays] = useState([]);
@@ -65,6 +73,8 @@ const Home = () => {
     startOfWeek(new Date(), { weekStartsOn: 1 })
   );
   const [scrollY] = useState(new Animated.Value(0));
+  //upcoming
+  const [upcomingEvents, setUpcomingEvents] = useState([]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -101,7 +111,21 @@ const Home = () => {
         return isSameDay(eventDate, selectedDate);
       });
 
+      // Filter upcoming events
+      const upcomingEvents = allEvents
+        .filter((event) => {
+          const eventDate = event.dueDate?.toDate() || new Date();
+          return eventDate > new Date();
+        })
+        .sort(
+          (a, b) =>
+            (a.dueDate?.toDate() || new Date()) -
+            (b.dueDate?.toDate() || new Date())
+        )
+        .slice(0, 3); // Top 3 upcoming events
+
       setEvents(selectedDayEvents);
+      setUpcomingEvents(upcomingEvents); // New state to store upcoming events
 
       // Update week days with events
       const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -177,62 +201,44 @@ const Home = () => {
     [selectedDate]
   );
 
-  const fetchEvents = useCallback(
-    async (date) => {
-      try {
-        const eventsRef = collection(db, "events");
-        const eventsSnapshot = await getDocs(eventsRef);
+  const fetchEvents = useCallback(async () => {
+    try {
+      const eventsRef = collection(db, "events");
+      const eventsSnapshot = await getDocs(eventsRef);
 
-        const targetDate = date || selectedDate;
-        const dayStart = startOfDay(targetDate);
-        const dayEnd = endOfDay(targetDate);
+      const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+      const weekEnd = addDays(weekStart, 6);
 
-        const dayEvents = eventsSnapshot.docs
-          .map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-            color:
-              EVENT_COLORS[Math.floor(Math.random() * EVENT_COLORS.length)],
-          }))
-          .filter((event) => {
-            const eventDate = event.dueDate?.toDate() || new Date();
-            return isWithinInterval(eventDate, {
-              start: dayStart,
-              end: dayEnd,
-            });
-          })
-          .sort((a, b) => {
-            const getStartTime = (event) => {
-              if (event.timeframe) {
-                const [start] = event.timeframe.split("-");
-                const [hours] = start.split(":").map(Number);
-                return hours;
-              }
-              return event.dueDate?.toDate().getHours() || 0;
-            };
-            return getStartTime(a) - getStartTime(b);
-          });
+      const allFetchedEvents = eventsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        color: EVENT_COLORS[Math.floor(Math.random() * EVENT_COLORS.length)],
+      }));
 
-        setEvents(dayEvents);
-        updateWeekDaysWithEvents(dayEvents);
-      } catch (error) {
-        console.error("Error fetching events:", error);
-      }
-    },
-    [selectedDate]
-  );
+      // Filter events that fall within the current week
+      const eventsInWeek = allFetchedEvents.filter((event) => {
+        const eventDate = event.dueDate?.toDate() || new Date();
+        return isWithinInterval(eventDate, { start: weekStart, end: weekEnd });
+      });
+
+      setEvents(eventsInWeek); // Events for the selected date
+      setAllEvents(allFetchedEvents); // Store all events for the week
+      updateWeekDaysWithEvents(eventsInWeek); // Update week days with events
+    } catch (error) {
+      console.error("Error fetching events:", error);
+    }
+  }, [selectedDate]);
 
   const updateWeekDaysWithEvents = useCallback(
-    (allEvents) => {
-      setWeekDays(
-        generateWeekDays(weekStart).map((day) => ({
-          ...day,
-          hasEvents: allEvents.some((event) => {
-            const eventDate = event.dueDate?.toDate() || new Date();
-            return isSameDay(eventDate, day.date);
-          }),
-        }))
-      );
+    (eventsInWeek) => {
+      const weekDaysWithEvents = generateWeekDays(weekStart).map((day) => ({
+        ...day,
+        hasEvents: eventsInWeek.some((event) => {
+          const eventDate = event.dueDate?.toDate() || new Date();
+          return isSameDay(eventDate, day.date);
+        }),
+      }));
+      setWeekDays(weekDaysWithEvents);
     },
     [generateWeekDays, weekStart]
   );
@@ -247,23 +253,26 @@ const Home = () => {
 
   const handleDateSelect = useCallback(
     (date) => {
-      Animated.spring(scrollY, {
-        toValue: 0,
-        useNativeDriver: true,
-      }).start();
-
       setSelectedDate(date);
-      fetchEvents(date); // Fetch events for the selected date
+      fetchEvents(); // Fetch events for the selected date
     },
-    [scrollY, fetchEvents]
+    [fetchEvents]
   );
+
+  useEffect(() => {
+    fetchEvents(); // Fetch events for the current week on mount
+  }, [fetchEvents]);
+
+  useEffect(() => {
+    updateWeekDaysWithEvents(allEvents); // Update week days whenever allEvents changes
+  }, [allEvents, updateWeekDaysWithEvents]);
 
   const getSectionTitle = useCallback(() => {
     const today = new Date();
     const isToday = isSameDay(selectedDate, today);
     const formattedDate = format(selectedDate, "MMMM d, yyyy");
 
-    return isToday ? "Schedule Today" : `Schedule as of: ${formattedDate}`;
+    return isToday ? "Schedule Today" : `Schedule on: ${formattedDate}`;
   }, [selectedDate]);
 
   const getGreeting = () => {
@@ -281,12 +290,14 @@ const Home = () => {
     checkUserAndFetchData();
     const unsubscribe = setupRealtimeUpdates();
     return () => unsubscribe();
-  }, [selectedDate]);
+  }, [setupRealtimeUpdates]);
 
   useEffect(() => {
     updateWeekDaysWithEvents(events);
   }, [weekStart, updateWeekDaysWithEvents, events]);
-
+  useEffect(() => {
+    fetchEvents(); // Fetch events for the current week on mount
+  }, []);
   const styles = StyleSheet.create({
     mainContainer: {
       flex: 1,
@@ -299,23 +310,42 @@ const Home = () => {
       alignItems: "center",
     },
     header: {
-      paddingHorizontal: 20,
-      paddingBottom: 20,
-      paddingTop: 20,
-      backgroundColor: "#fff",
-      borderBottomWidth: 1,
-      borderBottomColor: "#f1f1f1",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 18,
+      backgroundColor: "#003161",
+      borderBottomLeftRadius: 20,
+      borderBottomRightRadius: 20,
+      elevation: 6,
+
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 3,
+      marginBottom: 10,
+    },
+    leftContent: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    rightContent: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    icon: {
+      marginRight: 8,
     },
     greeting: {
-      fontSize: 26,
-      color: "#666",
-      fontWeight: "500",
+      fontSize: 16,
+      fontWeight: "bold",
+      color: "#FFFFFF",
     },
     username: {
-      fontSize: 24,
-      fontWeight: "bold",
-      color: "#333",
-      marginLeft: 5,
+      fontSize: 15,
+      color: "#E0E0E0",
+      marginRight: 15,
     },
     calendarHeader: {
       flexDirection: "row",
@@ -373,6 +403,7 @@ const Home = () => {
     timelineContainer: {
       flexDirection: "column",
       paddingHorizontal: 20,
+
       marginBottom: 20,
       position: "relative",
       borderRadius: 20,
@@ -384,6 +415,7 @@ const Home = () => {
       shadowOpacity: 0.05,
       shadowRadius: 4,
       elevation: 2,
+
       margin: 18,
       alignSelf: "stretch", // Adjust to the full width of the container
       height: "auto", // Allow dynamic height based on content
@@ -398,7 +430,7 @@ const Home = () => {
       borderRadius: 12,
       backgroundColor: "#4F46E5", // Custom color for a reminder look
       padding: 16,
-      marginBottom: 16,
+      marginBottom: 20,
       flexDirection: "row",
       alignItems: "center",
       shadowColor: "#000",
@@ -430,6 +462,142 @@ const Home = () => {
       fontSize: 16,
       fontStyle: "italic",
     },
+
+    ReminderContainer: {
+      marginBottom: 12,
+    },
+    ReminderSectionTitle: {
+      marginLeft: 25,
+      marginTop: 5,
+      fontSize: 20,
+      fontWeight: "600",
+      color: "#333",
+    },
+
+    ReminderCardContainer: {
+      marginBottom: 5,
+      margin: 18,
+    },
+    ReminderCard: {
+      backgroundColor: "#507687",
+      borderRadius: 15,
+      padding: 12.5,
+      shadowColor: "#000",
+      shadowOpacity: 0.02,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 2,
+      marginVertical: -9,
+      marginBottom: 0,
+      borderWidth: 0.25,
+      borderColor: "#B7B7B7",
+    },
+    ReminderCardContent: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    ReminderDateTimeContainer: {
+      width: 80,
+      marginRight: 16,
+    },
+    ReminderDateText: {
+      fontSize: 19,
+      fontWeight: "600",
+      color: "#FFF4B7",
+    },
+    ReminderDayText: {
+      textTransform: "uppercase",
+      fontSize: 12,
+      color: "#fff",
+      textAlign: "left",
+      width: "100%",
+    },
+    ReminderEventDetails: {
+      flex: 1,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    ReminderEventTitleContainer: {
+      flex: 1,
+    },
+    ReminderEventTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#fff",
+    },
+    ReminderEventTimeframe: {
+      fontSize: 14,
+      color: "#fff",
+      marginTop: 4,
+    },
+    ReminderEventRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      width: "100%",
+    },
+    ReminderIntersection: {
+      height: 50,
+      borderLeftWidth: 0.6,
+      borderLeftColor: "#fff",
+      marginVertical: 0,
+      marginHorizontal: 0,
+      marginLeft: -15.5,
+      paddingRight: 20,
+    },
+    ReminderNoEvent: {
+      textAlign: "center",
+      marginTop: 50,
+      color: "#888",
+      fontSize: 18,
+    },
+    ReminderCardContent: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between", // Helps spread out the content
+    },
+    sectionTitleContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 1,
+      marginVertical: -0,
+    },
+    sectionTitleIcon: {
+      marginLeft: 5,
+      marginTop: 15,
+    },
+    ReminderIcon: {
+      marginLeft: 170,
+      marginTop: -23,
+      borderWidth: 2,
+      borderColor: "red",
+      marginBottom: 4,
+    },
+    ReminderSubtitle: {
+      color: "#888",
+      fontSize: 14,
+      marginLeft: 25,
+    },
+    dateHeader: {
+      padding: 10,
+      backgroundColor: "#fff",
+      marginBottom: -10,
+      alignItems: "center", // Center items horizontally
+      justifyContent: "center", // Center items vertically
+      flexDirection: "row", // Change to 'column' if you want to stack items vertically
+      textAlign: "center", // Center text within the container
+    },
+    currentDate: {
+      fontSize: 18,
+      fontWeight: "bold",
+      color: "#333",
+    },
+    selectedDate: {
+      fontSize: 16,
+      color: "#666",
+      marginTop: 5,
+    },
   });
 
   if (loading) {
@@ -442,21 +610,26 @@ const Home = () => {
 
   return (
     <ScrollView style={styles.mainContainer}>
-      {/* Header with Greeting and Username */}
       <View style={styles.header}>
-        <Text style={styles.greeting}>{getGreeting()}</Text>
-        <Text style={styles.username}>{username}</Text>
+        <View style={styles.leftContent}>
+          <Icon
+            name="wallet-outline"
+            size={24}
+            color="#FFD700"
+            style={styles.icon}
+          />
+          <Text style={styles.greeting}>{getGreeting()}</Text>
+        </View>
+        <View style={styles.rightContent}>
+          <Text style={styles.username}>{username}</Text>
+        </View>
       </View>
 
-      {/* Calendar Header with Week Navigation */}
-      <View style={styles.calendarHeader}>
-        <TouchableOpacity onPress={handlePreviousWeek}>
-          <ChevronLeft size={24} color="#666" />
-        </TouchableOpacity>
-        <Text style={styles.monthTitle}>{format(weekStart, "MMMM yyyy")}</Text>
-        <TouchableOpacity onPress={handleNextWeek}>
-          <ChevronRight size={24} color="#666" />
-        </TouchableOpacity>
+      {/* Current Date Display */}
+      <View style={styles.dateHeader}>
+        <Text style={styles.currentDate}>
+          {format(selectedDate, "d MMMM yyyy")}
+        </Text>
       </View>
 
       {/* Week Row with Days */}
@@ -464,11 +637,7 @@ const Home = () => {
         {weekDays.map((day, index) => (
           <TouchableOpacity
             key={index}
-            style={[
-              styles.dayColumn,
-              day.isSelected && styles.selectedColumn, // Highlight selected day
-              day.hasEvents && styles.hasEventsColumn, // Highlight day with events
-            ]}
+            style={[styles.dayColumn, day.isSelected && styles.selectedColumn]}
             onPress={() => handleDateSelect(day.date)}
           >
             <Text
@@ -481,15 +650,17 @@ const Home = () => {
             >
               {day.dayName}
             </Text>
-            {/* Event Indicator Dot */}
+
+            {/* Event Dot - Now always displayed for days with events */}
             {day.hasEvents && <View style={styles.eventDot} />}
           </TouchableOpacity>
         ))}
       </View>
 
       {/* Section Title */}
-      <View>
+      <View style={styles.sectionTitleContainer}>
         <Text style={styles.sectionTitle}>{getSectionTitle()}</Text>
+        <Calendar size={24} color="#0A5EB0" style={styles.sectionTitleIcon} />
       </View>
 
       {/* Timeline and Events */}
@@ -499,7 +670,6 @@ const Home = () => {
           {events.length > 0 ? (
             events
               .sort((a, b) => {
-                // Convert time string (e.g., "10:30 AM") to total minutes for sorting
                 const convertToTimeValue = (time) => {
                   const [hour, minute, period] = time
                     .match(/(\d+):(\d+)\s?(AM|PM)/i)
@@ -509,14 +679,14 @@ const Home = () => {
                   if (period.toUpperCase() === "PM" && hours !== 12)
                     hours += 12;
                   if (period.toUpperCase() === "AM" && hours === 12) hours = 0;
-                  return hours * 60 + minutes; // Total minutes since midnight
+                  return hours * 60 + minutes;
                 };
                 return (
                   convertToTimeValue(a.timeframe) -
                   convertToTimeValue(b.timeframe)
                 );
               })
-              .map((event, index) => (
+              .map((event) => (
                 <View
                   key={event.id}
                   style={[styles.eventCard, { backgroundColor: event.color }]}
@@ -528,10 +698,55 @@ const Home = () => {
                 </View>
               ))
           ) : (
-            // Fallback message when there are no events
-            <Text style={styles.noEventsText}>No scheduled events yet</Text>
+            <Text style={styles.noEventsText}>No scheduled events</Text>
           )}
         </View>
+      </View>
+
+      {/* Upcoming Events Section */}
+      <View style={styles.ReminderContainer}>
+        <View style={styles.filterContainer}>
+          <Text style={styles.ReminderSectionTitle}>Upcoming Events</Text>
+
+          <Clock size={24} color="#0A5EB0" style={styles.ReminderIcon} />
+          <Text style={styles.ReminderSubtitle}>
+            Be prepared for your scheduled events ahead.
+          </Text>
+        </View>
+        <ScrollView>
+          {upcomingEvents.length > 0 ? (
+            upcomingEvents.map((event) => {
+              const eventDate = event.dueDate?.toDate() || new Date();
+              return (
+                <View key={event.id} style={styles.ReminderCardContainer}>
+                  <View style={styles.ReminderCard}>
+                    <View style={styles.ReminderCardContent}>
+                      <View style={styles.ReminderDateTimeContainer}>
+                        <Text style={styles.ReminderDateText}>
+                          {format(eventDate, "MMM d")}
+                        </Text>
+                        <Text style={styles.ReminderDayText}>
+                          {format(eventDate, "EEEE")}
+                        </Text>
+                      </View>
+                      <View style={styles.ReminderIntersection} />
+                      <View style={styles.ReminderEventDetails}>
+                        <Text style={styles.ReminderEventTitle}>
+                          {event.title}
+                        </Text>
+                        <Text style={styles.ReminderEventTimeframe}>
+                          {format(eventDate, "h:mm a")}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              );
+            })
+          ) : (
+            <Text style={styles.ReminderNoEvent}>No upcoming events</Text>
+          )}
+        </ScrollView>
       </View>
     </ScrollView>
   );

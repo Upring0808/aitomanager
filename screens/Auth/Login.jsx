@@ -1,22 +1,25 @@
-import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore"; // import Firestore functions
-
 import React, { useState } from "react";
 import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
+  View,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  SafeAreaView,
+  StyleSheet,
+  Image,
+  StatusBar,
+  Platform,
+  KeyboardAvoidingView,
+  ScrollView,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import Toast from "react-native-toast-message";
+
 import BackgroundImage from "../../components/ImageBackground";
 import { auth, db } from "../../config/firebaseconfig";
 import aito from "../../assets/aito.png";
@@ -38,6 +41,9 @@ const Login = ({ navigation }) => {
   };
 
   const handleLogin = async () => {
+    // Dismiss keyboard before login
+    Keyboard.dismiss();
+
     if (!email || !password) {
       showToast("error", "Email and password are required.");
       return;
@@ -46,7 +52,6 @@ const Login = ({ navigation }) => {
     setIsSubmitting(true);
 
     try {
-      // Sign in using Firebase Authentication
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
@@ -54,16 +59,13 @@ const Login = ({ navigation }) => {
       );
       const user = userCredential.user;
 
-      // Fetch the user from the admin collection to check if they are an admin
-      const adminRef = doc(db, "admin", user.uid); // Fetch based on user's UID
+      const adminRef = doc(db, "admin", user.uid);
       const adminDoc = await getDoc(adminRef);
 
       if (adminDoc.exists()) {
-        // User is an admin
         showToast("success", "Admin login successful!");
         navigation.navigate("AdminDashboard", { screen: "AdminHome" });
       } else {
-        // User is not an admin
         showToast("success", "Login successful!");
         navigation.navigate("Dashboard", { screen: "Home" });
       }
@@ -93,82 +95,118 @@ const Login = ({ navigation }) => {
   return (
     <BackgroundImage>
       <LinearGradient
-        colors={["#ffffffaa", "#f0f0f0dd"]}
+        colors={["#ffffff88", "#f0f0f088"]}
         style={styles.gradient}
       >
         <SafeAreaView style={styles.safeArea}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.container}
-          >
-            <ScrollView contentContainerStyle={styles.scrollView}>
-              <View style={styles.logoContainer}>
-                <Image source={aito} style={styles.logo} />
-              </View>
-
-              <Text style={styles.subHeader}>
-                Alliance of Information Technologists Organization
-              </Text>
-              <Text style={styles.header}>LOGIN</Text>
-
-              <View style={styles.inputContainer}>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="mail-outline" size={20} color="#888" />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Email"
-                    placeholderTextColor="#a0a0a0"
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                </View>
-
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="lock-closed-outline" size={20} color="#888" />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Password"
-                    placeholderTextColor="#a0a0a0"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!isPasswordVisible}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setIsPasswordVisible(!isPasswordVisible)}
-                  >
-                    <Ionicons
-                      name={
-                        isPasswordVisible ? "eye-off-outline" : "eye-outline"
-                      }
-                      size={20}
-                      color="#888"
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <ScrollView
+              contentContainerStyle={styles.scrollViewContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.content}>
+                {/* Logo Section */}
+                <View style={styles.logoAndWelcome}>
+                  <View style={styles.logoContainer}>
+                    <Image
+                      source={aito}
+                      style={styles.logo}
+                      resizeMode="contain"
                     />
+                  </View>
+                  <Text style={styles.welcomeTitle}>Welcome Back</Text>
+                  <Text style={styles.subtitle}>Sign in to continue</Text>
+                </View>
+                {/* Login Form */}
+                <View style={styles.formContainer}>
+                  {/* Email Input */}
+                  <View style={styles.inputBulk}>
+                    <View style={styles.inputContainer}>
+                      <Ionicons
+                        name="mail-outline"
+                        size={20}
+                        color="#16325B"
+                        style={styles.inputIcon}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Email Address"
+                        placeholderTextColor="#a0a0a0"
+                        value={email}
+                        onChangeText={setEmail}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        returnKeyType="next"
+                        blurOnSubmit={false}
+                        onSubmitEditing={() => {}}
+                      />
+                    </View>
+
+                    {/* Password Input */}
+                    <View style={styles.inputContainer}>
+                      <Ionicons
+                        name="lock-closed-outline"
+                        size={20}
+                        color="#16325B"
+                        style={styles.inputIcon}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Password"
+                        placeholderTextColor="#a0a0a0"
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry={!isPasswordVisible}
+                        returnKeyType="done"
+                        onSubmitEditing={handleLogin}
+                      />
+                      <TouchableOpacity
+                        onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+                        style={styles.eyeIcon}
+                      >
+                        <Ionicons
+                          name={
+                            isPasswordVisible
+                              ? "eye-off-outline"
+                              : "eye-outline"
+                          }
+                          size={20}
+                          color="#16325B"
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Login Button */}
+                  <TouchableOpacity
+                    style={[
+                      styles.loginButton,
+                      isSubmitting && styles.loginButtonDisabled,
+                    ]}
+                    onPress={handleLogin}
+                    disabled={isSubmitting}
+                  >
+                    <Text style={styles.loginButtonText}>
+                      {isSubmitting ? "Logging in..." : "Login"}
+                    </Text>
                   </TouchableOpacity>
+
+                  {/* Register Link */}
+                  <View style={styles.registerContainer}>
+                    <Text style={styles.registerText}>
+                      Don't have an account?{" "}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate("Register")}
+                    >
+                      <Text style={styles.registerLink}>Sign Up</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
-
-              <TouchableOpacity
-                style={[styles.button, isSubmitting && styles.buttonDisabled]}
-                onPress={handleLogin}
-                disabled={isSubmitting}
-              >
-                <Text style={styles.buttonText}>
-                  {isSubmitting ? "Logging in..." : "Login"}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.registerLink}
-                onPress={() => navigation.navigate("Register")}
-              >
-                <Text style={styles.registerLinkText}>
-                  Don't have an account? Register here
-                </Text>
-              </TouchableOpacity>
             </ScrollView>
-          </KeyboardAvoidingView>
+          </TouchableWithoutFeedback>
         </SafeAreaView>
       </LinearGradient>
       <Toast />
@@ -183,76 +221,123 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  container: {
+  keyboardAvoidView: {
     flex: 1,
   },
-  scrollView: {
+  scrollViewContent: {
     flexGrow: 1,
     justifyContent: "center",
-    padding: 20,
+    paddingVertical: 20,
+  },
+  content: {
+    flex: 1,
+    justifyContent: "center",
+    position: "relative",
+    paddingHorizontal: 20,
+  },
+  logoAndWelcome: {
+    marginBottom: 250,
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 5,
+    marginTop: 5,
   },
   logo: {
-    width: 150,
-    height: 150,
+    width: 180,
+    height: 180,
   },
-  header: {
-    fontSize: 36,
-    color: "#333",
+  organizationName: {
+    fontSize: 16,
+    color: "#16325B",
     textAlign: "center",
-    marginBottom: 10,
-    fontWeight: "bold",
+    marginTop: 10,
+    fontWeight: "300",
   },
-  subHeader: {
-    fontSize: 15,
-    color: "#888",
+  formContainer: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 35,
+    borderTopRightRadius: 35,
+    padding: 30,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -5 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 15,
+    position: "absolute",
+    bottom: -20,
+    left: 0,
+    right: 0,
+    height: 300,
+  },
+
+  welcomeTitle: {
+    fontSize: 32,
+    fontWeight: "700",
+    color: "#16325B",
     textAlign: "center",
     marginBottom: 5,
-    fontStyle: "italic",
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: "#888",
+    textAlign: "center",
+    marginBottom: 60,
   },
   inputContainer: {
-    marginBottom: 20,
-  },
-  inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#E9EFEC",
-    borderRadius: 25,
+    backgroundColor: "#F4F6F9",
+    borderRadius: 15,
     paddingHorizontal: 15,
     marginBottom: 15,
     height: 50,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  inputIcon: {
+    marginRight: 10,
   },
   input: {
     flex: 1,
     fontSize: 16,
     color: "#333",
-    marginLeft: 10,
   },
-  button: {
+  eyeIcon: {
+    padding: 5,
+  },
+  loginButton: {
     backgroundColor: "#16325B",
-    paddingVertical: 15,
-    borderRadius: 25,
+    borderRadius: 15,
+    height: 50,
+    justifyContent: "center",
     alignItems: "center",
   },
-  buttonDisabled: {
-    backgroundColor: "#cccccc",
+  loginButtonDisabled: {
+    backgroundColor: "#A0A0A0",
   },
-  buttonText: {
-    color: "#fff",
+  loginButtonText: {
+    color: "white",
     fontSize: 18,
     fontWeight: "bold",
   },
-  registerLink: {
-    marginTop: 15,
-    alignItems: "center",
+  registerContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 20,
   },
-  registerLinkText: {
-    color: "#16325B",
+  registerText: {
+    color: "#888",
     fontSize: 14,
-    textDecorationLine: "underline",
+  },
+  registerLink: {
+    color: "#16325B",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
+  inputBulk: {
+    marginTop: 10,
   },
 });
 

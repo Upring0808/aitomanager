@@ -8,8 +8,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  SafeAreaView,
   Image,
+  Keyboard,
   Modal,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -21,6 +24,7 @@ import { auth, db } from "../../config/firebaseconfig";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import { useNavigation } from "@react-navigation/native";
+import Login from "./Login";
 
 const Register = () => {
   const [username, setUsername] = useState("");
@@ -192,242 +196,308 @@ const Register = () => {
   return (
     <BackgroundImage>
       <LinearGradient
-        colors={["#ffffffaa", "#f0f0f0dd"]}
+        colors={["#ffffffaa", "#16325B77"]}
         style={styles.gradient}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.container}
-        >
-          <ScrollView contentContainerStyle={styles.scrollView}>
-            <View style={styles.logoContainer}>
-              <Image source={aito} style={styles.logo} />
-            </View>
-
-            <Text style={styles.subHeader}>
-              Alliance of Information Technologists Organization
-            </Text>
-            <Text style={styles.header}>REGISTER</Text>
-
-            <View style={styles.inputContainer}>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="person-outline" size={20} color="#888" />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Username"
-                  placeholderTextColor="#a0a0a0"
-                  value={username}
-                  onChangeText={setUsername}
-                />
-              </View>
-
-              <View style={styles.inputWrapper}>
-                <MaterialIcons name="email" size={20} color="#888" />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email"
-                  placeholderTextColor="#a0a0a0"
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <View style={styles.inputWrapper}>
-                <Ionicons
-                  name="phone-portrait-outline"
-                  size={20}
-                  color="#888"
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Phone Number"
-                  placeholderTextColor="#a0a0a0"
-                  value={phone}
-                  onChangeText={setPhone}
-                  keyboardType="phone-pad"
-                />
-              </View>
-
-              <YearLevelPicker />
-
-              <View style={styles.inputWrapper}>
-                <Ionicons name="lock-closed-outline" size={20} color="#888" />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Password"
-                  placeholderTextColor="#a0a0a0"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!isPasswordVisible}
-                />
-                <TouchableOpacity
-                  onPress={() => setIsPasswordVisible(!isPasswordVisible)}
-                >
-                  <Ionicons
-                    name={isPasswordVisible ? "eye-off-outline" : "eye-outline"}
-                    size={20}
-                    color="#888"
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.button, isSubmitting && styles.buttonDisabled]}
-              onPress={handleRegister}
-              disabled={isSubmitting}
+        <SafeAreaView style={styles.safeArea}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <ScrollView
+              contentContainerStyle={styles.scrollViewContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.buttonText}>
-                {isSubmitting ? "Registering..." : "Register"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.loginLink}
-              onPress={() => navigation.navigate("Login")}
-            >
-              <Text style={styles.loginLinkText}>
-                Already have an account? Login here
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </KeyboardAvoidingView>
+              <View style={styles.content}>
+                <View style={styles.logoAndWelcome}>
+                  <View style={styles.logoContainer}>
+                    <Image
+                      source={aito}
+                      style={styles.logo}
+                      resizeMode="contain"
+                    />
+                  </View>
+                  {/* Title Section */}
+                  <View style={styles.headerContainer}>
+                    <Text style={styles.welcomeTitle}>Create Your Account</Text>
+                    <Text style={styles.subtitle}>
+                      Your Academic Journey Starts Here
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Form Container */}
+                <View style={styles.formContainer}>
+                  {/* Username Input */}
+                  <View style={styles.inputBulk}>
+                    <View style={styles.inputContainer}>
+                      <Ionicons
+                        name="person-outline"
+                        size={20}
+                        color="#16325B"
+                        style={styles.inputIcon}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Choose Your Username"
+                        placeholderTextColor="#a0a0a0"
+                        value={username}
+                        onChangeText={setUsername}
+                      />
+                    </View>
+
+                    {/* Email Input */}
+                    <View style={styles.inputContainer}>
+                      <MaterialIcons
+                        name="email"
+                        size={20}
+                        color="#16325B"
+                        style={styles.inputIcon}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Your Academic Email"
+                        placeholderTextColor="#a0a0a0"
+                        value={email}
+                        onChangeText={setEmail}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                      />
+                    </View>
+
+                    {/* Phone Input */}
+                    <View style={styles.inputContainer}>
+                      <Ionicons
+                        name="phone-portrait-outline"
+                        size={20}
+                        color="#16325B"
+                        style={styles.inputIcon}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Contact Number"
+                        placeholderTextColor="#a0a0a0"
+                        value={phone}
+                        onChangeText={setPhone}
+                        keyboardType="phone-pad"
+                      />
+                    </View>
+
+                    {/* Year Level Picker */}
+                    <View style={styles.inputContainer}>
+                      <Ionicons
+                        name="school-outline"
+                        size={20}
+                        color="#16325B"
+                        style={styles.inputIcon}
+                      />
+                      <Picker
+                        selectedValue={yearLevel}
+                        style={styles.picker}
+                        onValueChange={(itemValue) => setYearLevel(itemValue)}
+                      >
+                        <Picker.Item label="Select Academic Year" value="" />
+                        <Picker.Item label="1st Year" value="1" />
+                        <Picker.Item label="2nd Year" value="2" />
+                        <Picker.Item label="3rd Year" value="3" />
+                        <Picker.Item label="4th Year" value="4" />
+                      </Picker>
+                    </View>
+
+                    {/* Password Input */}
+                    <View style={styles.inputContainer}>
+                      <Ionicons
+                        name="lock-closed-outline"
+                        size={20}
+                        color="#16325B"
+                        style={styles.inputIcon}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Create Your Password"
+                        placeholderTextColor="#a0a0a0"
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry={!isPasswordVisible}
+                      />
+                      <TouchableOpacity
+                        onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+                        style={styles.eyeIcon}
+                      >
+                        <Ionicons
+                          name={
+                            isPasswordVisible
+                              ? "eye-off-outline"
+                              : "eye-outline"
+                          }
+                          size={20}
+                          color="#16325B"
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Register Button */}
+                  <TouchableOpacity
+                    style={[
+                      styles.registerButton,
+                      isSubmitting && styles.registerButtonDisabled,
+                    ]}
+                    onPress={handleRegister}
+                    disabled={isSubmitting}
+                  >
+                    <Text style={styles.registerButtonText}>
+                      {isSubmitting ? "Registering..." : "Create Account"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Login Link */}
+                  <View style={styles.loginContainer}>
+                    <Text style={styles.loginText}>
+                      Already have an account?{" "}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate("Login")}
+                    >
+                      <Text style={styles.loginLink}>Login</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+          </TouchableWithoutFeedback>
+        </SafeAreaView>
+        <Toast />
       </LinearGradient>
-      <Toast />
     </BackgroundImage>
   );
 };
 
 const styles = StyleSheet.create({
-  loginLink: {
-    marginTop: 15,
-    alignItems: "center",
-  },
-  loginLinkText: {
-    color: "#16325B",
-    fontSize: 14,
-    textDecorationLine: "underline",
-  },
-  gradient: {
-    flex: 1,
-  },
   container: {
     flex: 1,
   },
-  scrollView: {
+  content: {
+    flex: 1,
+    justifyContent: "center",
+    position: "relative", // Parent needs to allow positioning
+    paddingHorizontal: 20,
+  },
+  gradient: { flex: 1 },
+  safeArea: { flex: 1 },
+  keyboardAvoidView: { flex: 1 },
+  scrollViewContent: {
     flexGrow: 1,
     justifyContent: "center",
-    padding: 20,
+    paddingVertical: 20,
   },
-  logoContainer: {
+  headerContainer: {
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 30,
+    paddingHorizontal: 20,
   },
-  logo: {
-    width: 150,
-    height: 150,
+  logoAndWelcome: {
+    marginBottom: 450,
   },
-  header: {
-    fontSize: 36,
-    color: "#333",
-    textAlign: "center",
-    marginBottom: 10,
-    fontWeight: "bold",
-  },
-  subHeader: {
-    fontSize: 15,
-    color: "#888",
+  welcomeTitle: {
+    fontSize: 32,
+    fontWeight: "700",
+    color: "#17153B",
     textAlign: "center",
     marginBottom: 5,
-    fontStyle: "italic",
+    letterSpacing: -0.5,
   },
-  inputContainer: {
+  subtitle: {
+    fontSize: 16,
+    color: "#405D72",
+    textAlign: "center",
+    fontWeight: "300",
     marginBottom: 20,
   },
-  inputWrapper: {
+  formContainer: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 35, // Rounded top-left corner
+    borderTopRightRadius: 35, // Rounded top-right corner
+    padding: 30,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -5 }, // Shadow appears above
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 15,
+    position: "absolute", // Positioning the form
+    bottom: -20, // Snap to the bottom of the screen
+    left: 0,
+    right: 0,
+    height: 500, // Fixed height for the form container
+  },
+
+  inputBulk: {
+    marginTop: 10,
+  },
+  inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#E9EFEC",
-    borderRadius: 25,
+    backgroundColor: "#F4F6F9",
+    borderRadius: 15,
     paddingHorizontal: 15,
     marginBottom: 15,
     height: 50,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  inputIcon: {
+    marginRight: 10,
   },
   input: {
     flex: 1,
     fontSize: 16,
     color: "#333",
-    marginLeft: 10,
   },
-  button: {
+  eyeIcon: {
+    padding: 5,
+  },
+  picker: { flex: 1, color: "#333" },
+  registerButton: {
     backgroundColor: "#16325B",
-    paddingVertical: 15,
-    borderRadius: 25,
+    borderRadius: 15,
+    height: 50,
+    justifyContent: "center",
     alignItems: "center",
+
+    shadowColor: "#16325B",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 5,
   },
-  buttonDisabled: {
-    backgroundColor: "#cccccc",
+  registerButtonDisabled: {
+    backgroundColor: "#A0A0A0",
   },
-  buttonText: {
-    color: "#fff",
+  registerButtonText: {
+    color: "white",
     fontSize: 18,
     fontWeight: "bold",
   },
-  pickerWrapper: {
+  loginContainer: {
     flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 20,
+  },
+  loginText: {
+    color: "#666",
+    fontSize: 15,
+  },
+  loginLink: {
+    color: "#16325B",
+    fontWeight: "bold",
+    fontSize: 15,
+  },
+  logoContainer: {
     alignItems: "center",
-    backgroundColor: "#E9EFEC",
-    borderRadius: 25,
-    paddingHorizontal: 15,
-    marginBottom: 15,
-    height: 50,
+    marginBottom: 5,
+    marginTop: 20,
   },
-  picker: {
-    flex: 1,
-    color: "#000",
-    height: 50, // Ensure height matches the container
-  },
-  pickerItem: {
-    fontSize: 16,
-    color: "#000",
-  },
-  yearLevelButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 10,
-  },
-  yearLevelText: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 16,
-    color: "#000",
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-  },
-  pickerHeader: {
-    backgroundColor: "#f8f8f8",
-    padding: 15,
-    borderTopLeftRadius: 15,
-    borderTopRightRadius: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
-  },
-  doneButton: {
-    alignSelf: "flex-end",
-  },
-  doneButtonText: {
-    color: "#007AFF",
-    fontSize: 17,
-    fontWeight: "600",
-  },
-  iosPicker: {
-    backgroundColor: "#ffffff",
-    width: "100%",
+  logo: {
+    width: 100,
+    height: 100,
   },
 });
 

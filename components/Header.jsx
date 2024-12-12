@@ -1,61 +1,54 @@
 import React from "react";
 import { View, Text, StyleSheet, Platform, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons"; // Import an icon library (e.g., Ionicons)
-import logo from "../assets/aito.png"; // Use your logo image
+import logo from "../assets/aito.png";
 
 const Header = ({ title = "Aito Check" }) => {
   const insets = useSafeAreaInsets();
 
   return (
-    <View
-      style={[
-        styles.header,
-        {
-          paddingTop: Platform.OS === "ios" ? insets.top : 10,
-        },
-      ]}
-    >
-      <Ionicons
-        name="checkmark-circle-outline" // Choose an icon fitting the app's purpose
-        size={32}
-        color="#2F2A56"
-        style={styles.icon}
+    <View style={styles.container}>
+      {/* Notch Background */}
+      <View
+        style={[
+          styles.notchBackground,
+          { height: insets.top, backgroundColor: "#F8F9FA " },
+        ]}
       />
-      {/* <Image source={logo} style={styles.logo} resizeMode="contain" /> */}
-      <Text style={styles.title}>{title}</Text>
+      {/* Header Content */}
+      <View style={styles.header}>
+        <Image source={logo} style={styles.logo} resizeMode="contain" />
+        <Text style={styles.title}>{title}</Text>
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  container: {
+    backgroundColor: "#F8F9FA", // Same as header background
+  },
+  notchBackground: {
+    width: "100%",
+  },
   header: {
-    backgroundColor: "#F8F9FA",
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#dcdcdc",
-    minHeight: 56,
-  },
-  icon: {
-    marginRight: 2.5,
+    borderBottomColor: "#E0E0E0", // Subtle border
   },
   logo: {
-    width: 36,
-    height: 36,
-    marginRight: 10,
+    width: 32, // Minimal size for logo
+    height: 32,
+    marginRight: 8,
   },
   title: {
-    fontSize: 24,
-    fontWeight: "600",
-    color: "#2F2A56",
-    letterSpacing: -0.5,
-    lineHeight: 30,
-    textShadowColor: "#00000020",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
+    fontSize: 24, // Balanced font size
+    fontWeight: "500", // Medium weight
+    color: "#333333", // Neutral text color
+    letterSpacing: -1,
   },
 });
 

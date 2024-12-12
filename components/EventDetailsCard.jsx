@@ -73,7 +73,7 @@ const EventDetailsCard = ({ event }) => {
           {/* Admin info */}
           <View style={Styles.adminInfoContainer}>
             <FontAwesome name="share" size={10} color="#608BC1" />
-            <Text style={Styles.adminText}>From: {event.createdBy}</Text>
+            <Text style={Styles.adminText}>{event.createdBy}</Text>
           </View>
 
           <View style={Styles.dateTimeContainer}>

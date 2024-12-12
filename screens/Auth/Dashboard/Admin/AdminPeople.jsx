@@ -18,6 +18,8 @@ import { ref, getDownloadURL } from "firebase/storage";
 import Toast from "react-native-toast-message";
 import { Ionicons } from "@expo/vector-icons";
 
+import { YearLevel } from "./../../../../components/YearLevel";
+
 const { width } = Dimensions.get("window");
 const SPACING = 16;
 const AVATAR_SIZE = 50;
@@ -62,6 +64,9 @@ const PersonCard = memo(({ item, defaultAvatarUri }) => (
         <Text style={styles.username} numberOfLines={1}>
           {item.username}
         </Text>
+        {item.yearLevel && (
+          <Text style={styles.yearLevel}>Year Level: {item.yearLevel}</Text>
+        )}
         {item.role && <Text style={styles.roleText}>{item.role}</Text>}
       </View>
       <View style={styles.statusIndicator} />
@@ -265,6 +270,7 @@ const AdminPeople = () => {
             ...data,
             username: data.username || "Unknown",
             avatarUrl,
+            yearLevel: data.yearLevel || "N/A",
           };
         })
       );
@@ -311,9 +317,6 @@ const AdminPeople = () => {
     },
     [searchQuery, isAscending]
   );
-
-  const filteredOfficers = filterAndSortData(officers);
-  const filteredStudents = filterAndSortData(students);
 
   useEffect(() => {
     fetchData();
@@ -397,7 +400,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f9f9f9",
 
-    marginBottom: -57,
+    marginBottom: -50,
   },
   header: {
     position: "absolute",
@@ -454,7 +457,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingBottom: SPACING,
-    marginTop: -27,
+    marginTop: -47,
   },
   section: {
     paddingHorizontal: SPACING,
@@ -544,7 +547,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#none",
+    backgroundColor: "none",
     marginLeft: 8,
   },
   loader: {

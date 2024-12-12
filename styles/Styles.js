@@ -4,8 +4,7 @@ const { width } = Dimensions.get("window");
 
 export const Styles = StyleSheet.create({
   cardContainer: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   card: {
     backgroundColor: "#fff",

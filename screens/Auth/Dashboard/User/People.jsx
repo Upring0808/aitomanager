@@ -105,7 +105,7 @@ const Section = memo(({ title, data, defaultAvatarUri, showCount = true }) => {
   );
 });
 
-const Profile = () => {
+const People = () => {
   const [officers, setOfficers] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -561,4 +561,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Profile;
+export default People;
