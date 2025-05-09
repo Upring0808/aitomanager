@@ -41,7 +41,8 @@ class UserPresenceService {
         connectedSnap.val() ? "Connected" : "Disconnected"
       );
     } catch (error) {
-      console.error("[Presence] Failed to validate database config:", error);
+      // Handle the error silently to prevent app crashes
+      console.log("[Presence] Database validation skipped");
     }
   }
 

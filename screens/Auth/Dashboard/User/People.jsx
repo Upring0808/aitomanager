@@ -62,14 +62,14 @@ const safeHaptics = {
     try {
       Haptics.impactAsync(style);
     } catch (error) {
-      console.log("Haptics not available:", error);
+      // Silently handle haptics errors
     }
   },
   selectionAsync: () => {
     try {
       Haptics.selectionAsync();
     } catch (error) {
-      console.log("Haptics not available:", error);
+      // Silently handle haptics errors
     }
   },
 };
@@ -186,9 +186,9 @@ const PersonCard = memo(({ item, defaultAvatarUri, highlightQuery = "" }) => {
   const isMounted = useRef(true);
   const userId = item.id || item.uid;
 
-  // Log the current state for debugging
+  // Track presence state changes
   useEffect(() => {
-    console.log(`[PersonCard] User ${userId} presence state:`, presenceState);
+    // Update component when presence state changes
   }, [presenceState, userId]);
 
   // Check if this is the current user
@@ -197,9 +197,7 @@ const PersonCard = memo(({ item, defaultAvatarUri, highlightQuery = "" }) => {
   // Force online status for current user
   useEffect(() => {
     if (isCurrentUser) {
-      console.log(
-        `[PersonCard] This is the current user (${userId}), forcing online status`
-      );
+      // Force online status for current user
       setPresenceState({
         state: "online",
         last_active: Date.now(),
@@ -211,8 +209,6 @@ const PersonCard = memo(({ item, defaultAvatarUri, highlightQuery = "" }) => {
   useEffect(() => {
     let intervalId = null;
     if (!userId) return;
-
-    console.log(`[PersonCard] Setting up presence for user ${userId}`);
 
     // Create a reference to listen for real-time updates
     try {
@@ -227,8 +223,6 @@ const PersonCard = memo(({ item, defaultAvatarUri, highlightQuery = "" }) => {
 
           if (snapshot.exists()) {
             const data = snapshot.val();
-            console.log(`[PersonCard] Presence update for ${userId}:`, data);
-
             // Always show current user as online
             if (isCurrentUser) {
               const currentUserData = { ...data, state: "online" };
@@ -243,7 +237,6 @@ const PersonCard = memo(({ item, defaultAvatarUri, highlightQuery = "" }) => {
               );
             }
           } else {
-            console.log(`[PersonCard] No presence data for ${userId}`);
             // For missing data, ensure current user still shows as online
             if (isCurrentUser) {
               setPresenceState({
@@ -254,10 +247,7 @@ const PersonCard = memo(({ item, defaultAvatarUri, highlightQuery = "" }) => {
           }
         },
         (error) => {
-          console.error(
-            `[PersonCard] Error in presence listener for user ${userId}:`,
-            error
-          );
+          // Handle presence listener error silently
           // On error, ensure current user still shows as online
           if (isCurrentUser) {
             setPresenceState({
@@ -268,10 +258,7 @@ const PersonCard = memo(({ item, defaultAvatarUri, highlightQuery = "" }) => {
         }
       );
     } catch (error) {
-      console.error(
-        `[PersonCard] Error setting up presence listener for user ${userId}:`,
-        error
-      );
+      // Handle setup error silently
       // On error, ensure current user still shows as online
       if (isCurrentUser) {
         setPresenceState({
@@ -306,10 +293,7 @@ const PersonCard = memo(({ item, defaultAvatarUri, highlightQuery = "" }) => {
           off(presenceRef.current);
           presenceRef.current = null;
         } catch (error) {
-          console.error(
-            `[PersonCard] Error removing presence listener for user ${userId}:`,
-            error
-          );
+          // Handle cleanup error silently
         }
       }
     };
@@ -495,8 +479,6 @@ const People = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showSearchFAB, setShowSearchFAB] = useState(true);
-  const [refreshingPresence, setRefreshingPresence] = useState(false);
-  const [showDebugInfo, setShowDebugInfo] = useState(false);
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef(null);
@@ -507,17 +489,11 @@ const People = () => {
 
   // Initialize the presence service when the component mounts
   useEffect(() => {
-    console.log("[People] Initializing presence service");
-    userPresenceService.initialize().catch((err) => {
-      console.error("[People] Failed to initialize presence service:", err);
-    });
+    userPresenceService.initialize().catch(() => {});
 
     // Force update status every time this screen is focused
     const updateOnFocus = () => {
-      console.log("[People] Screen focused, forcing status update");
-      userPresenceService.forceOnlineUpdate().catch((err) => {
-        console.error("[People] Error updating status on focus:", err);
-      });
+      userPresenceService.forceOnlineUpdate().catch(() => {});
     };
 
     // Call immediately
@@ -525,54 +501,9 @@ const People = () => {
 
     // Clean up on unmount
     return () => {
-      console.log("[People] Cleaning up presence service");
-      userPresenceService.cleanup().catch((err) => {
-        console.error("[People] Failed to cleanup presence service:", err);
-      });
+      userPresenceService.cleanup().catch(() => {});
     };
   }, []);
-
-  // Function to manually force presence update
-  const refreshPresence = async () => {
-    try {
-      setRefreshingPresence(true);
-      Toast.show({
-        type: "info",
-        text1: "Updating status...",
-        position: "bottom",
-      });
-
-      await userPresenceService.forceOnlineUpdate();
-
-      // Refresh the data to show updated status
-      await fetchData();
-
-      Toast.show({
-        type: "success",
-        text1: "Online status updated",
-        position: "bottom",
-      });
-    } catch (error) {
-      console.error("[People] Error refreshing presence:", error);
-      Toast.show({
-        type: "error",
-        text1: "Failed to update status",
-        position: "bottom",
-      });
-    } finally {
-      setRefreshingPresence(false);
-    }
-  };
-
-  // Toggle debug info (show raw presence data)
-  const toggleDebugInfo = () => {
-    setShowDebugInfo(!showDebugInfo);
-    Toast.show({
-      type: "info",
-      text1: showDebugInfo ? "Debug mode off" : "Debug mode on",
-      position: "bottom",
-    });
-  };
 
   const getAvatarUrl = async (userId) => {
     try {
@@ -792,25 +723,6 @@ const People = () => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* Debug info panel */}
-      {showDebugInfo && (
-        <View style={styles.debugPanel}>
-          <Text style={styles.debugTitle}>Debug Info</Text>
-          <Text style={styles.debugText}>
-            Current user: {auth.currentUser ? auth.currentUser.uid : "None"}
-          </Text>
-          <Text style={styles.debugText}>
-            UserLoggedIn: {auth.currentUser ? "Yes" : "No"}
-          </Text>
-          <TouchableOpacity
-            style={styles.debugButton}
-            onPress={refreshPresence}
-          >
-            <Text style={styles.debugButtonText}>Force Status Update</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       <Animated.FlatList
         ref={scrollViewRef}
         contentContainerStyle={styles.contentContainer}
@@ -856,39 +768,6 @@ const People = () => {
           <Ionicons name="search" size={24} color="#FFFFFF" />
         </TouchableOpacity>
       </Animated.View>
-
-      {/* Presence Refresh Button */}
-      <View style={styles.presenceFAB}>
-        <TouchableOpacity
-          onPress={refreshPresence}
-          disabled={refreshingPresence}
-          activeOpacity={0.8}
-          style={[
-            styles.presenceFABTouchable,
-            refreshingPresence && styles.presenceFABDisabled,
-          ]}
-        >
-          {refreshingPresence ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Ionicons name="wifi" size={20} color="#FFFFFF" />
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {/* Debug Button */}
-      <View style={styles.debugFAB}>
-        <TouchableOpacity
-          onPress={toggleDebugInfo}
-          activeOpacity={0.8}
-          style={[
-            styles.debugFABTouchable,
-            showDebugInfo && styles.debugFABActive,
-          ]}
-        >
-          <Ionicons name="bug" size={20} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
 
       {/* Search Modal */}
       <SearchBar
@@ -1170,28 +1049,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#4CAF50",
   },
-  presenceFAB: {
-    position: "absolute",
-    bottom: SPACING * 2,
-    left: SPACING * 2,
-    zIndex: 100,
-  },
-  presenceFABTouchable: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: THEME_SECONDARY,
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-  },
-  presenceFABDisabled: {
-    backgroundColor: "#94A3B8",
-  },
+
   currentUserBadge: {
     backgroundColor: THEME_COLOR,
     paddingHorizontal: 8,
@@ -1202,57 +1060,6 @@ const styles = StyleSheet.create({
   currentUserText: {
     color: "#FFFFFF",
     fontSize: 10,
-    fontWeight: "bold",
-  },
-  debugFAB: {
-    position: "absolute",
-    bottom: SPACING * 6,
-    left: SPACING * 2,
-    zIndex: 100,
-  },
-  debugFABTouchable: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#64748B",
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-  },
-  debugFABActive: {
-    backgroundColor: "#EF4444",
-  },
-  debugPanel: {
-    backgroundColor: "rgba(0,0,0,0.8)",
-    padding: SPACING,
-    margin: SPACING,
-    borderRadius: 8,
-    zIndex: 999,
-  },
-  debugTitle: {
-    color: "#FFFFFF",
-    fontWeight: "bold",
-    fontSize: 16,
-    marginBottom: 8,
-  },
-  debugText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  debugButton: {
-    backgroundColor: "#3E92CC",
-    padding: 8,
-    borderRadius: 4,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  debugButtonText: {
-    color: "#FFFFFF",
     fontWeight: "bold",
   },
 });

@@ -76,49 +76,11 @@ const App = () => {
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState(null);
-  const [debugVisible, setDebugVisible] = useState(__DEV__); // Only show in development
 
   const appState = useRef(AppState.currentState);
   const navigationRef = useRef(null);
 
-  // Function to force sign out
-  const handleForceSignOut = async () => {
-    try {
-      console.log("[App] Force signing out user");
-      const auth = getAuth();
-      if (auth) {
-        try {
-          await firebaseSignOut(auth);
-        } catch (error) {
-          console.error("[App] Error signing out:", error);
-        }
-      }
-
-      // Clear all Firebase storage
-      await clearFirebaseStorage();
-
-      // Reset state
-      setUser(null);
-      setUserLoggedIn(false);
-
-      // Refresh the app
-      setInitializing(true);
-      setTimeout(() => setInitializing(false), 500);
-
-      Toast.show({
-        type: "success",
-        text1: "Signed out successfully",
-        text2: "All stored credentials cleared",
-      });
-    } catch (error) {
-      console.error("[App] Error in force sign out:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error signing out",
-        text2: error.message,
-      });
-    }
-  };
+  // Auth state management functions
 
   // Handle user state changes using Firebase web SDK
   useEffect(() => {
@@ -256,24 +218,7 @@ const App = () => {
         barStyle="dark-content"
       />
 
-      {/* Debug button for development */}
-      {debugVisible && (
-        <View
-          style={{
-            position: "absolute",
-            top: 40,
-            right: 10,
-            zIndex: 9999,
-            backgroundColor: "rgba(0,0,0,0.7)",
-            padding: 10,
-            borderRadius: 5,
-          }}
-        >
-          <TouchableOpacity onPress={handleForceSignOut}>
-            <Text style={{ color: "white" }}>Force Sign Out</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* App content */}
 
       <NavigationContainer
         ref={navigationRef}
