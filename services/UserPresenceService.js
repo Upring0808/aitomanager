@@ -248,15 +248,13 @@ class UserPresenceService {
       console.log("[Presence] Cleared heartbeat interval");
     }
 
-    // No need to explicitly remove listeners with the web SDK
-    // They will be garbage collected when the refs are nullified
-
+    // Try to set offline status before cleaning up references
     if (this.userStatusDBRef) {
       try {
         const uid = this.getUserId();
         if (uid) {
-          // Set the user as offline before cleaning up
-          await update(this.userStatusDBRef, {
+          // Use set instead of update to ensure complete replacement
+          await set(this.userStatusDBRef, {
             state: "offline",
             last_active: serverTimestamp(),
           });
@@ -265,9 +263,24 @@ class UserPresenceService {
       } catch (error) {
         console.error("[Presence] Error updating offline status:", error);
       }
-      this.userStatusDBRef = null;
     }
 
+    // Safely remove listeners - no need to use 'off' with Firebase Web SDK v9+
+    // The Firebase Web SDK v9+ uses a different pattern for cleanup
+    // References will be garbage collected when nullified
+    try {
+      // With the modular SDK, we don't need to manually call 'off'
+      // Just release references to allow garbage collection
+      if (this.connectedRef) {
+        console.log("[Presence] Releasing connected ref listener");
+        // No explicit removal needed with Firebase v9+
+      }
+    } catch (error) {
+      console.error("[Presence] Error during listener cleanup:", error);
+    }
+
+    // Reset all references
+    this.userStatusDBRef = null;
     this.connectedRef = null;
     this.initialized = false;
     console.log("[Presence] Presence service cleanup complete");

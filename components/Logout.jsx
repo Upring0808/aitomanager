@@ -15,7 +15,16 @@ const Logout = ({
   const handleLogout = async () => {
     try {
       await auth.signOut();
-      navigation.replace("Index");
+      // First navigate to Index
+      navigation.navigate("Index");
+      // Then reset the navigation stack to prevent going back
+      setTimeout(() => {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "Index" }],
+        });
+      }, 100);
+
       Toast.show({
         type: "success",
         text1: "Logged out",

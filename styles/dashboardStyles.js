@@ -29,7 +29,11 @@ export const dashboardStyles = StyleSheet.create({
     backgroundColor: "#3652AD",
     position: "absolute",
     top: -1,
-    width: 20,
+    width: underlineWidth,
+    left: 0,
+    right: 0,
+    marginLeft: "auto",
+    marginRight: "auto",
   },
   tab: {
     alignItems: "center",
@@ -71,7 +75,7 @@ export const dashboardStyles = StyleSheet.create({
   notificationBadge: {
     position: "absolute",
     top: 0,
-    right: 45,
+    right: -5,
     backgroundColor: "#FF3B30",
     borderRadius: 10,
     minWidth: 18,

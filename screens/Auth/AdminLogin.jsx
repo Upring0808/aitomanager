@@ -67,8 +67,14 @@ const AdminLogin = ({ navigation }) => {
 
       if (adminDoc.exists()) {
         showToast("success", "Admin login successful!");
-        // Navigate to the Admin Dashboard
-        navigation.navigate("AdminDashboard", { screen: "AdminHome" });
+        // Navigate to the Admin Dashboard using reset to prevent navigation issues
+        // Add a small delay to ensure Firebase auth state is fully updated
+        setTimeout(() => {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: "AdminDashboard" }],
+          });
+        }, 300);
       } else {
         showToast("error", "You do not have admin privileges.");
         // Optionally, sign out the user since they are not an admin

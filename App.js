@@ -9,9 +9,22 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from "react-native";
+// Import BackHandler conditionally based on platform
+let BackHandler;
+if (Platform.OS !== "web") {
+  BackHandler = require("react-native").BackHandler;
+} else {
+  // Create a mock BackHandler for web to prevent errors
+  BackHandler = {
+    addEventListener: () => ({ remove: () => {} }),
+    remove: () => {},
+  };
+}
+
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import * as SplashScreen from "expo-splash-screen";
+// Remove BackHandler import as it's not needed and causes errors on web
 
 // Direct import for firebase/auth to avoid the modular instance error
 import {
@@ -44,11 +57,61 @@ import Dashboard from "./components/Dashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import Toast from "react-native-toast-message";
 
+// Import Dashboard screens for nested navigation
+import Home from "./screens/Auth/Dashboard/User/Home";
+import Fines from "./screens/Auth/Dashboard/User/Fines";
+import People from "./screens/Auth/Dashboard/User/People";
+import Profile from "./screens/Auth/Dashboard/User/Profile";
+import Events from "./screens/Auth/Dashboard/User/Events";
+
+// Import Admin Dashboard screens for nested navigation
+import AdminHome from "./screens/Auth/Dashboard/Admin/AdminHome";
+import AdminFines from "./screens/Auth/Dashboard/Admin/AdminFines";
+import AdminPeople from "./screens/Auth/Dashboard/Admin/AdminPeople";
+import AdminProfile from "./screens/Auth/Dashboard/Admin/AdminProfile";
+import AdminEvents from "./screens/Auth/Dashboard/Admin/AdminEvents";
+
 // Override default Text component to use system fonts
 Text.defaultProps = Text.defaultProps || {};
 Text.defaultProps.style = { fontFamily: undefined };
 
 const Stack = createStackNavigator();
+
+// Create navigators for Dashboard and AdminDashboard
+const DashboardNavigator = () => {
+  const DashboardStack = createStackNavigator();
+  return (
+    <DashboardStack.Navigator screenOptions={{ headerShown: false }}>
+      <DashboardStack.Screen name="DashboardMain" component={Dashboard} />
+      <DashboardStack.Screen name="Home" component={Home} />
+      <DashboardStack.Screen name="Fines" component={Fines} />
+      <DashboardStack.Screen name="People" component={People} />
+      <DashboardStack.Screen name="Profile" component={Profile} />
+      <DashboardStack.Screen name="Events" component={Events} />
+    </DashboardStack.Navigator>
+  );
+};
+
+// Create AdminDashboard navigator
+const AdminDashboardNavigator = () => {
+  const AdminDashboardStack = createStackNavigator();
+  return (
+    <AdminDashboardStack.Navigator screenOptions={{ headerShown: false }}>
+      <AdminDashboardStack.Screen
+        name="AdminDashboardMain"
+        component={AdminDashboard}
+      />
+      <AdminDashboardStack.Screen name="AdminHome" component={AdminHome} />
+      <AdminDashboardStack.Screen name="AdminFines" component={AdminFines} />
+      <AdminDashboardStack.Screen name="AdminPeople" component={AdminPeople} />
+      <AdminDashboardStack.Screen
+        name="AdminProfile"
+        component={AdminProfile}
+      />
+      <AdminDashboardStack.Screen name="AdminEvents" component={AdminEvents} />
+    </AdminDashboardStack.Navigator>
+  );
+};
 
 // Utility function to clear Firebase storage
 const clearFirebaseStorage = async () => {
@@ -128,6 +191,24 @@ const App = () => {
               "[App] Cleaning up presence service for logged out user"
             );
             await userPresenceService.cleanup();
+
+            // Ensure navigation is reset to Index when user logs out
+            if (navigationRef.current && !initializing) {
+              try {
+                console.log("[App] Resetting navigation to Index after logout");
+                // Use the correct route name that exists in the navigator
+                navigationRef.current.navigate("Index");
+                // Reset the navigation stack to have only Index
+                setTimeout(() => {
+                  navigationRef.current.reset({
+                    index: 0,
+                    routes: [{ name: "Index" }],
+                  });
+                }, 100);
+              } catch (error) {
+                console.error("[App] Navigation reset error:", error);
+              }
+            }
           }
 
           if (initializing) {
@@ -229,6 +310,10 @@ const App = () => {
             userPresenceService.forceOnlineUpdate();
           }
         }}
+        onReady={() => {
+          // Set up navigation reference when ready
+          console.log("[App] Navigation container is ready");
+        }}
       >
         <Stack.Navigator
           initialRouteName="Index"
@@ -250,27 +335,26 @@ const App = () => {
             },
           }}
         >
-          {/* Conditionally render screens based on user login state */}
-          {user ? (
+          {/* Always include Index and auth screens */}
+          <Stack.Screen name="Index" component={Index} />
+          <Stack.Screen name="Register" component={Register} />
+          <Stack.Screen name="Login" component={Login} />
+          <Stack.Screen name="AdminLogin" component={AdminLogin} />
+          <Stack.Screen name="RegisterAdmin" component={RegisterAdmin} />
+
+          {/* Only render Dashboard screens if user is logged in */}
+          {user && (
             <>
               <Stack.Screen
                 name="Dashboard"
-                component={Dashboard}
+                component={DashboardNavigator}
                 options={{ gestureEnabled: false }}
               />
               <Stack.Screen
                 name="AdminDashboard"
-                component={AdminDashboard}
+                component={AdminDashboardNavigator}
                 options={{ gestureEnabled: false }}
               />
-            </>
-          ) : (
-            <>
-              <Stack.Screen name="Index" component={Index} />
-              <Stack.Screen name="Register" component={Register} />
-              <Stack.Screen name="Login" component={Login} />
-              <Stack.Screen name="AdminLogin" component={AdminLogin} />
-              <Stack.Screen name="RegisterAdmin" component={RegisterAdmin} />
             </>
           )}
         </Stack.Navigator>

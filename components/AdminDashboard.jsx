@@ -6,14 +6,26 @@ import {
   Text,
   TouchableOpacity,
   View,
-  BackHandler,
+  Platform,
 } from "react-native";
+// Conditionally import BackHandler to prevent errors on web
+let BackHandler;
+if (Platform.OS !== "web") {
+  BackHandler = require("react-native").BackHandler;
+} else {
+  // Create a mock BackHandler for web to prevent errors
+  BackHandler = {
+    addEventListener: () => ({ remove: () => {} }),
+    removeEventListener: () => {},
+  };
+}
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { dashboardServices } from "../services/dashboardServices";
+import userPresenceService from "../services/UserPresenceService";
 import { auth } from "../config/firebaseconfig";
 
 import { constants, dashboardStyles } from "../styles/dashboardStyles";
@@ -26,7 +38,21 @@ import AdminPeople from "../screens/Auth/Dashboard/Admin/AdminPeople";
 import AdminProfile from "../screens/Auth/Dashboard/Admin/AdminProfile";
 import AdminEvents from "../screens/Auth/Dashboard/Admin/AdminEvents";
 
-const AdminDashboard = ({ navigation }) => {
+const AdminDashboard = ({ navigation, route }) => {
+  // Handle nested navigation - this is important for proper navigation from other screens
+  React.useEffect(() => {
+    if (route.params?.screen) {
+      // If we receive a screen parameter, navigate to that screen
+      // Use a slight delay to ensure the component is fully mounted
+      const timer = setTimeout(() => {
+        // Check if the component is still mounted and auth is still valid
+        if (auth.currentUser) {
+          navigation.navigate(route.params.screen);
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [route.params?.screen, navigation]);
   const [activeTab, setActiveTab] = useState("Home");
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [translateX] = useState(new Animated.Value(0));
@@ -38,50 +64,93 @@ const AdminDashboard = ({ navigation }) => {
   // Handle hardware back button press
   useFocusEffect(
     useCallback(() => {
-      const onBackPress = () => {
-        setShowLogoutModal(true); // Show logout modal when back is pressed
-        return true; // Prevent default back action
-      };
+      // Skip BackHandler setup on web where it's not supported
+      if (Platform.OS !== "web") {
+        const onBackPress = () => {
+          // Only show logout modal if we're still logged in
+          if (auth.currentUser) {
+            setShowLogoutModal(true); // Show logout modal when back is pressed
+            return true; // Prevent default back action
+          }
+          return false; // Allow default back action if not logged in
+        };
 
-      BackHandler.addEventListener("hardwareBackPress", onBackPress);
+        const subscription = BackHandler.addEventListener(
+          "hardwareBackPress",
+          onBackPress
+        );
 
-      return () =>
-        BackHandler.removeEventListener("hardwareBackPress", onBackPress);
+        return () => {
+          try {
+            subscription.remove();
+          } catch (error) {
+            console.error(
+              "[AdminDashboard] Error removing back handler:",
+              error
+            );
+          }
+        };
+      }
+      return () => {}; // Return empty cleanup for web
     }, [])
   );
 
   useEffect(() => {
     const user = auth.currentUser;
     if (user) {
-      const unsubscribe = dashboardServices.subscribeToAvatarUpdates(
-        user,
-        (newAvatarUrl) => {
-          setAvatarUrl(newAvatarUrl);
-          setLoadingAvatar(false);
-        }
-      );
+      let unsubscribe = () => {};
+      try {
+        unsubscribe = dashboardServices.subscribeToAvatarUpdates(
+          user,
+          (newAvatarUrl) => {
+            setAvatarUrl(newAvatarUrl);
+            setLoadingAvatar(false);
+          }
+        );
 
-      dashboardServices.fetchAvatar(user).then(({ avatarUrl, error }) => {
-        if (!error) {
-          setAvatarUrl(avatarUrl);
-          setLoadingAvatar(false);
-        }
-      });
+        dashboardServices
+          .fetchAvatar(user)
+          .then(({ avatarUrl, error }) => {
+            if (!error) {
+              setAvatarUrl(avatarUrl);
+              setLoadingAvatar(false);
+            } else {
+              console.error("[AdminDashboard] Error fetching avatar:", error);
+              setLoadingAvatar(false);
+            }
+          })
+          .catch((error) => {
+            console.error("[AdminDashboard] Avatar fetch exception:", error);
+            setLoadingAvatar(false);
+          });
+      } catch (error) {
+        console.error("[AdminDashboard] Avatar subscription error:", error);
+        setLoadingAvatar(false);
+      }
 
       return () => {
-        unsubscribe();
+        try {
+          unsubscribe();
+        } catch (error) {
+          console.error("[AdminDashboard] Error unsubscribing avatar:", error);
+        }
       };
+    } else {
+      setLoadingAvatar(false);
     }
   }, []);
 
   useEffect(() => {
-    Animated.spring(translateX, {
-      toValue:
-        activeTabIndex * constants.tabWidth +
-        (constants.tabWidth - constants.underlineWidth) / 2,
-      useNativeDriver: true,
-      friction: 8,
-    }).start();
+    // Only animate if we have a valid auth state
+    if (auth.currentUser) {
+      Animated.spring(translateX, {
+        toValue:
+          activeTabIndex * constants.tabWidth +
+          (constants.tabWidth - constants.underlineWidth) / 2,
+        useNativeDriver: true,
+        friction: 8,
+      }).start();
+    }
   }, [activeTabIndex, translateX]);
 
   const handleTabPress = useCallback((name, index) => {
@@ -90,9 +159,25 @@ const AdminDashboard = ({ navigation }) => {
   }, []);
 
   const handleLogout = useCallback(async () => {
-    const { error } = await dashboardServices.logout();
-    if (!error) {
-      navigation.navigate("Login");
+    try {
+      // First clean up presence service
+      await userPresenceService.cleanup();
+
+      // Then sign out from Firebase
+      const { error } = await dashboardServices.logout();
+
+      // Use a more reliable approach with a single reset call
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "Index" }],
+      });
+    } catch (error) {
+      console.error("[AdminDashboard] Error during logout:", error);
+      // Attempt to navigate anyway with a single reset call
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "Index" }],
+      });
     }
   }, [navigation]);
 
@@ -102,6 +187,17 @@ const AdminDashboard = ({ navigation }) => {
   }, []);
 
   const renderContent = useCallback(() => {
+    // If user is not logged in, don't render content
+    if (!auth.currentUser) {
+      return (
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <Text>Please log in to view this content</Text>
+        </View>
+      );
+    }
+
     switch (activeTab) {
       case "Home":
         return <AdminHome />;
@@ -177,7 +273,8 @@ const AdminDashboard = ({ navigation }) => {
   );
 
   const LogoutWrapper = useCallback(() => {
-    if (!showLogoutModal) return null;
+    // Only show logout modal if we're logged in and modal is visible
+    if (!showLogoutModal || !auth.currentUser) return null;
 
     return (
       <Logout
@@ -188,6 +285,35 @@ const AdminDashboard = ({ navigation }) => {
     );
   }, [showLogoutModal, handleLogout]);
 
+  // Check if user is logged in before rendering the dashboard
+  if (!auth.currentUser) {
+    // If not logged in, render a loading state or redirect
+    return (
+      <SafeAreaView style={dashboardStyles.safeArea} edges={["right", "left"]}>
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <Text>Session expired. Please log in again.</Text>
+          <TouchableOpacity
+            style={{
+              marginTop: 20,
+              backgroundColor: "#3652AD",
+              paddingVertical: 10,
+              paddingHorizontal: 20,
+              borderRadius: 5,
+            }}
+            onPress={() =>
+              navigation.reset({ index: 0, routes: [{ name: "Index" }] })
+            }
+          >
+            <Text style={{ color: "white" }}>Return to Login</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Normal dashboard rendering when user is logged in
   return (
     <SafeAreaView style={dashboardStyles.safeArea} edges={["right", "left"]}>
       <Header onLogout={() => setShowLogoutModal(true)} />

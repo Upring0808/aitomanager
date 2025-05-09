@@ -122,10 +122,23 @@ const Login = ({ navigation }) => {
         if (adminDoc.exists()) {
           // Admin login successful but don't explicitly say it's an admin login
           showToast("success", "Login successful!");
-          navigation.navigate("AdminDashboard", { screen: "AdminHome" });
+          // Use the correct navigation pattern for nested navigators
+          // Add a small delay to ensure Firebase auth state is fully updated
+          setTimeout(() => {
+            navigation.reset({
+              index: 0,
+              routes: [{ name: "AdminDashboard" }],
+            });
+          }, 300);
         } else {
           showToast("success", "Login successful!");
-          navigation.navigate("Dashboard", { screen: "Home" });
+          // Add a small delay to ensure Firebase auth state is fully updated
+          setTimeout(() => {
+            navigation.reset({
+              index: 0,
+              routes: [{ name: "Dashboard" }],
+            });
+          }, 300);
         }
       } else {
         // Student ID login flow
@@ -168,7 +181,14 @@ const Login = ({ navigation }) => {
         const user = userCredential.user;
 
         showToast("success", "Login successful!");
-        navigation.navigate("Dashboard", { screen: "Home" });
+        // Use the correct navigation pattern for nested navigators
+        // Add a small delay to ensure Firebase auth state is fully updated
+        setTimeout(() => {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: "Dashboard" }],
+          });
+        }, 300);
       }
     } catch (error) {
       console.error("Error during login:", error);
