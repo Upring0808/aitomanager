@@ -34,10 +34,7 @@ import {
   Calendar,
   Clock,
 } from "lucide-react-native";
-import { Card } from "react-native-paper";
-import { useNavigation } from "@react-navigation/native";
-import { MaterialIcons } from "@expo/vector-icons";
-import { styles } from "../../../../styles/AdminHomeStyles";
+
 import Icon from "react-native-vector-icons/Ionicons";
 
 const TIMELINE_HEIGHT = 660;
@@ -108,6 +105,17 @@ const AdminHome = () => {
         color: EVENT_COLORS[Math.floor(Math.random() * EVENT_COLORS.length)],
       }));
 
+      // Update week days with events
+      const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+      const weekEnd = addDays(weekStart, 6);
+
+      const eventsInWeek = allEvents.filter((event) => {
+        const eventDate = event.dueDate?.toDate() || new Date();
+        return isWithinInterval(eventDate, { start: weekStart, end: weekEnd });
+      });
+
+      updateWeekDaysWithEvents(eventsInWeek); // Update week days with events
+
       // Filter events for the selected date
       const selectedDayEvents = allEvents.filter((event) => {
         const eventDate = event.dueDate?.toDate() || new Date();
@@ -128,18 +136,7 @@ const AdminHome = () => {
         .slice(0, 3); // Top 3 upcoming events
 
       setEvents(selectedDayEvents);
-      setUpcomingEvents(upcomingEvents); // New state to store upcoming events
-
-      // Update week days with events
-      const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
-      const weekEnd = addDays(weekStart, 6);
-
-      const eventsInWeek = allEvents.filter((event) => {
-        const eventDate = event.dueDate?.toDate() || new Date();
-        return isWithinInterval(eventDate, { start: weekStart, end: weekEnd });
-      });
-
-      updateWeekDaysWithEvents(eventsInWeek);
+      setUpcomingEvents(upcomingEvents);
     });
 
     return () => unsubscribe();
@@ -224,7 +221,13 @@ const AdminHome = () => {
         return isWithinInterval(eventDate, { start: weekStart, end: weekEnd });
       });
 
-      setEvents(eventsInWeek); // Events for the selected date
+      // Filter today's events
+      const todayEvents = allFetchedEvents.filter((event) => {
+        const eventDate = event.dueDate?.toDate() || new Date();
+        return isSameDay(eventDate, new Date());
+      });
+
+      setEvents(todayEvents); // Events for today
       setAllEvents(allFetchedEvents); // Store all events for the week
       updateWeekDaysWithEvents(eventsInWeek); // Update week days with events
     } catch (error) {
@@ -301,11 +304,333 @@ const AdminHome = () => {
   useEffect(() => {
     fetchEvents(); // Fetch events for the current week on mount
   }, []);
+  const styles = StyleSheet.create({
+    sectionHeader: {
+      flexDirection: "row", // Aligns title and icon horizontally
+      alignItems: "center", // Vertically centers them
+      justifyContent: "flex-start", // Ensures proper spacing
+      marginBottom: 0, // Adds space below the section
+    },
+    mainContainer: {
+      flex: 1,
+      backgroundColor: "#fff",
+    },
+    container: { flex: 1, padding: 20 },
+    loader: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 18,
+      backgroundColor: "#003161",
+      borderBottomLeftRadius: 20,
+      borderBottomRightRadius: 20,
+      elevation: 6,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 3,
+      marginBottom: 10,
+    },
+    leftContent: {
+      flexDirection: "row",
+      alignItems: "center",
+      flex: 1, // Allow left content to grow and shrink
+      marginRight: 8, // Add spacing between left and right
+    },
+    rightContent: {
+      flex: 1, // Allow right content to grow and shrink
+      alignItems: "flex-end", // Align text to the right
+    },
+    icon: {
+      marginRight: 8,
+    },
+    greeting: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#FFFFFF",
+      flexShrink: 1, // Prevent overflowing content
+      fontFamily: "Lato-Regular",
+    },
+    username: {
+      fontSize: 20, // Increase the font size
+      fontFamily: "Lato-Regular",
+      fontWeight: "400", // Make the text bold
+      color: "#FFFFFF", // Set a bright white color for emphasis
+      marginRight: 20, // Add spacing to the right for breathing room
+      textTransform: "capitalize", // Ensure the name starts with a capital letter
+    },
+
+    calendarHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+      backgroundColor: "#fff",
+    },
+    monthTitle: {
+      fontSize: 18,
+      fontWeight: "bold",
+      color: "#4C4B16",
+    },
+    weekRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      backgroundColor: "#fff",
+      marginBottom: 5,
+    },
+    dayColumn: {
+      alignItems: "center",
+      width: 40,
+      paddingVertical: 8,
+      borderRadius: 10,
+    },
+    selectedColumn: {
+      backgroundColor: "#E1F7F5",
+    },
+    hasEventsColumn: {
+      position: "relative",
+    },
+    dayText: {
+      fontSize: 12,
+      color: "#666",
+      marginBottom: 4,
+    },
+    dateText: {
+      fontSize: 16,
+      fontWeight: "bold",
+      color: "#333",
+    },
+    selectedText: {
+      color: "#024CAA",
+      fontWeight: "bold",
+    },
+    eventDot: {
+      width: 4,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: "#FF4545",
+      marginTop: 4,
+      zIndex: 999999,
+    },
+    timelineContainer: {
+      flexDirection: "column",
+      paddingHorizontal: 20,
+      marginTop: 8,
+      marginBottom: 20,
+      position: "relative",
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: "#E5E7EB",
+      backgroundColor: "#F9FAFB",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+
+      margin: 18,
+      alignSelf: "stretch", // Adjust to the full width of the container
+      height: "auto", // Allow dynamic height based on content
+    },
+
+    eventsContainer: {
+      flexDirection: "column", // Stack event cards vertically
+      paddingTop: 20,
+    },
+
+    eventCard: {
+      borderRadius: 12,
+      backgroundColor: "#4F46E5", // Custom color for a reminder look
+      padding: 16,
+      marginBottom: 20,
+      flexDirection: "row",
+      alignItems: "center",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 5,
+    },
+
+    eventContent: {
+      flex: 1,
+    },
+    eventIcon: { marginRight: 10 },
+    eventTitle: { fontSize: 16, fontWeight: "bold", color: "#fff" },
+    eventTime: { fontSize: 12, color: "#f0f0f0" },
+    sectionTitle: {
+      fontSize: 20,
+      fontWeight: "600",
+      fontFamily: "Lato-Bold",
+      color: "#333",
+      marginRight: 5,
+      marginLeft: 25,
+    },
+    noEventsText: {
+      textAlign: "center",
+      color: "#888",
+      marginTop: 0,
+      marginBottom: 20,
+      paddingVertical: 100,
+      fontSize: 16,
+      fontStyle: "italic",
+    },
+
+    ReminderContainer: {
+      marginBottom: 12,
+    },
+    ReminderSectionTitle: {
+      marginLeft: 25,
+      marginTop: 5,
+      fontSize: 20,
+      fontWeight: "600",
+      color: "#333",
+    },
+
+    ReminderCardContainer: {
+      marginBottom: 0,
+      margin: 18,
+    },
+    ReminderCard: {
+      backgroundColor: "#507687",
+      borderRadius: 15,
+      padding: 12.5,
+      shadowColor: "#000",
+      shadowOpacity: 0.02,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 2,
+      marginVertical: -9,
+      marginBottom: 0,
+      borderWidth: 0.25,
+      borderColor: "#B7B7B7",
+    },
+    ReminderCardContent: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    ReminderDateTimeContainer: {
+      width: 80,
+      marginRight: 16,
+    },
+    ReminderDateText: {
+      fontSize: 19,
+      fontWeight: "600",
+      color: "#FFF4B7",
+    },
+    ReminderDayText: {
+      textTransform: "uppercase",
+      fontSize: 12,
+      color: "#fff",
+      textAlign: "left",
+      width: "100%",
+    },
+    ReminderEventDetails: {
+      flex: 1,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    ReminderEventTitleContainer: {
+      flex: 1,
+    },
+    ReminderEventTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#fff",
+    },
+    ReminderEventTimeframe: {
+      fontSize: 14,
+      color: "#fff",
+      marginTop: 4,
+    },
+    ReminderEventRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      width: "100%",
+    },
+    ReminderIntersection: {
+      height: 50,
+      borderLeftWidth: 0.6,
+      borderLeftColor: "#fff",
+      marginVertical: 0,
+      marginHorizontal: 0,
+      marginLeft: -15.5,
+      paddingRight: 20,
+    },
+    ReminderNoEvent: {
+      textAlign: "center",
+      marginTop: 50,
+      color: "#888",
+      fontSize: 18,
+    },
+    ReminderCardContent: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between", // Helps spread out the content
+    },
+    sectionTitleContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 1,
+      marginVertical: -0,
+    },
+    sectionTitleIcon: {
+      marginLeft: 5,
+      marginTop: 15,
+    },
+    ReminderIcon: {
+      marginLeft: 170,
+      marginTop: -23,
+
+      marginBottom: 4,
+    },
+    ReminderSubtitle: {
+      color: "#888",
+      fontSize: 14,
+      marginLeft: 25,
+      marginBottom: 5,
+      fontFamily: "Lato-Regular",
+    },
+    dateHeader: {
+      padding: 10,
+      backgroundColor: "#fff",
+      marginBottom: -10,
+      alignItems: "center", // Center items horizontally
+      justifyContent: "center", // Center items vertically
+      flexDirection: "row", // Change to 'column' if you want to stack items vertically
+      textAlign: "center", // Center text within the container
+    },
+    currentDate: {
+      fontSize: 18,
+      fontWeight: "bold",
+      color: "#333",
+    },
+    selectedDate: {
+      fontSize: 16,
+      color: "#666",
+      marginTop: 5,
+    },
+    loadingText: {
+      marginTop: 10,
+      fontSize: 16,
+      color: "#666",
+    },
+  });
 
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3E588Faa" />
+        <ActivityIndicator size="large" color="#007BFF" />
+        <Text style={styles.loadingText}>Loading Home...</Text>
       </View>
     );
   }
@@ -323,7 +648,9 @@ const AdminHome = () => {
           <Text style={styles.greeting}>{getGreeting()}</Text>
         </View>
         <View style={styles.rightContent}>
-          <Text style={styles.username}>{username}</Text>
+          <Text style={styles.username}>
+            {username.split(" ")[0]} {/* Display only the first name */}
+          </Text>
         </View>
       </View>
 
@@ -353,16 +680,21 @@ const AdminHome = () => {
               {day.dayName}
             </Text>
 
-            {/* Event Dot - Now always displayed for days with events */}
+            {/* Event Dot - Displayed for days with events */}
             {day.hasEvents && <View style={styles.eventDot} />}
           </TouchableOpacity>
         ))}
       </View>
 
       {/* Section Title */}
-      <View style={styles.sectionTitleContainer}>
+      <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>{getSectionTitle()}</Text>
-        <Calendar size={24} color="#0A5EB0" style={styles.sectionTitleIcon} />
+        <Icon
+          name="calendar-outline"
+          size={24}
+          color="#074799"
+          style={styles.sectionIcon}
+        />
       </View>
 
       {/* Timeline and Events */}
@@ -407,14 +739,18 @@ const AdminHome = () => {
 
       {/* Upcoming Events Section */}
       <View style={styles.ReminderContainer}>
-        <View style={styles.filterContainer}>
-          <Text style={styles.ReminderSectionTitle}>Upcoming Events</Text>
-
-          <Clock size={24} color="#0A5EB0" style={styles.ReminderIcon} />
-          <Text style={styles.ReminderSubtitle}>
-            Be prepared for your scheduled events ahead.
-          </Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Upcoming Events</Text>
+          <Icon
+            name="time-outline" // Represents a clock
+            size={24}
+            color="#074799"
+            style={styles.sectionIcon}
+          />
         </View>
+        <Text style={styles.ReminderSubtitle}>
+          Be prepared for your scheduled events ahead.
+        </Text>
         <ScrollView>
           {upcomingEvents.length > 0 ? (
             upcomingEvents.map((event) => {

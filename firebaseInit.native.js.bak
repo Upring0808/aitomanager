@@ -1,0 +1,132 @@
+/**
+ * Firebase initialization for React Native (BACKUP)
+ * Using a safer approach without direct NativeModule access
+ */
+
+// Import the compatibility layer instead of modifying NativeModules directly
+import { authMock, appMock } from "./firebasePolyfill";
+
+import { Platform } from "react-native";
+import { initializeApp } from "firebase/app";
+import {
+  getReactNativePersistence,
+  initializeAuth,
+  getAuth,
+} from "firebase/auth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
+import { getDatabase } from "firebase/database";
+
+// Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyDybYc6pC-yt7NxWCJ6zztGzfp0GIVhNho",
+  authDomain: "aito-manage.firebaseapp.com",
+  projectId: "aito-manage",
+  storageBucket: "aito-manage.appspot.com",
+  messagingSenderId: "689997147601",
+  appId: "1:689997147601:web:8b1fd5eda3ea5e17d3c4f0",
+  measurementId: "G-VYNN9XMGFR",
+  databaseURL:
+    "https://aito-manage-default-rtdb.asia-southeast1.firebasedatabase.app",
+};
+
+// Keep track of initialization state
+let initialized = false;
+let initializationAttempts = 0;
+const MAX_INITIALIZATION_ATTEMPTS = 3;
+
+// Initialize Firebase
+let app;
+let auth;
+let db;
+let storage;
+let database;
+
+// Function to initialize Firebase services
+const initializeFirebase = () => {
+  console.log(`[Firebase] Initialization attempt ${++initializationAttempts}`);
+
+  if (initialized) {
+    return true;
+  }
+
+  try {
+    // Initialize the Firebase app
+    app = initializeApp(firebaseConfig);
+
+    console.log("[Firebase] App initialized successfully");
+
+    // Initialize other Firebase services
+    try {
+      db = getFirestore(app);
+      storage = getStorage(app);
+      database = getDatabase(app);
+
+      console.log("[Firebase] Database services initialized");
+
+      // Initialize Auth with persistence
+      try {
+        auth = initializeAuth(app, {
+          persistence: getReactNativePersistence(AsyncStorage),
+        });
+        console.log("[Firebase] Auth initialized with persistence");
+      } catch (authError) {
+        console.warn(
+          "[Firebase] Error initializing Auth with persistence:",
+          authError.message
+        );
+
+        // Try getAuth as fallback
+        try {
+          auth = getAuth(app);
+          console.log("[Firebase] Auth initialized with getAuth fallback");
+        } catch (fallbackError) {
+          console.error(
+            "[Firebase] All Auth initialization attempts failed:",
+            fallbackError.message
+          );
+          throw fallbackError;
+        }
+      }
+
+      // If we got here, we're successfully initialized
+      initialized = true;
+      return true;
+    } catch (servicesError) {
+      console.error(
+        "[Firebase] Error initializing services:",
+        servicesError.message
+      );
+      throw servicesError;
+    }
+  } catch (appError) {
+    console.error(
+      "[Firebase] Error initializing Firebase app:",
+      appError.message
+    );
+    return false;
+  }
+};
+
+// Try to initialize Firebase
+const initSuccess = initializeFirebase();
+
+// If first attempt failed, retry with a delay
+if (!initSuccess && initializationAttempts < MAX_INITIALIZATION_ATTEMPTS) {
+  console.log("[Firebase] Will retry initialization after delay");
+
+  // Retry after a delay
+  setTimeout(() => {
+    initializeFirebase();
+
+    // One more retry if needed
+    if (!initialized && initializationAttempts < MAX_INITIALIZATION_ATTEMPTS) {
+      setTimeout(initializeFirebase, 2000);
+    }
+  }, 1000);
+}
+
+// Export services - these may be undefined if initialization failed
+export { app, auth, db, storage, database };
+export default { app, auth, db, storage, database }; 

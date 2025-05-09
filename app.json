@@ -1,47 +1,46 @@
 {
   "expo": {
-    "name": "AitoCheck",
+    "name": "FirebaseAuth",
     "slug": "FirebaseAuth",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/aito.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "This app requires access to your photo library to upload your profile picture."
-      }
+      },
+      "bundleIdentifier": "com.anonymous.FirebaseAuth",
+      "useFrameworks": "static"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.marvin0708.FirebaseAuth"
+      "package": "com.anonymous.FirebaseAuth"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-
+    "entryPoint": "./index.js",
+    "packagerOpts": {
+      "config": "metro.config.js"
+    },
+    "experiments": {
+      "tsconfigPaths": true
+    },
     "extra": {
       "eas": {
         "projectId": "2b575eda-c6d4-444e-a22a-b1acb1722fb8"
       }
-    },
-    "plugins": [
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera."
-        }
-      ],
-      "expo-font"
-    ]
+    }
   }
 }

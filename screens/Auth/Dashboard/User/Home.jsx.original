@@ -1,0 +1,1478 @@
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Animated,
+  RefreshControl,
+  ActivityIndicator,
+  StatusBar,
+  Platform,
+  Dimensions,
+  TextInput,
+} from "react-native";
+import {
+  collection,
+  onSnapshot,
+  query,
+  getDocs,
+  where,
+  Timestamp,
+} from "firebase/firestore";
+import { auth, db } from "../../../../config/firebaseconfig";
+import {
+  format,
+  startOfWeek,
+  addDays,
+  addWeeks,
+  subWeeks,
+  isSameDay,
+  isWithinInterval,
+  differenceInDays,
+  isPast,
+  isFuture,
+} from "date-fns";
+import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons as Icon } from "@expo/vector-icons";
+import { Sun, Cloud, CloudRain, Wind, Search, ChevronLeft, ChevronRight } from "lucide-react-native";
+
+// Constants
+const EVENT_COLORS = [
+  "#4F46E580",
+  "#6D28D980",
+  "#475569C0",
+  "#22D3EE80",
+  "#064E3BC0",
+  "#14532DC0",
+  "#713F12C0",
+  "#78350FC0",
+  "#762B91C0",
+  "#3F3F46C0",
+  "#5B21B6C0",
+  "#4338CA80",
+  "#1E293BC0",
+  "#15803DC0",
+  "#854D0EC0",
+  "#831843C0",
+  "#881337C0",
+  "#57534EC0",
+  "#525252C0",
+  "#994F0FC0",
+];
+
+const Home = () => {
+  // ========== STATE MANAGEMENT ==========
+  // User data state
+  const [username, setUsername] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Events state
+  const [events, setEvents] = useState([]); // Events for the selected date
+  const [allEvents, setAllEvents] = useState([]); // All events for the week
+  const [upcomingEvents, setUpcomingEvents] = useState([]);
+  const [filteredEvents, setFilteredEvents] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [expandedEvents, setExpandedEvents] = useState({}); // Track expanded state for each event
+
+  // UI state
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showWeather, setShowWeather] = useState(true);
+  const [weatherData, setWeatherData] = useState({
+    temp: "24°C",
+    condition: "Sunny",
+    icon: "sun",
+  });
+
+  // Calendar state
+  const [weekDays, setWeekDays] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [weekStart, setWeekStart] = useState(
+    startOfWeek(new Date(), { weekStartsOn: 1 })
+  );
+
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+
+  // Pull-to-refresh functionality
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([fetchEvents(), checkUserAndFetchData()]);
+
+      // Animate elements when refreshed
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchEvents, checkUserAndFetchData, fadeAnim, slideAnim]);
+
+  // Define fetchEvents before it's used in other functions
+  const fetchEvents = useCallback(async () => {
+    try {
+      const eventsRef = collection(db, "events");
+      const eventsSnapshot = await getDocs(eventsRef);
+
+      const currentWeekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+      const currentWeekEnd = addDays(currentWeekStart, 6);
+
+      const allFetchedEvents = eventsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        color: EVENT_COLORS[Math.floor(Math.random() * EVENT_COLORS.length)],
+      }));
+
+      // Filter events that fall within the current week
+      const eventsInWeek = allFetchedEvents.filter((event) => {
+        const eventDate = event.dueDate?.toDate() || new Date();
+        return isWithinInterval(eventDate, {
+          start: currentWeekStart,
+          end: currentWeekEnd,
+        });
+      });
+
+      // Filter today's events
+      const todayEvents = allFetchedEvents.filter((event) => {
+        const eventDate = event.dueDate?.toDate() || new Date();
+        return isSameDay(eventDate, new Date());
+      });
+
+      setEvents(todayEvents); // Events for today
+      setAllEvents(allFetchedEvents); // Store all events for the week
+
+      // Instead of calling updateWeekDaysWithEvents directly, we'll update the weekDays state here
+      // to avoid circular dependencies
+      const weekDaysWithEvents = Array.from({ length: 7 }, (_, i) => {
+        const date = addDays(currentWeekStart, i);
+        return {
+          date,
+          dayNumber: format(date, "d"),
+          dayName: format(date, "E"),
+          isSelected: isSameDay(date, selectedDate),
+          hasEvents: eventsInWeek.some((event) => {
+            const eventDate = event.dueDate?.toDate() || new Date();
+            return isSameDay(eventDate, date);
+          }),
+        };
+      });
+
+      setWeekDays(weekDaysWithEvents);
+    } catch (error) {
+      console.error("Error fetching events:", error);
+    }
+  }, [selectedDate]);
+
+  // Initial data fetch
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      // Create a promise that resolves after fetchEvents or after a timeout
+      const fetchWithTimeout = Promise.race([
+        fetchEvents(),
+        new Promise((resolve) => setTimeout(resolve, 5000)), // 5 second timeout
+      ]);
+
+      await fetchWithTimeout;
+
+      // Animate elements when data is loaded
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    } finally {
+      // Ensure loading state is turned off even if there's an error
+      setLoading(false);
+    }
+  };
+
+  // Search functionality - optimized
+  const handleSearch = useCallback(
+    (text) => {
+      setSearchQuery(text);
+      if (text.trim() === "") {
+        setFilteredEvents([]);
+        setIsSearching(false);
+        return;
+      }
+
+      setIsSearching(true);
+      const query = text.toLowerCase();
+      const results = allEvents.filter(
+        (event) =>
+          event.title?.toLowerCase().includes(query) ||
+          event.description?.toLowerCase().includes(query)
+      );
+      setFilteredEvents(results);
+    },
+    [allEvents]
+  );
+
+  // Define setupRealtimeUpdates before using it in useEffect
+  const setupRealtimeUpdates = useCallback(() => {
+    const eventsRef = collection(db, "events");
+    const q = query(eventsRef);
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      // Process all events with enhanced data
+      const allEvents = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        const eventDate = data.dueDate?.toDate() || new Date();
+        const today = new Date();
+        const isPastEvent = isPast(eventDate) && !isSameDay(eventDate, today);
+
+        // Calculate days remaining until event
+        const daysRemaining = differenceInDays(eventDate, today);
+
+        // Assign a color based on time proximity or past status
+        let color;
+        if (isPastEvent) {
+          color = "#9CA3AF80"; // Gray for past events
+        } else if (daysRemaining === 0) {
+          color = "#EF444480"; // Red for today's events
+        } else if (daysRemaining <= 2) {
+          color = "#F59E0B80"; // Orange for soon events
+        } else {
+          color = EVENT_COLORS[Math.floor(Math.random() * EVENT_COLORS.length)];
+        }
+
+        return {
+          id: doc.id,
+          ...data,
+          color,
+          eventDate,
+          isPastEvent,
+          daysRemaining: daysRemaining < 0 ? 0 : daysRemaining,
+          formattedDate: format(eventDate, "MMM d, yyyy"),
+          formattedTime: data.timeframe || format(eventDate, "h:mm a"),
+        };
+      });
+
+      // Set all events
+      setAllEvents(allEvents);
+
+      // Update week days directly
+      const currentWeekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+      const weekEnd = addDays(currentWeekStart, 6);
+
+      const eventsInWeek = allEvents.filter((event) => {
+        return isWithinInterval(event.eventDate, {
+          start: currentWeekStart,
+          end: weekEnd,
+        });
+      });
+
+      // Update weekDays directly instead of using updateWeekDaysWithEvents
+      const weekDaysWithEvents = Array.from({ length: 7 }, (_, i) => {
+        const date = addDays(currentWeekStart, i);
+        return {
+          date,
+          dayNumber: format(date, "d"),
+          dayName: format(date, "E"),
+          isSelected: isSameDay(date, selectedDate),
+          hasEvents: eventsInWeek.some((event) => {
+            return isSameDay(event.eventDate, date);
+          }),
+        };
+      });
+
+      setWeekDays(weekDaysWithEvents);
+
+      // Filter events for the selected date
+      const selectedDayEvents = allEvents.filter((event) => {
+        return isSameDay(event.eventDate, selectedDate);
+      });
+
+      // Filter upcoming events - exclude today's events
+      const upcomingEvents = allEvents
+        .filter((event) => {
+          return (
+            isFuture(event.eventDate) && !isSameDay(event.eventDate, new Date())
+          );
+        })
+        .sort((a, b) => a.eventDate - b.eventDate)
+        .slice(0, 5); // Top 5 upcoming events
+
+      setEvents(selectedDayEvents);
+      setUpcomingEvents(upcomingEvents);
+
+      // Update search results if search is active
+      if (searchQuery.trim() !== "") {
+        handleSearch(searchQuery);
+      }
+    });
+
+    return unsubscribe;
+  }, [selectedDate, searchQuery, handleSearch]);
+
+  const timeToDecimalHours = (timeStr) => {
+    const [time, period] = timeStr.split(" ");
+    const [hours, minutes] = time.split(":").map(Number);
+    let decimalHours = hours;
+
+    if (minutes) {
+      decimalHours += minutes / 60;
+    }
+
+    if (period === "PM" && hours !== 12) {
+      decimalHours += 12;
+    } else if (period === "AM" && hours === 12) {
+      decimalHours = minutes / 60;
+    }
+
+    return decimalHours;
+  };
+
+  // Convert time string to minutes for sorting
+  const convertToTimeValue = (time) => {
+    if (!time) return 0;
+    const matches = time.match(/(\d+):(\d+)\s?(AM|PM)/i);
+    if (!matches) return 0;
+
+    const [hour, minute, period] = matches.slice(1);
+    let hours = parseInt(hour, 10);
+    const minutes = parseInt(minute, 10);
+    if (period.toUpperCase() === "PM" && hours !== 12) hours += 12;
+    if (period.toUpperCase() === "AM" && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+  };
+
+  const checkUserAndFetchData = async () => {
+    try {
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const adminDoc = await getDocs(
+          query(collection(db, "admin"), where("uid", "==", currentUser.uid))
+        );
+
+        if (!adminDoc.empty) {
+          setIsAdmin(true);
+          setUsername(adminDoc.docs[0].data().username);
+        } else {
+          const userDoc = await getDocs(
+            query(collection(db, "users"), where("uid", "==", currentUser.uid))
+          );
+          if (!userDoc.empty) {
+            setUsername(userDoc.docs[0].data().username);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error checking user role:", error);
+    }
+  };
+
+  const generateWeekDays = useCallback(
+    (startDate) => {
+      return Array.from({ length: 7 }, (_, i) => {
+        const date = addDays(startDate, i);
+        return {
+          date,
+          dayNumber: format(date, "d"),
+          dayName: format(date, "E"),
+          isSelected: isSameDay(date, selectedDate),
+          hasEvents: false,
+        };
+      });
+    },
+    [selectedDate]
+  );
+
+  // This function is kept for reference but we're not using it directly anymore
+  // to avoid circular dependencies
+  const updateWeekDaysWithEvents = useCallback(
+    (eventsInWeek) => {
+      const weekDaysWithEvents = generateWeekDays(weekStart).map((day) => ({
+        ...day,
+        hasEvents: eventsInWeek.some((event) => {
+          const eventDate = event.dueDate?.toDate() || new Date();
+          return isSameDay(eventDate, day.date);
+        }),
+      }));
+      setWeekDays(weekDaysWithEvents);
+    },
+    [generateWeekDays, weekStart]
+  );
+
+  const handlePrevWeek = useCallback(() => {
+    const newWeekStart = subWeeks(weekStart, 1);
+    setWeekStart(newWeekStart);
+
+    // Update week days for the new week
+    const newWeekDays = generateWeekDays(newWeekStart).map((day) => ({
+      ...day,
+      hasEvents: allEvents.some((event) => {
+        const eventDate = event.dueDate?.toDate() || new Date();
+        return isSameDay(eventDate, day.date);
+      }),
+    }));
+
+    setWeekDays(newWeekDays);
+  }, [weekStart, generateWeekDays, allEvents]);
+
+  const handleNextWeek = useCallback(() => {
+    const newWeekStart = addWeeks(weekStart, 1);
+    setWeekStart(newWeekStart);
+
+    // Update week days for the new week
+    const newWeekDays = generateWeekDays(newWeekStart).map((day) => ({
+      ...day,
+      hasEvents: allEvents.some((event) => {
+        const eventDate = event.dueDate?.toDate() || new Date();
+        return isSameDay(eventDate, day.date);
+      }),
+    }));
+
+    setWeekDays(newWeekDays);
+  }, [weekStart, generateWeekDays, allEvents]);
+
+  const handleDateSelect = useCallback(
+    (date) => {
+      setSelectedDate(date);
+
+      // Update selected day in weekDays
+      const updatedWeekDays = weekDays.map((day) => ({
+        ...day,
+        isSelected: isSameDay(day.date, date),
+      }));
+      setWeekDays(updatedWeekDays);
+
+      // Filter events for the selected date
+      const selectedDayEvents = allEvents.filter((event) => {
+        const eventDate = event.dueDate?.toDate() || new Date();
+        return isSameDay(eventDate, date);
+      });
+
+      setEvents(selectedDayEvents);
+    },
+    [weekDays, allEvents]
+  );
+
+  const toggleEventExpansion = (eventId) => {
+    setExpandedEvents((prev) => ({
+      ...prev,
+      [eventId]: !prev[eventId],
+    }));
+  };
+
+  // Initial setup
+  useEffect(() => {
+    const initializeApp = async () => {
+      try {
+        await Promise.all([checkUserAndFetchData(), fetchData()]);
+      } catch (error) {
+        console.error("Error initializing app:", error);
+        setLoading(false);
+      }
+    };
+
+    initializeApp();
+
+    // Set up realtime updates
+    const unsubscribe = setupRealtimeUpdates();
+
+    return () => unsubscribe();
+  }, []);
+
+  // Update events when selected date changes
+  useEffect(() => {
+    const updateEventsForSelectedDate = () => {
+      const selectedDayEvents = allEvents.filter((event) => {
+        const eventDate = event.dueDate?.toDate() || new Date();
+        return isSameDay(eventDate, selectedDate);
+      });
+
+      setEvents(selectedDayEvents);
+    };
+
+    updateEventsForSelectedDate();
+  }, [selectedDate, allEvents]);
+
+  const styles = StyleSheet.create({
+    // Main container styles
+    mainContainer: {
+      flex: 1,
+      backgroundColor: "#f8f9fa",
+    },
+    scrollContainer: {
+      flex: 1,
+      backgroundColor: "#f8f9fa",
+    },
+
+    // Loading styles
+    loaderContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: "#f8f9fa",
+      padding: 20,
+    },
+    loadingTextDark: {
+      marginTop: 15,
+      fontSize: 16,
+      color: "#203562",
+      fontWeight: "500",
+      letterSpacing: 0.5,
+      marginBottom: 30,
+    },
+
+    // Skeleton loading styles - dark theme (for gradient background)
+    skeletonContainer: {
+      width: "80%",
+      marginTop: 30,
+    },
+    skeletonHeader: {
+      height: 60,
+      backgroundColor: "rgba(255, 255, 255, 0.1)",
+      borderRadius: 8,
+      marginBottom: 20,
+    },
+    skeletonCalendar: {
+      height: 80,
+      backgroundColor: "rgba(255, 255, 255, 0.1)",
+      borderRadius: 8,
+      marginBottom: 30,
+    },
+    skeletonSection: {
+      marginBottom: 30,
+    },
+    skeletonTitle: {
+      height: 24,
+      width: "60%",
+      backgroundColor: "rgba(255, 255, 255, 0.1)",
+      borderRadius: 4,
+      marginBottom: 15,
+    },
+    skeletonEvent: {
+      height: 80,
+      backgroundColor: "rgba(255, 255, 255, 0.1)",
+      borderRadius: 8,
+      marginBottom: 10,
+    },
+
+    // Skeleton loading styles - light theme
+    skeletonContainerLight: {
+      width: "80%",
+      marginTop: 30,
+    },
+    skeletonHeaderLight: {
+      height: 60,
+      backgroundColor: "rgba(0, 0, 0, 0.05)",
+      borderRadius: 8,
+      marginBottom: 20,
+    },
+    skeletonCalendarLight: {
+      height: 80,
+      backgroundColor: "rgba(0, 0, 0, 0.05)",
+      borderRadius: 8,
+      marginBottom: 30,
+    },
+    skeletonSectionLight: {
+      marginBottom: 30,
+    },
+    skeletonTitleLight: {
+      height: 24,
+      width: "60%",
+      backgroundColor: "rgba(0, 0, 0, 0.05)",
+      borderRadius: 4,
+      marginBottom: 15,
+    },
+    skeletonEventLight: {
+      height: 80,
+      backgroundColor: "rgba(0, 0, 0, 0.05)",
+      borderRadius: 8,
+      marginBottom: 10,
+    },
+
+    // Header styles
+    headerGradient: {
+      paddingTop: Platform.OS === "ios" ? 50 : StatusBar.currentHeight + 20,
+      paddingBottom: 20,
+      borderBottomLeftRadius: 30,
+      borderBottomRightRadius: 30,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 10, // Increased for better visibility on Android
+      zIndex: 1,
+    },
+    headerContent: {
+      paddingHorizontal: 20,
+    },
+    headerTopRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 15,
+    },
+    leftContent: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    icon: {
+      marginRight: 12,
+    },
+    greeting: {
+      fontSize: 14,
+      fontWeight: "500",
+      color: "#e0e0e0",
+      marginBottom: 4,
+    },
+    username: {
+      fontSize: 20,
+      fontWeight: "bold",
+      color: "#FFFFFF",
+      textTransform: "capitalize",
+    },
+
+    // Weather widget styles
+    weatherWidget: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "rgba(255, 255, 255, 0.15)",
+      borderRadius: 12,
+      padding: 8,
+    },
+    weatherIconContainer: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: "rgba(255, 255, 255, 0.2)",
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 6,
+    },
+    weatherText: {
+      color: "#FFFFFF",
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    weatherContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "rgba(255, 255, 255, 0.15)",
+      borderRadius: 12,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    dateHeader: {
+      marginTop: 5,
+    },
+    currentDate: {
+      fontSize: 16,
+      fontWeight: "500",
+      color: "#FFFFFF",
+      letterSpacing: 0.5,
+    },
+
+    // Search bar styles
+    searchBarContainer: {
+      paddingHorizontal: 20,
+      marginTop: 20,
+      marginBottom: 15,
+    },
+    searchInputContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#fff",
+      borderRadius: 12,
+      paddingHorizontal: 15,
+      paddingVertical: 10,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    searchIcon: {
+      marginRight: 10,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 16,
+      color: "#333",
+      paddingVertical: 5,
+    },
+    clearSearchButton: {
+      padding: 5,
+    },
+
+    // Calendar styles
+    calendarContainer: {
+      backgroundColor: "#fff",
+      borderRadius: 15,
+      marginHorizontal: 20,
+      marginBottom: 20,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 4, // Increased for better visibility on Android
+      padding: 15,
+    },
+    weekControls: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 15,
+    },
+    weekRangeText: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#203562",
+    },
+    weekControlButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: "rgba(32, 53, 98, 0.08)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    daysContainer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingVertical: 5,
+    },
+    dayButton: {
+      alignItems: "center",
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      marginHorizontal: 4,
+    },
+    selectedDayButton: {
+      backgroundColor: "rgba(32, 53, 98, 0.1)",
+    },
+    todayButton: {
+      backgroundColor: "rgba(32, 53, 98, 0.05)",
+    },
+    dayName: {
+      fontSize: 13,
+      color: "#666",
+      marginBottom: 6,
+    },
+    dayNumberContainer: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 4,
+    },
+    selectedDayNumberContainer: {
+      backgroundColor: "#203562",
+    },
+    todayNumberContainer: {
+      borderWidth: 1,
+      borderColor: "#203562",
+    },
+    dayNumber: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: "#333",
+    },
+    selectedDayText: {
+      color: "#fff",
+    },
+    todayText: {
+      color: "#203562",
+      fontWeight: "bold",
+    },
+    eventIndicator: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: "#203562",
+      marginTop: 2,
+    },
+    selectedText: {
+      color: "#203562",
+      fontWeight: "bold",
+    },
+
+    // Section styles - modern minimalist
+    sectionContainer: {
+      marginBottom: 25,
+    },
+    sectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 20,
+      marginBottom: 15,
+    },
+    sectionTitle: {
+      fontSize: 18,
+      fontWeight: "bold",
+      color: "#203562",
+      flex: 1,
+    },
+    viewAllButton: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    viewAllText: {
+      fontSize: 14,
+      color: "#203562",
+      marginRight: 4,
+    },
+    noEventsContainer: {
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#fff",
+      borderRadius: 12,
+      padding: 30,
+      marginHorizontal: 20,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 2,
+    },
+    noEventsText: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#666",
+      marginTop: 15,
+      marginBottom: 5,
+    },
+    noEventsSubtext: {
+      fontSize: 14,
+      color: "#aaa",
+    },
+
+    // Event card styles - modern minimalist design
+    eventCard: {
+      flexDirection: "row",
+      marginBottom: 15,
+      backgroundColor: "#FFFFFF",
+      borderRadius: 12,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.08,
+      shadowRadius: 4,
+      elevation: 3,
+      overflow: "hidden",
+    },
+    eventTimeIndicator: {
+      width: 70,
+      paddingVertical: 16,
+      paddingHorizontal: 10,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: "#F5F7FA",
+    },
+    eventTimeText: {
+      color: "#203562",
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    eventCardContent: {
+      flex: 1,
+      padding: 16,
+    },
+    eventMainContent: {
+      flex: 1,
+    },
+    eventTitleRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 8,
+    },
+    eventTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#333",
+      flex: 1,
+      marginRight: 10,
+    },
+    eventTime: {
+      fontSize: 14,
+      color: "#666",
+      marginBottom: 8,
+    },
+    eventTimeContainer: {
+      width: 5,
+      backgroundColor: "#4F46E5",
+    },
+    eventDetails: {
+      marginTop: 10,
+    },
+    eventDescription: {
+      fontSize: 14,
+      color: "#666",
+      lineHeight: 20,
+      marginBottom: 15,
+    },
+    eventActions: {
+      flexDirection: "row",
+      justifyContent: "flex-start",
+      marginTop: 5,
+    },
+    eventActionButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginRight: 15,
+      paddingVertical: 5,
+    },
+    eventActionText: {
+      fontSize: 14,
+      color: "#203562",
+      marginLeft: 5,
+    },
+
+    // Upcoming event card styles
+    upcomingEventsContainer: {
+      paddingHorizontal: 20,
+    },
+    upcomingEventCard: {
+      marginBottom: 15,
+      borderRadius: 12,
+      overflow: "hidden",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    upcomingEventGradient: {
+      borderRadius: 12,
+    },
+    upcomingEventContent: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: 15,
+    },
+    upcomingEventDate: {
+      fontSize: 12,
+      color: "rgba(255, 255, 255, 0.8)",
+      marginBottom: 4,
+    },
+    upcomingEventTitle: {
+      fontSize: 16,
+      fontWeight: "bold",
+      color: "#fff",
+      marginBottom: 4,
+      maxWidth: 250,
+    },
+    upcomingEventTime: {
+      fontSize: 13,
+      color: "rgba(255, 255, 255, 0.9)",
+    },
+    upcomingEventAction: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: "rgba(255, 255, 255, 0.2)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+
+    // Search results styles
+    searchResultsHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: 20,
+      marginBottom: 15,
+    },
+    searchResultsText: {
+      fontSize: 14,
+      color: "#666",
+    },
+    clearSearchText: {
+      fontSize: 14,
+      color: "#203562",
+      fontWeight: "500",
+    },
+
+    // Add button styles
+    addButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "rgba(32, 53, 98, 0.1)",
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 8,
+    },
+    addButtonText: {
+      fontSize: 14,
+      fontWeight: "500",
+      color: "#203562",
+      marginLeft: 4,
+    },
+  });
+
+  // ========== RENDER FUNCTIONS ==========
+  // Render loading state
+  if (loading) {
+    return (
+      <View style={styles.loaderContainer}>
+        <StatusBar barStyle="dark-content" backgroundColor="#f8f9fa" />
+        <ActivityIndicator size="large" color="#203562" />
+        <Text style={styles.loadingTextDark}>Loading your schedule...</Text>
+
+        <Animated.View
+          style={[
+            styles.skeletonContainer,
+            { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+          ]}
+        >
+          <View style={styles.skeletonHeader} />
+          <View style={styles.skeletonCalendar} />
+          <View style={styles.skeletonSection}>
+            <View style={styles.skeletonTitle} />
+            <View style={styles.skeletonEvent} />
+            <View style={styles.skeletonEvent} />
+          </View>
+          <View style={styles.skeletonSection}>
+            <View style={styles.skeletonTitle} />
+            <View style={styles.skeletonEvent} />
+          </View>
+        </Animated.View>
+      </View>
+    );
+  }
+
+  // Get greeting based on time of day
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good Morning,";
+    if (hour < 18) return "Good Afternoon,";
+    return "Good Evening,";
+  };
+
+  // Render weather widget
+  const renderWeatherWidget = () => {
+    return (
+      <TouchableOpacity
+        style={styles.weatherContainer}
+        onPress={() => setShowWeather(!showWeather)}
+      >
+        <View style={styles.weatherIconContainer}>
+          {weatherData.condition === "Sunny" && (
+            <Sun size={18} color="#fff" strokeWidth={2.5} />
+          )}
+          {weatherData.condition === "Cloudy" && (
+            <Cloud size={18} color="#fff" strokeWidth={2.5} />
+          )}
+          {weatherData.condition === "Rainy" && (
+            <CloudRain size={18} color="#fff" strokeWidth={2.5} />
+          )}
+          {weatherData.condition === "Windy" && (
+            <Wind size={18} color="#fff" strokeWidth={2.5} />
+          )}
+        </View>
+        <Text style={styles.weatherText}>{weatherData.temp}</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  // Render search bar
+  const renderSearchBar = () => {
+    return (
+      <View style={styles.searchBarContainer}>
+        <View style={styles.searchInputContainer}>
+          <Search size={18} color="#666" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search events..."
+            placeholderTextColor="#999"
+            value={searchQuery}
+            onChangeText={handleSearch}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              onPress={() => {
+                setSearchQuery("");
+                setFilteredEvents([]);
+                setIsSearching(false);
+              }}
+              style={styles.clearSearchButton}
+            >
+              <Feather name="x" size={18} color="#666" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  // Render week calendar
+  const renderWeekCalendar = () => {
+    return (
+      <View style={styles.calendarContainer}>
+        <View style={styles.weekControls}>
+          <TouchableOpacity
+            style={styles.weekControlButton}
+            onPress={handlePrevWeek}
+          >
+            <ChevronLeft size={20} color="#203562" />
+          </TouchableOpacity>
+          <Text style={styles.weekRangeText}>
+            {format(weekDays[0].date, "MMM d")} -{" "}
+            {format(weekDays[6].date, "MMM d")}
+          </Text>
+          <TouchableOpacity
+            style={styles.weekControlButton}
+            onPress={handleNextWeek}
+          >
+            <ChevronRight size={20} color="#203562" />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.daysContainer}
+        >
+          {weekDays.map((day, index) => (
+            <TouchableOpacity
+              key={index}
+              style={[
+                styles.dayButton,
+                day.isSelected && styles.selectedDayButton,
+                isSameDay(day.date, new Date()) && styles.todayButton,
+              ]}
+              onPress={() => handleDateSelect(day.date)}
+            >
+              <Text
+                style={[
+                  styles.dayName,
+                  day.isSelected && styles.selectedDayText,
+                  isSameDay(day.date, new Date()) && styles.todayText,
+                ]}
+              >
+                {day.dayName}
+              </Text>
+              <View
+                style={[
+                  styles.dayNumberContainer,
+                  day.isSelected && styles.selectedDayNumberContainer,
+                  isSameDay(day.date, new Date()) && styles.todayNumberContainer,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.dayNumber,
+                    day.isSelected && styles.selectedDayText,
+                    isSameDay(day.date, new Date()) && styles.todayText,
+                  ]}
+                >
+                  {day.dayNumber}
+                </Text>
+              </View>
+              {day.hasEvents && <View style={styles.eventIndicator} />}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  // Render event card
+  const renderEventCard = (event) => {
+    const isExpanded = expandedEvents[event.id] || false;
+
+    return (
+      <Animated.View
+        key={event.id}
+        style={[
+          styles.eventCard,
+          { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+        ]}
+      >
+        <TouchableOpacity
+          style={styles.eventCardContent}
+          onPress={() => toggleEventExpansion(event.id)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.eventTimeContainer}>
+            <View
+              style={[
+                styles.eventTimeIndicator,
+                { backgroundColor: event.color },
+              ]}
+            />
+            <Text style={styles.eventTime}>{event.timeframe || "—"}</Text>
+          </View>
+
+          <View style={styles.eventMainContent}>
+            <View style={styles.eventTitleRow}>
+              <Text
+                style={styles.eventTitle}
+                numberOfLines={isExpanded ? 0 : 1}
+              >
+                {event.title}
+              </Text>
+              <Feather
+                name={isExpanded ? "chevron-up" : "chevron-down"}
+                size={18}
+                color="#666"
+              />
+            </View>
+
+            {isExpanded && (
+              <View style={styles.eventDetails}>
+                <Text style={styles.eventDescription}>
+                  {event.description || "No description provided"}
+                </Text>
+
+                <View style={styles.eventActions}>
+                  <TouchableOpacity style={styles.eventActionButton}>
+                    <Feather name="edit-2" size={16} color="#203562" />
+                    <Text style={styles.eventActionText}>Edit</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.eventActionButton}>
+                    <Feather name="bell" size={16} color="#203562" />
+                    <Text style={styles.eventActionText}>Remind</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  // Render upcoming event card
+  const renderUpcomingEventCard = (event) => {
+    return (
+      <Animated.View
+        key={event.id}
+        style={[
+          styles.upcomingEventCard,
+          { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+        ]}
+      >
+        <LinearGradient
+          colors={[
+            event.color || "#203562",
+            event.color && typeof event.color === "string"
+              ? event.color.replace("80", "B0")
+              : "#16325B",
+          ]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.upcomingEventGradient}
+        >
+          <View style={styles.upcomingEventContent}>
+            <View>
+              <Text style={styles.upcomingEventDate}>
+                {event.formattedDate}
+              </Text>
+              <Text style={styles.upcomingEventTitle} numberOfLines={1}>
+                {event.title}
+              </Text>
+              <Text style={styles.upcomingEventTime}>
+                {event.formattedTime}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.upcomingEventAction}
+              onPress={() => {
+                alert(`Set reminder for: ${event.title}`);
+              }}
+            >
+              <Feather name="bell" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      </Animated.View>
+    );
+  };
+
+  // Get section title based on selected date
+  const getSectionTitle = () => {
+    if (isSameDay(selectedDate, new Date())) {
+      return "Today's Schedule";
+    } else {
+      return `Schedule for ${format(selectedDate, "MMMM d")}`;
+    }
+  };
+
+  return (
+    <View style={styles.mainContainer}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Header with Gradient */}
+      <LinearGradient
+        colors={["#203562", "#16325B"]}
+        style={styles.headerGradient}
+      >
+        <View style={styles.headerContent}>
+          <View style={styles.headerTopRow}>
+            <View style={styles.leftContent}>
+              <Icon
+                name="person-outline"
+                size={24}
+                color="#FFD700"
+                style={styles.icon}
+              />
+              <View>
+                <Text style={styles.greeting}>{getGreeting()}</Text>
+                <Text style={styles.username}>{username.split(" ")[0]}</Text>
+              </View>
+            </View>
+
+            {showWeather && renderWeatherWidget()}
+          </View>
+
+          {/* Current Date Display */}
+          <View style={styles.dateHeader}>
+            <Text style={styles.currentDate}>
+              {format(selectedDate, "EEEE, MMMM d")}
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
+
+      {/* Main Content */}
+      <ScrollView
+        style={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={["#203562"]}
+            tintColor="#203562"
+          />
+        }
+      >
+        {/* Search Bar */}
+        {renderSearchBar()}
+
+        {/* Week Calendar */}
+        {renderWeekCalendar()}
+
+        {/* Today's Events Section */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{getSectionTitle()}</Text>
+            {isAdmin && (
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={() => {
+                  /* Navigate to add event screen */
+                }}
+              >
+                <Feather name="plus" size={18} color="#203562" />
+                <Text style={styles.addButtonText}>Add</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Events List */}
+          <View style={styles.eventsContainer}>
+            {isSearching ? (
+              // Search Results
+              <>
+                <View style={styles.searchResultsHeader}>
+                  <Text style={styles.searchResultsText}>
+                    {filteredEvents.length} results found
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSearchQuery("");
+                      setFilteredEvents([]);
+                      setIsSearching(false);
+                    }}
+                  >
+                    <Text style={styles.clearSearchText}>Clear</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {filteredEvents.length > 0 ? (
+                  filteredEvents.map((event) => renderEventCard(event))
+                ) : (
+                  <View style={styles.noEventsContainer}>
+                    <Feather name="search" size={32} color="#999" />
+                    <Text style={styles.noEventsText}>No results found</Text>
+                    <Text style={styles.noEventsSubtext}>
+                      Try a different search term
+                    </Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              // Regular Events Display
+              <>
+                {events.length > 0 ? (
+                  events.map((event) => renderEventCard(event))
+                ) : (
+                  <View style={styles.noEventsContainer}>
+                    <Feather name="calendar" size={32} color="#999" />
+                    <Text style={styles.noEventsText}>No events scheduled</Text>
+                    <Text style={styles.noEventsSubtext}>
+                      {isSameDay(selectedDate, new Date())
+                        ? "Enjoy your free day!"
+                        : "Select another day or add a new event"}
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+        </View>
+
+        {/* Upcoming Events Section */}
+        {!isSearching && upcomingEvents.length > 0 && (
+          <View style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Upcoming Events</Text>
+              <TouchableOpacity
+                style={styles.viewAllButton}
+                onPress={() => {
+                  /* Navigate to all events screen */
+                }}
+              >
+                <Text style={styles.viewAllText}>View All</Text>
+                <Feather name="chevron-right" size={16} color="#203562" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.upcomingEventsContainer}>
+              {upcomingEvents.map((event) => renderUpcomingEventCard(event))}
+            </View>
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+};
+
+export default Home;

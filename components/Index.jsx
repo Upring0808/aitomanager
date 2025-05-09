@@ -10,10 +10,9 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { User, UserPlus, ChevronRight } from "lucide-react-native";
-
-// Assuming you have these assets - replace with actual paths
 import aito from "../assets/aito.png";
 import BackgroundImage from "./ImageBackground";
+import { textStyles } from "../fallbackStyles";
 
 const { width, height } = Dimensions.get("window");
 
@@ -26,23 +25,18 @@ const Index = ({ navigation }) => {
           style={styles.gradient}
         >
           <View style={styles.container}>
-            {/* Logo Section with Elegant Positioning */}
             <View style={styles.logoContainer}>
               <Image source={aito} style={styles.logo} resizeMode="contain" />
             </View>
 
-            {/* Content Section with Modern Typography */}
             <View style={styles.contentContainer}>
               <Text style={styles.header}>AITO CHECK</Text>
-
               <Text style={styles.description}>
-                Orchestrate your organization's potential with intelligent
-                workflows and seamless collaboration—transforming complexity
-                into strategic simplicity.
+                Effortlessly view your fines and stay updated on events—all in
+                one place.
               </Text>
             </View>
 
-            {/* Button Section with Icon Integration */}
             <View style={styles.formContainer}>
               <View style={styles.buttonContainer}>
                 <TouchableOpacity
@@ -72,6 +66,7 @@ const Index = ({ navigation }) => {
                     <ChevronRight color="#16325B" size={24} />
                   </View>
                 </TouchableOpacity>
+
                 <View style={styles.loginContainer}>
                   <Text style={styles.loginText}>No Account? </Text>
                   <TouchableOpacity
@@ -104,19 +99,19 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     backgroundColor: "white",
-    borderTopLeftRadius: 35, // Rounded top-left corner
-    borderTopRightRadius: 35, // Rounded top-right corner
+    borderTopLeftRadius: 35,
+    borderTopRightRadius: 35,
     padding: 30,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -5 }, // Shadow appears above
+    shadowOffset: { width: 0, height: -5 },
     shadowOpacity: 0.1,
     shadowRadius: 5,
     elevation: 15,
-    position: "absolute", // Positioning the form
-    bottom: -20, // Snap to the bottom of the screen
+    position: "absolute",
+    bottom: -20,
     left: 0,
     right: 0,
-    height: 280, // Fixed height for the form container
+    height: 280,
   },
   logoContainer: {
     alignItems: "center",
@@ -133,21 +128,23 @@ const styles = StyleSheet.create({
   header: {
     fontSize: width > 600 ? 48 : 36,
     color: "#fff",
-    fontWeight: "bold",
+    fontWeight: "600",
     textAlign: "center",
     marginBottom: 10,
-    letterSpacing: 1, // Added letter spacing
+    letterSpacing: 1,
   },
 
   description: {
-    fontSize: width > 600 ? 18 : 16,
-    color: "rgba(255,255,255,0.9)", // Slightly more readable
+    fontSize: width > 600 ? 20 : 18,
+    color: "rgba(255, 255, 255, 0.85)",
     textAlign: "center",
-    paddingHorizontal: 30,
-    lineHeight: 26,
-    marginBottom: 30,
-    maxWidth: 500, // Limit width for better readability
-    alignSelf: "center", // Center the text
+    paddingHorizontal: 24,
+    lineHeight: 28,
+    marginBottom: 20,
+    maxWidth: 480,
+    alignSelf: "center",
+    fontWeight: "400",
+    letterSpacing: 0.5,
   },
 
   buttonContainer: {
@@ -210,6 +207,13 @@ const styles = StyleSheet.create({
     color: "#16325B",
     fontWeight: "bold",
     fontSize: 15,
+  },
+  elevatedShadow: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 8,
   },
 });
 

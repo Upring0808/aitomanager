@@ -13,11 +13,23 @@ import {
   ScrollView,
   Keyboard,
   TouchableWithoutFeedback,
+  Modal,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import {
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+} from "firebase/auth";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  getDoc,
+} from "firebase/firestore";
 import Toast from "react-native-toast-message";
 
 import BackgroundImage from "../../components/ImageBackground";
@@ -25,10 +37,15 @@ import { auth, db } from "../../config/firebaseconfig";
 import aito from "../../assets/aito.png";
 
 const Login = ({ navigation }) => {
-  const [email, setEmail] = useState("");
+  const [loginInput, setLoginInput] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [forgotPasswordModalVisible, setForgotPasswordModalVisible] =
+    useState(false);
+  const [forgotStudentId, setForgotStudentId] = useState("");
+  // We're handling both student ID and admin email login types internally without showing it in the UI
 
   const showToast = (type, message) => {
     Toast.show({
@@ -40,32 +57,116 @@ const Login = ({ navigation }) => {
     });
   };
 
+  const validateStudentId = async (studentId) => {
+    const studentIdRegex = /^\d{4}-\d{4}-[A-Z]{2}$/;
+    if (!studentIdRegex.test(studentId)) {
+      showToast(
+        "error",
+        "Invalid Student ID format. Use YYYY-NNNN-XX (e.g., 2022-1114-AB)."
+      );
+      return false;
+    }
+
+    try {
+      const q = query(
+        collection(db, "ictStudentIds"),
+        where("studentId", "==", studentId)
+      );
+      const querySnapshot = await getDocs(q);
+      return !querySnapshot.empty;
+    } catch (error) {
+      console.error("Error validating student ID:", error);
+      showToast("error", "Error checking Student ID. Please try again.");
+      return false;
+    }
+  };
+
+  const isEmail = (input) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(input);
+  };
+
   const handleLogin = async () => {
-    // Dismiss keyboard before login
     Keyboard.dismiss();
 
-    if (!email || !password) {
-      showToast("error", "Email and password are required.");
+    if (!loginInput || !password) {
+      showToast("error", "Student ID and password are required.");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
-      const user = userCredential.user;
+      // Secretly check if input is an email (for admin access)
+      if (isEmail(loginInput)) {
+        // Ensure auth has _getRecaptchaConfig method before using it
+        if (!auth._getRecaptchaConfig) {
+          console.log(
+            "[Login] Adding missing _getRecaptchaConfig method to auth"
+          );
+          auth._getRecaptchaConfig = () => null;
+        }
 
-      const adminRef = doc(db, "admin", user.uid);
-      const adminDoc = await getDoc(adminRef);
+        // Direct email login (for admin)
+        const userCredential = await signInWithEmailAndPassword(
+          auth,
+          loginInput,
+          password
+        );
+        const user = userCredential.user;
 
-      if (adminDoc.exists()) {
-        showToast("success", "Admin login successful!");
-        navigation.navigate("AdminDashboard", { screen: "AdminHome" });
+        // Check if user is an admin
+        const adminRef = doc(db, "admin", user.uid);
+        const adminDoc = await getDoc(adminRef);
+
+        if (adminDoc.exists()) {
+          // Admin login successful but don't explicitly say it's an admin login
+          showToast("success", "Login successful!");
+          navigation.navigate("AdminDashboard", { screen: "AdminHome" });
+        } else {
+          showToast("success", "Login successful!");
+          navigation.navigate("Dashboard", { screen: "Home" });
+        }
       } else {
+        // Student ID login flow
+        const isValidStudentId = await validateStudentId(loginInput);
+        if (!isValidStudentId) {
+          showToast(
+            "error",
+            "This Student ID is not recognized as an ICT student."
+          );
+          setIsSubmitting(false);
+          return;
+        }
+
+        const q = query(
+          collection(db, "users"),
+          where("studentId", "==", loginInput)
+        );
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.size === 0) {
+          showToast("error", "Student ID not found.");
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (querySnapshot.size > 1) {
+          showToast("error", "Multiple users found with this Student ID.");
+          setIsSubmitting(false);
+          return;
+        }
+
+        const userDoc = querySnapshot.docs[0];
+        const email = userDoc.data().email;
+
+        const userCredential = await signInWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+        const user = userCredential.user;
+
         showToast("success", "Login successful!");
         navigation.navigate("Dashboard", { screen: "Home" });
       }
@@ -74,13 +175,10 @@ const Login = ({ navigation }) => {
       let errorMessage = "An error occurred. Please try again.";
       switch (error.code) {
         case "auth/user-not-found":
-          errorMessage = "No user found with this email.";
+          errorMessage = "Student ID or password is incorrect.";
           break;
         case "auth/wrong-password":
           errorMessage = "Incorrect password.";
-          break;
-        case "auth/invalid-email":
-          errorMessage = "Invalid email address.";
           break;
         case "auth/user-disabled":
           errorMessage = "This account has been disabled.";
@@ -92,123 +190,216 @@ const Login = ({ navigation }) => {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!forgotStudentId) {
+      showToast("error", "Please enter your Student ID.");
+      return;
+    }
+
+    const isValidStudentId = await validateStudentId(forgotStudentId);
+    if (!isValidStudentId) {
+      showToast(
+        "error",
+        "This Student ID is not recognized as an ICT student."
+      );
+      return;
+    }
+
+    setIsResetting(true);
+
+    try {
+      const q = query(
+        collection(db, "users"),
+        where("studentId", "==", forgotStudentId)
+      );
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        showToast("error", "No account found with this Student ID.");
+        return;
+      }
+
+      const userDoc = querySnapshot.docs[0];
+      const email = userDoc.data().email;
+
+      await sendPasswordResetEmail(auth, email);
+      showToast(
+        "success",
+        `Password reset email sent to ${email.substring(
+          0,
+          3
+        )}...${email.substring(email.indexOf("@"))}`
+      );
+      setForgotPasswordModalVisible(false);
+      setForgotStudentId("");
+    } catch (error) {
+      console.error("Error sending password reset email:", error);
+      showToast("error", "Failed to send password reset email.");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  // Removed toggle login method as we're only showing student ID login
+
   return (
     <BackgroundImage>
       <LinearGradient
-        colors={["#ffffff88", "#f0f0f088"]}
+        colors={["#ffffffaa", "#f0f0f0dd"]}
         style={styles.gradient}
       >
         <SafeAreaView style={styles.safeArea}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <ScrollView
-              contentContainerStyle={styles.scrollViewContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.content}>
-                {/* Logo Section */}
-                <View style={styles.logoAndWelcome}>
-                  <View style={styles.logoContainer}>
-                    <Image
-                      source={aito}
-                      style={styles.logo}
-                      resizeMode="contain"
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.container}
+          >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <ScrollView contentContainerStyle={styles.scrollView}>
+                <View style={styles.logoContainer}>
+                  <Image source={aito} style={styles.logo} />
+                </View>
+
+                <Text style={styles.subHeader}>
+                  Alliance of Information Technologists Organization
+                </Text>
+                <Text style={styles.header}>LOGIN</Text>
+
+                <View style={styles.inputContainer}>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="id-card-outline" size={20} color="#888" />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Student ID"
+                      placeholderTextColor="#a0a0a0"
+                      value={loginInput}
+                      onChangeText={setLoginInput}
+                      keyboardType="default"
+                      autoCapitalize="none"
                     />
                   </View>
-                  <Text style={styles.welcomeTitle}>Welcome Back</Text>
-                  <Text style={styles.subtitle}>Sign in to continue</Text>
-                </View>
-                {/* Login Form */}
-                <View style={styles.formContainer}>
-                  {/* Email Input */}
-                  <View style={styles.inputBulk}>
-                    <View style={styles.inputContainer}>
-                      <Ionicons
-                        name="mail-outline"
-                        size={20}
-                        color="#16325B"
-                        style={styles.inputIcon}
-                      />
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Email Address"
-                        placeholderTextColor="#a0a0a0"
-                        value={email}
-                        onChangeText={setEmail}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        returnKeyType="next"
-                        blurOnSubmit={false}
-                        onSubmitEditing={() => {}}
-                      />
-                    </View>
 
-                    {/* Password Input */}
-                    <View style={styles.inputContainer}>
-                      <Ionicons
-                        name="lock-closed-outline"
-                        size={20}
-                        color="#16325B"
-                        style={styles.inputIcon}
-                      />
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Password"
-                        placeholderTextColor="#a0a0a0"
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry={!isPasswordVisible}
-                        returnKeyType="done"
-                        onSubmitEditing={handleLogin}
-                      />
-                      <TouchableOpacity
-                        onPress={() => setIsPasswordVisible(!isPasswordVisible)}
-                        style={styles.eyeIcon}
-                      >
-                        <Ionicons
-                          name={
-                            isPasswordVisible
-                              ? "eye-off-outline"
-                              : "eye-outline"
-                          }
-                          size={20}
-                          color="#16325B"
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  {/* Login Button */}
-                  <TouchableOpacity
-                    style={[
-                      styles.loginButton,
-                      isSubmitting && styles.loginButtonDisabled,
-                    ]}
-                    onPress={handleLogin}
-                    disabled={isSubmitting}
-                  >
-                    <Text style={styles.loginButtonText}>
-                      {isSubmitting ? "Logging in..." : "Login"}
-                    </Text>
-                  </TouchableOpacity>
-
-                  {/* Register Link */}
-                  <View style={styles.registerContainer}>
-                    <Text style={styles.registerText}>
-                      Don't have an account?{" "}
-                    </Text>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={20}
+                      color="#888"
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Password"
+                      placeholderTextColor="#a0a0a0"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!isPasswordVisible}
+                    />
                     <TouchableOpacity
-                      onPress={() => navigation.navigate("Register")}
+                      onPress={() => setIsPasswordVisible(!isPasswordVisible)}
                     >
-                      <Text style={styles.registerLink}>Sign Up</Text>
+                      <Ionicons
+                        name={
+                          isPasswordVisible ? "eye-off-outline" : "eye-outline"
+                        }
+                        size={20}
+                        color="#888"
+                      />
                     </TouchableOpacity>
                   </View>
                 </View>
-              </View>
-            </ScrollView>
-          </TouchableWithoutFeedback>
+
+                <TouchableOpacity
+                  style={styles.forgotPassword}
+                  onPress={() => setForgotPasswordModalVisible(true)}
+                >
+                  <Text style={styles.forgotPasswordText}>
+                    Forgot Password?
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.button, isSubmitting && styles.buttonDisabled]}
+                  onPress={handleLogin}
+                  disabled={isSubmitting}
+                >
+                  <Text style={styles.buttonText}>
+                    {isSubmitting ? "Logging in..." : "Login"}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Removed toggle login method button */}
+
+                <View style={styles.registerContainer}>
+                  <Text style={styles.registerText}>
+                    Don't have an account?{" "}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate("Register")}
+                  >
+                    <Text style={styles.registerLink}>Register</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Removed admin login button */}
+              </ScrollView>
+            </TouchableWithoutFeedback>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </LinearGradient>
+
+      {/* Forgot Password Modal */}
+      <Modal
+        visible={forgotPasswordModalVisible}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Reset Password</Text>
+            <Text style={styles.modalText}>
+              Enter your Student ID to receive a password reset link.
+            </Text>
+
+            <View style={styles.modalInputWrapper}>
+              <Ionicons name="id-card-outline" size={20} color="#888" />
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Student ID (e.g., 2022-1114-AB)"
+                placeholderTextColor="#a0a0a0"
+                value={forgotStudentId}
+                onChangeText={setForgotStudentId}
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  setForgotPasswordModalVisible(false);
+                  setForgotStudentId("");
+                }}
+                disabled={isResetting}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  styles.resetButton,
+                  isResetting && styles.buttonDisabled,
+                ]}
+                onPress={handleForgotPassword}
+                disabled={isResetting}
+              >
+                <Text style={styles.resetButtonText}>
+                  {isResetting ? "Sending..." : "Reset Password"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Toast />
     </BackgroundImage>
   );
@@ -221,123 +412,157 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  keyboardAvoidView: {
+  container: {
     flex: 1,
   },
-  scrollViewContent: {
+  scrollView: {
     flexGrow: 1,
     justifyContent: "center",
-    paddingVertical: 20,
-  },
-  content: {
-    flex: 1,
-    justifyContent: "center",
-    position: "relative",
-    paddingHorizontal: 20,
-  },
-  logoAndWelcome: {
-    marginBottom: 250,
+    padding: 20,
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: 5,
-    marginTop: 5,
+    marginBottom: 20,
   },
   logo: {
-    width: 180,
-    height: 180,
+    width: 150,
+    height: 150,
   },
-  organizationName: {
-    fontSize: 16,
-    color: "#16325B",
+  header: {
+    fontSize: 36,
+    color: "#333",
     textAlign: "center",
-    marginTop: 10,
-    fontWeight: "300",
+    marginBottom: 10,
+    fontWeight: "bold",
   },
-  formContainer: {
-    backgroundColor: "white",
-    borderTopLeftRadius: 35,
-    borderTopRightRadius: 35,
-    padding: 30,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -5 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 15,
-    position: "absolute",
-    bottom: -20,
-    left: 0,
-    right: 0,
-    height: 300,
-  },
-
-  welcomeTitle: {
-    fontSize: 32,
-    fontWeight: "700",
-    color: "#16325B",
+  subHeader: {
+    fontSize: 15,
+    color: "#666",
     textAlign: "center",
     marginBottom: 5,
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: "#888",
-    textAlign: "center",
-    marginBottom: 60,
   },
   inputContainer: {
+    marginBottom: 20,
+  },
+  inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F4F6F9",
-    borderRadius: 15,
+    backgroundColor: "#E9EFEC",
+    borderRadius: 25,
     paddingHorizontal: 15,
     marginBottom: 15,
     height: 50,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-  },
-  inputIcon: {
-    marginRight: 10,
   },
   input: {
     flex: 1,
     fontSize: 16,
     color: "#333",
+    marginLeft: 10,
   },
-  eyeIcon: {
-    padding: 5,
+  forgotPassword: {
+    alignSelf: "flex-end",
+    marginBottom: 20,
   },
-  loginButton: {
+  forgotPasswordText: {
+    color: "#16325B",
+    fontSize: 14,
+  },
+  button: {
     backgroundColor: "#16325B",
-    borderRadius: 15,
-    height: 50,
-    justifyContent: "center",
+    paddingVertical: 15,
+    borderRadius: 25,
     alignItems: "center",
+    marginBottom: 20,
   },
-  loginButtonDisabled: {
-    backgroundColor: "#A0A0A0",
+  buttonDisabled: {
+    backgroundColor: "#16325B80",
   },
-  loginButtonText: {
+  buttonText: {
     color: "white",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
   },
+  // Removed toggle login method styles
   registerContainer: {
     flexDirection: "row",
     justifyContent: "center",
-    marginTop: 20,
+    marginBottom: 20,
   },
   registerText: {
-    color: "#888",
+    color: "#666",
     fontSize: 14,
   },
   registerLink: {
     color: "#16325B",
-    fontWeight: "bold",
     fontSize: 14,
+    fontWeight: "bold",
   },
-  inputBulk: {
-    marginTop: 10,
+  // Removed admin login styles
+  modalContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderRadius: 15,
+    padding: 20,
+    width: "85%",
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 10,
+    color: "#333",
+  },
+  modalText: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 20,
+  },
+  modalInputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E9EFEC",
+    borderRadius: 25,
+    paddingHorizontal: 15,
+    marginBottom: 20,
+    height: 50,
+  },
+  modalInput: {
+    flex: 1,
+    fontSize: 16,
+    color: "#333",
+    marginLeft: 10,
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  modalButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    minWidth: 120,
+    alignItems: "center",
+  },
+  cancelButton: {
+    backgroundColor: "#E0E0E0",
+  },
+  cancelButtonText: {
+    color: "#333",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  resetButton: {
+    backgroundColor: "#16325B",
+  },
+  resetButtonText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "bold",
   },
 });
 

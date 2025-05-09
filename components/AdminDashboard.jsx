@@ -6,16 +6,19 @@ import {
   Text,
   TouchableOpacity,
   View,
+  BackHandler,
 } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import { dashboardServices } from "../services/dashboardServices";
 import { auth } from "../config/firebaseconfig";
 
 import { constants, dashboardStyles } from "../styles/dashboardStyles";
 import Header from "./Header";
+import Logout from "../components/Logout"; // Import the Logout component (adjust path as needed)
 import { ADMIN_TABS } from "./adminTabs";
 import AdminHome from "../screens/Auth/Dashboard/Admin/AdminHome";
 import AdminFines from "../screens/Auth/Dashboard/Admin/AdminFines";
@@ -29,12 +32,27 @@ const AdminDashboard = ({ navigation }) => {
   const [translateX] = useState(new Animated.Value(0));
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [loadingAvatar, setLoadingAvatar] = useState(true);
+  const [showLogoutModal, setShowLogoutModal] = useState(false); // Logout modal state
   const insets = useSafeAreaInsets();
+
+  // Handle hardware back button press
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        setShowLogoutModal(true); // Show logout modal when back is pressed
+        return true; // Prevent default back action
+      };
+
+      BackHandler.addEventListener("hardwareBackPress", onBackPress);
+
+      return () =>
+        BackHandler.removeEventListener("hardwareBackPress", onBackPress);
+    }, [])
+  );
 
   useEffect(() => {
     const user = auth.currentUser;
     if (user) {
-      // Set up real-time listener for avatar updates
       const unsubscribe = dashboardServices.subscribeToAvatarUpdates(
         user,
         (newAvatarUrl) => {
@@ -43,7 +61,6 @@ const AdminDashboard = ({ navigation }) => {
         }
       );
 
-      // Fetch the initial avatar
       dashboardServices.fetchAvatar(user).then(({ avatarUrl, error }) => {
         if (!error) {
           setAvatarUrl(avatarUrl);
@@ -67,8 +84,8 @@ const AdminDashboard = ({ navigation }) => {
     }).start();
   }, [activeTabIndex, translateX]);
 
-  const handleTabPress = useCallback((tabName, index) => {
-    setActiveTab(tabName);
+  const handleTabPress = useCallback((name, index) => {
+    setActiveTab(name);
     setActiveTabIndex(index);
   }, []);
 
@@ -159,9 +176,21 @@ const AdminDashboard = ({ navigation }) => {
     [activeTab, renderAvatar, handleTabPress]
   );
 
+  const LogoutWrapper = useCallback(() => {
+    if (!showLogoutModal) return null;
+
+    return (
+      <Logout
+        visible={showLogoutModal}
+        onCancel={() => setShowLogoutModal(false)}
+        onConfirm={handleLogout}
+      />
+    );
+  }, [showLogoutModal, handleLogout]);
+
   return (
     <SafeAreaView style={dashboardStyles.safeArea} edges={["right", "left"]}>
-      <Header onLogout={handleLogout} />
+      <Header onLogout={() => setShowLogoutModal(true)} />
       <View style={dashboardStyles.container}>
         {renderContent()}
         <View
@@ -182,6 +211,7 @@ const AdminDashboard = ({ navigation }) => {
           {ADMIN_TABS.map(renderTab)}
         </View>
       </View>
+      <LogoutWrapper />
     </SafeAreaView>
   );
 };

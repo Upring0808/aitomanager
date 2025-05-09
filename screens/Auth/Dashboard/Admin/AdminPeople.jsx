@@ -65,7 +65,7 @@ const PersonCard = memo(({ item, defaultAvatarUri }) => (
           {item.username}
         </Text>
         {item.yearLevel && (
-          <Text style={styles.yearLevel}>Year Level: {item.yearLevel}</Text>
+          <Text style={styles.yearLevel}>Year: {item.yearLevel}</Text>
         )}
         {item.role && <Text style={styles.roleText}>{item.role}</Text>}
       </View>
@@ -324,8 +324,9 @@ const AdminPeople = () => {
 
   if (loading) {
     return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#3E588Faa" />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007BFF" />
+        <Text style={styles.loadingText}>Loading People...</Text>
       </View>
     );
   }
@@ -396,6 +397,16 @@ const AdminPeople = () => {
 };
 
 const styles = StyleSheet.create({
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#666",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   container: {
     flex: 1,
     backgroundColor: "#f9f9f9",

@@ -3,6 +3,16 @@ import { StyleSheet, Dimensions } from "react-native";
 const { width } = Dimensions.get("window");
 
 export const Styles = StyleSheet.create({
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#666",
+  },
+  loader: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   cardContainer: {
     paddingVertical: 10,
   },
@@ -162,11 +172,9 @@ export const Styles = StyleSheet.create({
     fontSize: 18,
   },
   centerLoading: {
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    marginTop: 125,
-    zIndex: 10,
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
   adminInfoContainer: {
     flexDirection: "row",

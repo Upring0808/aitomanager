@@ -1,0 +1,21 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "status": {
+      "$uid": {
+        ".read": true,
+        ".write": "$uid === auth.uid || auth != null",
+        ".validate": "newData.hasChildren(['state', 'last_active'])",
+        "state": {
+          ".validate": "newData.val() === 'online' || newData.val() === 'offline'"
+        }
+      }
+    },
+    ".info": {
+      "connected": {
+        ".read": true
+      }
+    }
+  }
+}

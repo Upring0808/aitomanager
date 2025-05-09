@@ -12,7 +12,7 @@ const Header = ({ title = "Aito Check" }) => {
       <View
         style={[
           styles.notchBackground,
-          { height: insets.top, backgroundColor: "#F8F9FA " },
+          { height: insets.top, backgroundColor: "white" },
         ]}
       />
       {/* Header Content */}
@@ -26,7 +26,7 @@ const Header = ({ title = "Aito Check" }) => {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#F8F9FA", // Same as header background
+    backgroundColor: "white", // Same as header background
   },
   notchBackground: {
     width: "100%",
@@ -46,9 +46,10 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24, // Balanced font size
-    fontWeight: "500", // Medium weight
+    fontWeight: "600", // Medium weight
     color: "#333333", // Neutral text color
     letterSpacing: -1,
+    fontFamily: "Lato-Bold",
   },
 });
 

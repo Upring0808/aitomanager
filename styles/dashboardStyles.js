@@ -4,6 +4,7 @@ const { width } = Dimensions.get("window");
 const tabWidth = width / 5;
 const underlineWidth = tabWidth * 0.8;
 
+// Add these styles to your dashboardStyles object
 export const dashboardStyles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -52,9 +53,40 @@ export const dashboardStyles = StyleSheet.create({
     width: 26.5,
     height: 26.5,
     borderRadius: 100,
-
     borderWidth: 2,
     borderColor: "#EEEDED",
+  },
+
+  // Tab styles
+  activeTab: {
+    // Add any specific styles for active tab
+  },
+  tabIconContainer: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // Notification badge
+  notificationBadge: {
+    position: "absolute",
+    top: 0,
+    right: 45,
+    backgroundColor: "#FF3B30",
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
+    zIndex: 1,
+  },
+  notificationText: {
+    color: "white",
+    fontSize: 10,
+    fontWeight: "bold",
   },
 });
 

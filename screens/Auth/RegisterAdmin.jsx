@@ -47,6 +47,14 @@ const RegisterAdmin = ({ navigation }) => {
     setIsSubmitting(true);
 
     try {
+      // Ensure auth has _getRecaptchaConfig method before using it
+      if (!auth._getRecaptchaConfig) {
+        console.log(
+          "[RegisterAdmin] Adding missing _getRecaptchaConfig method to auth"
+        );
+        auth._getRecaptchaConfig = () => null;
+      }
+
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,

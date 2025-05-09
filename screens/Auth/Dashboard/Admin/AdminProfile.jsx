@@ -40,6 +40,7 @@ const AdminProfile = () => {
     phone: "",
   });
   const [modalVisible, setModalVisible] = useState(false);
+  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   const [unsubscribeAvatar, setUnsubscribeAvatar] = useState(null);
 
   useEffect(() => {
@@ -224,7 +225,7 @@ const AdminProfile = () => {
               <Text style={styles.modalButtonText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.modalButton, { backgroundColor: "black" }]}
+              style={[styles.modalButton, { backgroundColor: "#003161" }]}
               onPress={() => {
                 handleSave(editingField);
                 setModalVisible(false);
@@ -240,14 +241,46 @@ const AdminProfile = () => {
     </Modal>
   );
 
+  const renderLogoutConfirmModal = () => (
+    <Modal transparent={true} visible={logoutModalVisible} animationType="fade">
+      <View style={styles.modalContainer}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Confirm Logout</Text>
+          <Text style={styles.modalText}>
+            Are you sure you want to log out?
+          </Text>
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setLogoutModalVisible(false)}
+            >
+              <Text style={styles.modalButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: "#003161" }]}
+              onPress={() => {
+                setLogoutModalVisible(false);
+                handleLogout();
+              }}
+            >
+              <Text style={[styles.modalButtonText, { color: "white" }]}>
+                Logout
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3E588Faa" />
+        <ActivityIndicator size="large" color="#007BFF" />
+        <Text style={styles.loadingText}>Loading Profile...</Text>
       </View>
     );
   }
-
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
@@ -291,18 +324,36 @@ const AdminProfile = () => {
           ))}
         </View>
 
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={() => setLogoutModalVisible(true)}
+        >
           <Text style={styles.logoutButtonText}>Logout</Text>
         </TouchableOpacity>
       </ScrollView>
 
       {renderFieldEditModal()}
+      {renderLogoutConfirmModal()}
     </View>
   );
 };
-
 // Styles
 const styles = StyleSheet.create({
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#666",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalText: {
+    fontSize: 16,
+    marginBottom: 20,
+    textAlign: "center",
+  },
   container: {
     flex: 1,
     backgroundColor: "#fff",
@@ -320,8 +371,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   avatar: {
-    width: 120,
-    height: 120,
+    width: 150,
+    height: 150,
     borderRadius: 80,
     borderWidth: 3,
     borderColor: "#EEEDED",
@@ -359,7 +410,7 @@ const styles = StyleSheet.create({
   },
   value: {
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "500",
     color: "#333",
   },
   logoutButton: {

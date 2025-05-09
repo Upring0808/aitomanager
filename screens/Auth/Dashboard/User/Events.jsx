@@ -82,17 +82,18 @@ const Events = () => {
     animateEventsEntrance();
   }, [filter]);
 
+  if (loading) {
+    return (
+      <View style={Styles.loader}>
+        <ActivityIndicator size="large" color="#007BFF" />
+        <Text style={Styles.loadingText}>Loading Events...</Text>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={Styles.safeArea}>
       <View style={Styles.mainContainer}>
-        {loading && !refreshing && (
-          <ActivityIndicator
-            size="large"
-            color="#3E588Faa"
-            style={Styles.centerLoading}
-          />
-        )}
-
         <ScrollView
           contentContainerStyle={Styles.scrollContainer}
           refreshControl={

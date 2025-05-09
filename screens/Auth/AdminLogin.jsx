@@ -46,6 +46,14 @@ const AdminLogin = ({ navigation }) => {
 
     try {
       // Sign in using Firebase Authentication
+      // Ensure auth has _getRecaptchaConfig method before using it
+      if (!auth._getRecaptchaConfig) {
+        console.log(
+          "[AdminLogin] Adding missing _getRecaptchaConfig method to auth"
+        );
+        auth._getRecaptchaConfig = () => null;
+      }
+
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,

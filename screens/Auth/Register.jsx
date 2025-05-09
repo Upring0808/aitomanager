@@ -24,10 +24,10 @@ import { auth, db } from "../../config/firebaseconfig";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import { useNavigation } from "@react-navigation/native";
-import Login from "./Login";
 
 const Register = () => {
   const [username, setUsername] = useState("");
+  const [studentId, setStudentId] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
@@ -64,8 +64,38 @@ const Register = () => {
     });
   };
 
+  const validateStudentId = async (studentId) => {
+    const studentIdRegex = /^\d{4}-\d{4}-[A-Z]{2}$/;
+    if (!studentIdRegex.test(studentId)) {
+      showWarning(
+        "Invalid Student ID format. Use YYYY-NNNN-XX (e.g., 2022-1114-AB)."
+      );
+      return false;
+    }
+
+    try {
+      const q = query(
+        collection(db, "ictStudentIds"),
+        where("studentId", "==", studentId)
+      );
+      const querySnapshot = await getDocs(q);
+      return !querySnapshot.empty; // Return true if studentId exists
+    } catch (error) {
+      console.error("Error validating student ID:", error);
+      showWarning("Error checking Student ID. Please try again.");
+      return false;
+    }
+  };
+
   const handleRegister = async () => {
-    if (!username || !email || !phone || !password || !yearLevel) {
+    if (
+      !username ||
+      !studentId ||
+      !email ||
+      !phone ||
+      !password ||
+      !yearLevel
+    ) {
       showWarning("All fields are required.");
       return;
     }
@@ -73,6 +103,13 @@ const Register = () => {
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailPattern.test(email)) {
       showWarning("Please enter a valid email address.");
+      return;
+    }
+
+    // Validate student ID against ICT student list
+    const isValidStudentId = await validateStudentId(studentId);
+    if (!isValidStudentId) {
+      showWarning("This Student ID is not recognized as an ICT student.");
       return;
     }
 
@@ -90,6 +127,14 @@ const Register = () => {
         return;
       }
 
+      // Ensure auth has _getRecaptchaConfig method before using it
+      if (!auth._getRecaptchaConfig) {
+        console.log(
+          "[Register] Adding missing _getRecaptchaConfig method to auth"
+        );
+        auth._getRecaptchaConfig = () => null;
+      }
+
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
@@ -99,6 +144,7 @@ const Register = () => {
       await addDoc(collection(db, "users"), {
         uid: userCredential.user.uid,
         username,
+        studentId,
         email,
         phone,
         yearLevel,
@@ -177,7 +223,7 @@ const Register = () => {
           onValueChange={(itemValue) => setYearLevel(itemValue)}
           style={styles.picker}
           dropdownIconColor="#888"
-          dropdownStyle={{ maxHeight: 200 }} // Ensures proper dropdown height
+          dropdownStyle={{ maxHeight: 200 }}
           mode="dropdown"
         >
           {yearLevels.map((yl) => (
@@ -215,18 +261,12 @@ const Register = () => {
                       resizeMode="contain"
                     />
                   </View>
-                  {/* Title Section */}
                   <View style={styles.headerContainer}>
                     <Text style={styles.welcomeTitle}>Create Your Account</Text>
-                    <Text style={styles.subtitle}>
-                      Your Academic Journey Starts Here
-                    </Text>
                   </View>
                 </View>
 
-                {/* Form Container */}
                 <View style={styles.formContainer}>
-                  {/* Username Input */}
                   <View style={styles.inputBulk}>
                     <View style={styles.inputContainer}>
                       <Ionicons
@@ -244,7 +284,24 @@ const Register = () => {
                       />
                     </View>
 
-                    {/* Email Input */}
+                    <View style={styles.inputContainer}>
+                      <Ionicons
+                        name="id-card-outline"
+                        size={20}
+                        color="#16325B"
+                        style={styles.inputIcon}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Student ID (e.g., 2022-1114-AB)"
+                        placeholderTextColor="#a0a0a0"
+                        value={studentId}
+                        onChangeText={setStudentId}
+                        keyboardType="default"
+                        autoCapitalize="none"
+                      />
+                    </View>
+
                     <View style={styles.inputContainer}>
                       <MaterialIcons
                         name="email"
@@ -254,7 +311,7 @@ const Register = () => {
                       />
                       <TextInput
                         style={styles.input}
-                        placeholder="Your Academic Email"
+                        placeholder="Your Valid Email"
                         placeholderTextColor="#a0a0a0"
                         value={email}
                         onChangeText={setEmail}
@@ -263,7 +320,6 @@ const Register = () => {
                       />
                     </View>
 
-                    {/* Phone Input */}
                     <View style={styles.inputContainer}>
                       <Ionicons
                         name="phone-portrait-outline"
@@ -281,28 +337,8 @@ const Register = () => {
                       />
                     </View>
 
-                    {/* Year Level Picker */}
-                    <View style={styles.inputContainer}>
-                      <Ionicons
-                        name="school-outline"
-                        size={20}
-                        color="#16325B"
-                        style={styles.inputIcon}
-                      />
-                      <Picker
-                        selectedValue={yearLevel}
-                        style={styles.picker}
-                        onValueChange={(itemValue) => setYearLevel(itemValue)}
-                      >
-                        <Picker.Item label="Select Academic Year" value="" />
-                        <Picker.Item label="1st Year" value="1" />
-                        <Picker.Item label="2nd Year" value="2" />
-                        <Picker.Item label="3rd Year" value="3" />
-                        <Picker.Item label="4th Year" value="4" />
-                      </Picker>
-                    </View>
+                    <YearLevelPicker />
 
-                    {/* Password Input */}
                     <View style={styles.inputContainer}>
                       <Ionicons
                         name="lock-closed-outline"
@@ -335,7 +371,6 @@ const Register = () => {
                     </View>
                   </View>
 
-                  {/* Register Button */}
                   <TouchableOpacity
                     style={[
                       styles.registerButton,
@@ -349,7 +384,6 @@ const Register = () => {
                     </Text>
                   </TouchableOpacity>
 
-                  {/* Login Link */}
                   <View style={styles.loginContainer}>
                     <Text style={styles.loginText}>
                       Already have an account?{" "}
@@ -378,7 +412,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     justifyContent: "center",
-    position: "relative", // Parent needs to allow positioning
+    position: "relative",
     paddingHorizontal: 20,
   },
   gradient: { flex: 1 },
@@ -399,36 +433,29 @@ const styles = StyleSheet.create({
   },
   welcomeTitle: {
     fontSize: 32,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#17153B",
     textAlign: "center",
     marginBottom: 5,
     letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: "#405D72",
-    textAlign: "center",
-    fontWeight: "300",
-    marginBottom: 20,
+    fontFamily: "Lato-Regular",
   },
   formContainer: {
     backgroundColor: "white",
-    borderTopLeftRadius: 35, // Rounded top-left corner
-    borderTopRightRadius: 35, // Rounded top-right corner
+    borderTopLeftRadius: 35,
+    borderTopRightRadius: 35,
     padding: 30,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -5 }, // Shadow appears above
+    shadowOffset: { width: 0, height: -5 },
     shadowOpacity: 0.1,
     shadowRadius: 5,
     elevation: 15,
-    position: "absolute", // Positioning the form
-    bottom: -20, // Snap to the bottom of the screen
+    position: "absolute",
+    bottom: -20,
     left: 0,
     right: 0,
-    height: 500, // Fixed height for the form container
+    height: 550, // Increased to accommodate new studentId input
   },
-
   inputBulk: {
     marginTop: 10,
   },
@@ -461,7 +488,6 @@ const styles = StyleSheet.create({
     height: 50,
     justifyContent: "center",
     alignItems: "center",
-
     shadowColor: "#16325B",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -498,6 +524,50 @@ const styles = StyleSheet.create({
   logo: {
     width: 100,
     height: 100,
+  },
+  // Additional styles for YearLevelPicker
+  modalContainer: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  pickerHeader: {
+    backgroundColor: "#fff",
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#ddd",
+    alignItems: "flex-end",
+  },
+  doneButton: {
+    padding: 5,
+  },
+  doneButtonText: {
+    fontSize: 16,
+    color: "#16325B",
+  },
+  iosPicker: {
+    height: 200,
+    backgroundColor: "#fff",
+  },
+  pickerWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F4F6F9",
+    borderRadius: 15,
+    paddingHorizontal: 15,
+    marginBottom: 15,
+    height: 50,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  yearLevelButton: {
+    justifyContent: "space-between",
+  },
+  yearLevelText: {
+    flex: 1,
+    fontSize: 16,
+    color: "#333",
+    marginLeft: 10,
   },
 });
 

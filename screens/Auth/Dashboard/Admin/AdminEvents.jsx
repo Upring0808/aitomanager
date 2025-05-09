@@ -243,6 +243,15 @@ const AdminEvents = () => {
     );
   };
 
+  if (loading) {
+    return (
+      <View style={eventsStyles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007BFF" />
+        <Text style={eventsStyles.loadingText}>Loading Events...</Text>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={eventsStyles.safeArea}>
       <View style={eventsStyles.mainContainer}>
@@ -394,13 +403,7 @@ const AdminEvents = () => {
               </View>
             </View>
 
-            {loading ? (
-              <ActivityIndicator
-                size="large"
-                color="#3E588Faa"
-                style={eventsStyles.centerLoading}
-              />
-            ) : filteredEvents.length > 0 ? (
+            {filteredEvents.length > 0 ? (
               filteredEvents.map((event) => renderEventCard(event))
             ) : (
               <Text style={eventsStyles.noEvent}>No events available.</Text>

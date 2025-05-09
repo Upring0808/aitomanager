@@ -176,7 +176,7 @@ const AdminFines = () => {
         createdAt: Timestamp.now(),
         dueDate: selectedEvent.dueDate,
         timeframe: selectedEvent.timeframe,
-        description: `Fine for ${selectedEvent.title}`,
+        description: `You are fined for the event ${selectedEvent.title}`,
       };
 
       await addDoc(collection(db, "fines"), fineData);
@@ -251,7 +251,7 @@ const AdminFines = () => {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.loadingText}>Loading...</Text>
+        <Text style={styles.loadingText}>Loading Fines...</Text>
       </View>
     );
   }
