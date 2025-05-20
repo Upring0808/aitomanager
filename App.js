@@ -40,6 +40,9 @@ import { getAuth, getDatabase, getDb, getStorage } from "./firebase";
 import userPresenceService from "./services/UserPresenceService";
 import FontLoader from "./FontLoader";
 
+// Import context providers
+import { OnlineStatusProvider } from "./contexts/OnlineStatusContext";
+
 // Import font patches
 try {
   require("./patchFonts");
@@ -292,75 +295,77 @@ const App = () => {
 
   // Wrap the app content with FontLoader
   return (
-    <FontLoader>
-      <StatusBar
-        backgroundColor="transparent"
-        translucent
-        barStyle="dark-content"
-      />
+    <OnlineStatusProvider>
+      <FontLoader>
+        <StatusBar
+          backgroundColor="transparent"
+          translucent
+          barStyle="dark-content"
+        />
 
-      {/* App content */}
+        {/* App content */}
 
-      <NavigationContainer
-        ref={navigationRef}
-        onStateChange={() => {
-          // Update status whenever navigation changes (tab switches etc)
-          if (userLoggedIn) {
-            console.log("[App] Navigation changed, updating status");
-            userPresenceService.forceOnlineUpdate();
-          }
-        }}
-        onReady={() => {
-          // Set up navigation reference when ready
-          console.log("[App] Navigation container is ready");
-        }}
-      >
-        <Stack.Navigator
-          initialRouteName="Index"
-          screenOptions={{
-            headerShown: false,
-            cardStyleInterpolator: ({ current, layouts }) => {
-              return {
-                cardStyle: {
-                  transform: [
-                    {
-                      translateX: current.progress.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [layouts.screen.width, 0],
-                      }),
-                    },
-                  ],
-                },
-              };
-            },
+        <NavigationContainer
+          ref={navigationRef}
+          onStateChange={() => {
+            // Update status whenever navigation changes (tab switches etc)
+            if (userLoggedIn) {
+              console.log("[App] Navigation changed, updating status");
+              userPresenceService.forceOnlineUpdate();
+            }
+          }}
+          onReady={() => {
+            // Set up navigation reference when ready
+            console.log("[App] Navigation container is ready");
           }}
         >
-          {/* Always include Index and auth screens */}
-          <Stack.Screen name="Index" component={Index} />
-          <Stack.Screen name="Register" component={Register} />
-          <Stack.Screen name="Login" component={Login} />
-          <Stack.Screen name="AdminLogin" component={AdminLogin} />
-          <Stack.Screen name="RegisterAdmin" component={RegisterAdmin} />
+          <Stack.Navigator
+            initialRouteName="Index"
+            screenOptions={{
+              headerShown: false,
+              cardStyleInterpolator: ({ current, layouts }) => {
+                return {
+                  cardStyle: {
+                    transform: [
+                      {
+                        translateX: current.progress.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [layouts.screen.width, 0],
+                        }),
+                      },
+                    ],
+                  },
+                };
+              },
+            }}
+          >
+            {/* Always include Index and auth screens */}
+            <Stack.Screen name="Index" component={Index} />
+            <Stack.Screen name="Register" component={Register} />
+            <Stack.Screen name="Login" component={Login} />
+            <Stack.Screen name="AdminLogin" component={AdminLogin} />
+            <Stack.Screen name="RegisterAdmin" component={RegisterAdmin} />
 
-          {/* Only render Dashboard screens if user is logged in */}
-          {user && (
-            <>
-              <Stack.Screen
-                name="Dashboard"
-                component={DashboardNavigator}
-                options={{ gestureEnabled: false }}
-              />
-              <Stack.Screen
-                name="AdminDashboard"
-                component={AdminDashboardNavigator}
-                options={{ gestureEnabled: false }}
-              />
-            </>
-          )}
-        </Stack.Navigator>
-        <Toast />
-      </NavigationContainer>
-    </FontLoader>
+            {/* Only render Dashboard screens if user is logged in */}
+            {user && (
+              <>
+                <Stack.Screen
+                  name="Dashboard"
+                  component={DashboardNavigator}
+                  options={{ gestureEnabled: false }}
+                />
+                <Stack.Screen
+                  name="AdminDashboard"
+                  component={AdminDashboardNavigator}
+                  options={{ gestureEnabled: false }}
+                />
+              </>
+            )}
+          </Stack.Navigator>
+          <Toast />
+        </NavigationContainer>
+      </FontLoader>
+    </OnlineStatusProvider>
   );
 };
 

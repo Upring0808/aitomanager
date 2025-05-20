@@ -14,6 +14,10 @@ import {
   Platform,
   Modal,
   FlatList,
+  AppState,
+  KeyboardAvoidingView,
+  Keyboard,
+  ScrollView,
 } from "react-native";
 import { db, storage, database, auth } from "../../../../config/firebaseconfig";
 import { collection, query, getDocs, orderBy, limit } from "firebase/firestore";
@@ -23,12 +27,17 @@ import {
   onValue,
   off,
   get as dbGet,
+  set,
+  update,
+  serverTimestamp,
 } from "firebase/database";
 import Toast from "react-native-toast-message";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import userPresenceService from "../../../../services/UserPresenceService";
+import { useOnlineStatus } from "../../../../contexts/OnlineStatusContext";
+import { useNavigation } from "@react-navigation/native";
 
 // Import Haptics conditionally to prevent crashes
 let Haptics;
@@ -75,253 +84,562 @@ const safeHaptics = {
 };
 
 const SearchBar = memo(
-  ({ onSearch, searchQuery, onClear, visible, onClose, getFilteredPeople }) => {
+  ({
+    onSearch,
+    searchQuery,
+    onClear,
+    visible,
+    onClose,
+    getFilteredPeople,
+    officers,
+    students,
+  }) => {
+    const navigation = useNavigation();
+    // Refs for component state management
     const inputRef = useRef(null);
     const [isFocused, setIsFocused] = useState(false);
+    const mountedRef = useRef(true);
+    const [keyboardVisible, setKeyboardVisible] = useState(false);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const keyboardShowListener = useRef(null);
+    const keyboardHideListener = useRef(null);
 
+    // Animation values for smooth transitions - initialize based on visible prop
+    const [slideAnim] = useState(new Animated.Value(visible ? 0 : 100));
+    const [fadeAnim] = useState(new Animated.Value(visible ? 1 : 0));
+
+    // Setup keyboard listeners and component lifecycle
     useEffect(() => {
-      if (visible) {
-        inputRef.current?.focus();
+      // Mark component as mounted
+      mountedRef.current = true;
+
+      // Only set up listeners when overlay is visible
+      if (!visible) return;
+
+      // Create keyboard event listeners
+      keyboardShowListener.current = Keyboard.addListener(
+        Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+        (event) => {
+          if (mountedRef.current) {
+            setKeyboardVisible(true);
+            // Store keyboard height to adjust content
+            if (event && event.endCoordinates) {
+              setKeyboardHeight(event.endCoordinates.height);
+            }
+          }
+        }
+      );
+
+      keyboardHideListener.current = Keyboard.addListener(
+        Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+        () => {
+          if (mountedRef.current) {
+            setKeyboardVisible(false);
+            setKeyboardHeight(0);
+          }
+        }
+      );
+
+      // Focus input only once when the search modal becomes visible
+      if (visible && inputRef.current) {
+        try {
+          // Use a small timeout to ensure the component is fully mounted
+          setTimeout(() => {
+            if (inputRef.current && mountedRef.current) {
+              inputRef.current.focus();
+            }
+          }, 100);
+        } catch (error) {
+          console.log("[SearchBar] Error focusing input:", error);
+        }
       }
+
+      // Cleanup function
+      return () => {
+        // Remove keyboard listeners
+        if (keyboardShowListener.current) {
+          keyboardShowListener.current.remove();
+        }
+        if (keyboardHideListener.current) {
+          keyboardHideListener.current.remove();
+        }
+      };
     }, [visible]);
 
-    if (!visible) return null;
+    // Handle animations when visibility changes with improved cleanup
+    useEffect(() => {
+      let slideAnimation;
+      let fadeAnimation;
+
+      if (visible) {
+        // Show the search overlay with animation
+        const parallelAnimation = Animated.parallel([
+          Animated.timing(slideAnim, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+        ]);
+
+        parallelAnimation.start();
+      } else {
+        // Hide the search overlay with animation
+        // First dismiss keyboard before starting animation
+        Keyboard.dismiss();
+
+        // Use a simple timing animation instead of parallel for more stability
+        fadeAnimation = Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        });
+
+        fadeAnimation.start(() => {
+          // Only perform cleanup if component is still mounted
+          if (mountedRef.current) {
+            // Animation is complete, ensure keyboard is dismissed
+            Keyboard.dismiss();
+            // Notify parent that animation is complete
+            if (onClose && typeof onClose === "function") {
+              // This is just a notification, the actual state change happens in the parent
+              onClose();
+            }
+          }
+        });
+
+        // Animate slide separately to avoid conflicts
+        slideAnimation = Animated.timing(slideAnim, {
+          toValue: 100,
+          duration: 200,
+          useNativeDriver: true,
+        });
+
+        slideAnimation.start();
+      }
+
+      // Cleanup function to stop animations
+      return () => {
+        if (fadeAnimation) {
+          fadeAnimation.stop();
+        }
+        if (slideAnimation) {
+          slideAnimation.stop();
+        }
+      };
+    }, [visible, slideAnim, fadeAnim, onClose]);
+
+    // Initialize animations when component mounts
+    useEffect(() => {
+      // Set initial animation values based on visibility
+      slideAnim.setValue(visible ? 0 : 100);
+      fadeAnim.setValue(visible ? 1 : 0);
+    }, []);
+
+    // Cleanup on unmount
+    useEffect(() => {
+      return () => {
+        mountedRef.current = false;
+      };
+    }, []);
+
+    // Handle close with proper keyboard dismissal and prevent freezing
+    const handleClose = useCallback(() => {
+      // First dismiss keyboard
+      Keyboard.dismiss();
+
+      // Set a small timeout to prevent UI thread blocking
+      setTimeout(() => {
+        // Don't stop animations directly, let them complete naturally
+        // Just call onClose which will trigger the animation in the useEffect
+        if (mountedRef.current) {
+          onClose();
+        }
+      }, 50);
+    }, [onClose]);
+
+    // Handle clear search with focus retention
+    const handleClear = useCallback(() => {
+      onClear();
+      // Maintain focus after clearing
+      if (inputRef.current) {
+        setTimeout(() => {
+          if (inputRef.current && mountedRef.current) {
+            inputRef.current.focus();
+          }
+        }, 50);
+      }
+    }, [onClear]);
+
+    // Handle search input changes - debounced to prevent excessive rerenders
+    const handleSearchChange = useCallback(
+      (text) => {
+        // Important: This prevents excessive re-rendering during typing
+        onSearch(text);
+      },
+      [onSearch]
+    );
+
+    // Filter officers and students based on search query
+    const filteredOfficers =
+      searchQuery.length > 0
+        ? officers.filter((item) =>
+            item.username?.toLowerCase().includes(searchQuery.toLowerCase())
+          )
+        : [];
+
+    const filteredStudents =
+      searchQuery.length > 0
+        ? students.filter((item) =>
+            item.username?.toLowerCase().includes(searchQuery.toLowerCase())
+          )
+        : [];
+
+    // Don't render anything if not visible and animation is complete
+    if (!visible && (!fadeAnim || fadeAnim._value === 0)) return null;
+
+    // Add effect to hide header/tabs visibility
+    useEffect(() => {
+      if (visible) {
+        // Hide header and tabs when search is active
+        navigation.setOptions({
+          headerShown: false,
+          tabBarStyle: { display: "none" },
+        });
+      } else {
+        // Show header and tabs when search is closed
+        navigation.setOptions({
+          headerShown: true,
+          tabBarStyle: { display: "flex" },
+        });
+      }
+    }, [visible, navigation]);
 
     return (
       <Modal
-        transparent
         animationType="fade"
         visible={visible}
-        onRequestClose={onClose}
+        transparent={true}
+        statusBarTranslucent={true}
+        onRequestClose={handleClose}
       >
-        <View style={styles.searchModalContainer}>
-          <View style={styles.searchModalContent}>
-            <View
-              style={[
-                styles.searchContainer,
-                isFocused && styles.searchContainerFocused,
-              ]}
-            >
-              <Ionicons
-                name="search"
-                size={20}
-                color={isFocused ? THEME_SECONDARY : "#94A3B8"}
-              />
-              <TextInput
-                ref={inputRef}
-                style={styles.searchInput}
-                placeholder="Search people..."
-                placeholderTextColor="#94A3B8"
-                onChangeText={onSearch}
-                value={searchQuery}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setIsFocused(false)}
-                returnKeyType="search"
-                selectionColor={THEME_SECONDARY}
-                autoFocus
-              />
-              {searchQuery.length > 0 ? (
-                <TouchableOpacity
-                  onPress={() => {
-                    onClear();
-                    inputRef.current?.focus();
-                  }}
-                  style={styles.clearButton}
-                >
-                  <Ionicons name="close-circle" size={18} color="#94A3B8" />
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity onPress={onClose} style={styles.clearButton}>
-                  <Ionicons name="close" size={22} color="#94A3B8" />
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
+        <View style={styles.modalContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="transparent" />
+          <BlurView
+            intensity={Platform.OS === "ios" ? 40 : 30}
+            style={styles.blurContainer}
+            tint="dark"
+          >
+            <TouchableOpacity
+              style={styles.overlayBackdrop}
+              activeOpacity={1}
+              onPress={handleClose}
+            />
 
-          {searchQuery.length > 0 ? (
-            <View style={styles.searchResultsContainer}>
-              <FlatList
-                data={getFilteredPeople(searchQuery)}
-                keyExtractor={(item) => item.id || item.uid}
-                renderItem={({ item }) => (
-                  <View style={styles.searchResultCard}>
-                    <PersonCard
-                      item={item}
-                      defaultAvatarUri={require("../../../../assets/aito.png")}
-                      highlightQuery={searchQuery}
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={styles.keyboardAvoidingView}
+              keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+            >
+              <Animated.View
+                style={[
+                  styles.searchBarContainer,
+                  {
+                    transform: [{ translateY: slideAnim }],
+                  },
+                ]}
+              >
+                {/* Minimalist Search Header */}
+                <View style={styles.minimalistSearchHeader}>
+                  <View style={styles.minimalistSearchContainer}>
+                    <Ionicons
+                      name="search"
+                      size={20}
+                      color={isFocused ? THEME_SECONDARY : "#94A3B8"}
                     />
+                    <TextInput
+                      ref={inputRef}
+                      style={styles.minimalistSearchInput}
+                      placeholder="Search people..."
+                      placeholderTextColor="#94A3B8"
+                      onChangeText={handleSearchChange}
+                      value={searchQuery}
+                      onFocus={() => setIsFocused(true)}
+                      onBlur={() => setIsFocused(false)}
+                      returnKeyType="search"
+                      selectionColor={THEME_SECONDARY}
+                      keyboardType="default"
+                      keyboardAppearance="dark"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      spellCheck={false}
+                      blurOnSubmit={false}
+                      enablesReturnKeyAutomatically={true}
+                    />
+                    {searchQuery.length > 0 ? (
+                      <TouchableOpacity
+                        onPress={handleClear}
+                        style={styles.clearButton}
+                        hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+                      >
+                        <Ionicons
+                          name="close-circle"
+                          size={18}
+                          color="#94A3B8"
+                        />
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={handleClose}
+                        style={styles.clearButton}
+                        hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+                      >
+                        <Ionicons name="close" size={22} color="#94A3B8" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+
+                {/* Search Results Modal */}
+                {searchQuery.length > 0 && (
+                  <View
+                    style={[
+                      styles.searchResultsModal,
+                      keyboardVisible && {
+                        maxHeight: height - keyboardHeight - 150,
+                      },
+                    ]}
+                  >
+                    <ScrollView
+                      style={styles.searchResultsScrollView}
+                      contentContainerStyle={styles.searchResultsScrollContent}
+                      keyboardShouldPersistTaps="always"
+                      keyboardDismissMode="none"
+                      showsVerticalScrollIndicator={true}
+                      indicatorStyle="white"
+                    >
+                      {/* Officers Section */}
+                      {filteredOfficers.length > 0 && (
+                        <View style={styles.searchResultSection}>
+                          <View style={styles.searchResultSectionHeader}>
+                            <View style={styles.sectionTitleContainer}>
+                              <Ionicons
+                                name="shield-checkmark"
+                                size={20}
+                                color={THEME_SECONDARY}
+                                style={styles.sectionIcon}
+                              />
+                              <Text style={styles.searchResultSectionTitle}>
+                                Officers
+                              </Text>
+                            </View>
+                            <View style={styles.searchResultCountBadge}>
+                              <Text style={styles.searchResultCountText}>
+                                {filteredOfficers.length}
+                              </Text>
+                            </View>
+                          </View>
+                          {filteredOfficers.map((item) => (
+                            <View
+                              key={`officer-${item.id || item.uid}`}
+                              style={styles.searchResultCard}
+                            >
+                              <PersonCard
+                                item={item}
+                                defaultAvatarUri={require("../../../../assets/aito.png")}
+                              />
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
+                      {/* Students Section */}
+                      {filteredStudents.length > 0 && (
+                        <View style={styles.searchResultSection}>
+                          <View style={styles.searchResultSectionHeader}>
+                            <View style={styles.sectionTitleContainer}>
+                              <Ionicons
+                                name="school"
+                                size={20}
+                                color={THEME_SECONDARY}
+                                style={styles.sectionIcon}
+                              />
+                              <Text style={styles.searchResultSectionTitle}>
+                                Students
+                              </Text>
+                            </View>
+                            <View style={styles.searchResultCountBadge}>
+                              <Text style={styles.searchResultCountText}>
+                                {filteredStudents.length}
+                              </Text>
+                            </View>
+                          </View>
+                          {filteredStudents.map((item) => (
+                            <View
+                              key={`student-${item.id || item.uid}`}
+                              style={styles.searchResultCard}
+                            >
+                              <PersonCard
+                                item={item}
+                                defaultAvatarUri={require("../../../../assets/aito.png")}
+                              />
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
+                      {/* Empty State */}
+                      {filteredOfficers.length === 0 &&
+                        filteredStudents.length === 0 && (
+                          <View style={styles.emptySearchContainer}>
+                            <Ionicons
+                              name="search-outline"
+                              size={50}
+                              color="#A0AEC0"
+                            />
+                            <Text style={styles.emptySearchTitle}>
+                              No matches found
+                            </Text>
+                            <Text style={styles.emptySearchSubtitle}>
+                              Try a different search term or check your spelling
+                            </Text>
+                          </View>
+                        )}
+                    </ScrollView>
                   </View>
                 )}
-                contentContainerStyle={styles.searchResultsList}
-                ListEmptyComponent={
-                  <View style={styles.emptySearchContainer}>
-                    <Ionicons name="search-outline" size={50} color="#CBD5E1" />
-                    <Text style={styles.emptySearchTitle}>
-                      No matches found
-                    </Text>
-                  </View>
-                }
-              />
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.modalOverlay}
-              onPress={onClose}
-              activeOpacity={1}
-            />
-          )}
+              </Animated.View>
+            </KeyboardAvoidingView>
+          </BlurView>
         </View>
       </Modal>
     );
   }
 );
 
-const PersonCard = memo(({ item, defaultAvatarUri, highlightQuery = "" }) => {
-  const [presenceState, setPresenceState] = useState({
-    state: "offline",
-    last_active: null,
-  });
+const PersonCard = memo(({ item, defaultAvatarUri, isOnlineProp }) => {
   const [lastSeenText, setLastSeenText] = useState("");
+  const [userOnlineStatus, setUserOnlineStatus] = useState(false);
   const presenceRef = useRef(null);
   const isMounted = useRef(true);
-  const userId = item.id || item.uid;
+  const appState = useRef(AppState.currentState);
 
-  // Track presence state changes
-  useEffect(() => {
-    // Update component when presence state changes
-  }, [presenceState, userId]);
+  // Use the Firebase user ID consistently
+  // Prioritize uid if available as that's the Firebase Auth ID
+  const userId = item.uid || item.id;
+
+  const { getIsUserOnline } = useOnlineStatus();
 
   // Check if this is the current user
   const isCurrentUser = auth.currentUser && userId === auth.currentUser.uid;
 
-  // Force online status for current user
+  // Add app state listener for current user
   useEffect(() => {
-    if (isCurrentUser) {
-      // Force online status for current user
-      setPresenceState({
-        state: "online",
-        last_active: Date.now(),
-      });
-    }
-  }, [isCurrentUser, userId]);
+    if (!isCurrentUser) return;
 
-  // Fetch user's presence state
-  useEffect(() => {
-    let intervalId = null;
-    if (!userId) return;
-
-    // Create a reference to listen for real-time updates
-    try {
-      const statusRef = databaseRef(database, `status/${userId}`);
-      presenceRef.current = statusRef;
-
-      // Skip using get() and just use onValue with initial fetch
-      onValue(
-        statusRef,
-        (snapshot) => {
-          if (!isMounted.current) return;
-
-          if (snapshot.exists()) {
-            const data = snapshot.val();
-            // Always show current user as online
-            if (isCurrentUser) {
-              const currentUserData = { ...data, state: "online" };
-              setPresenceState(currentUserData);
-            } else {
-              setPresenceState(data);
-            }
-
-            if (data.state === "offline" && data.last_active) {
-              setLastSeenText(
-                userPresenceService.formatLastSeen(data.last_active)
-              );
-            }
-          } else {
-            // For missing data, ensure current user still shows as online
-            if (isCurrentUser) {
-              setPresenceState({
-                state: "online",
-                last_active: Date.now(),
-              });
-            }
-          }
-        },
-        (error) => {
-          // Handle presence listener error silently
-          // On error, ensure current user still shows as online
-          if (isCurrentUser) {
-            setPresenceState({
-              state: "online",
-              last_active: Date.now(),
-            });
-          }
-        }
-      );
-    } catch (error) {
-      // Handle setup error silently
-      // On error, ensure current user still shows as online
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      appState.current = nextAppState;
+      // For current user, update online status based on app state
       if (isCurrentUser) {
-        setPresenceState({
-          state: "online",
-          last_active: Date.now(),
-        });
+        setUserOnlineStatus(nextAppState === "active");
       }
-    }
-
-    // Set up an interval to update the last seen text
-    intervalId = setInterval(() => {
-      if (
-        isMounted.current &&
-        presenceState.state === "offline" &&
-        presenceState.last_active
-      ) {
-        setLastSeenText(
-          userPresenceService.formatLastSeen(presenceState.last_active)
-        );
-      }
-    }, 60000); // Update every minute
+    });
 
     return () => {
-      isMounted.current = false;
+      subscription.remove();
+    };
+  }, [isCurrentUser]);
 
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
+  // Load online status on mount and refresh periodically with improved error handling
+  useEffect(() => {
+    if (!userId) return; // Skip if no userId
+    if (isCurrentUser) {
+      // Current user's status depends on app state
+      setUserOnlineStatus(appState.current === "active");
+      return;
+    }
 
-      if (presenceRef.current) {
-        try {
-          off(presenceRef.current);
-          presenceRef.current = null;
-        } catch (error) {
-          // Handle cleanup error silently
+    let intervalId = null;
+    isMounted.current = true;
+
+    const checkUserStatus = async () => {
+      if (!isMounted.current) return;
+
+      try {
+        // If prop is provided, use it, otherwise check real-time status
+        if (isOnlineProp !== undefined) {
+          setUserOnlineStatus(isOnlineProp);
+        } else {
+          // Check if user is online - with validation
+          if (!userId || typeof userId !== "string" || userId.trim() === "") {
+            // Invalid user ID - skip the check
+            console.log(
+              "[PersonCard] Skipping status check for invalid userId"
+            );
+            return;
+          }
+
+          try {
+            const isOnline = await getIsUserOnline(userId);
+            if (isMounted.current) {
+              setUserOnlineStatus(isOnline);
+            }
+          } catch (statusError) {
+            // Silently handle status check errors
+            console.log("[PersonCard] Could not check online status");
+          }
+        }
+
+        // If user is offline, get last seen time
+        if (
+          !userOnlineStatus &&
+          userId &&
+          typeof userId === "string" &&
+          userId.trim() !== ""
+        ) {
+          try {
+            const presenceData = await userPresenceService.getUserPresence(
+              userId
+            );
+            if (isMounted.current && presenceData && presenceData.last_active) {
+              setLastSeenText(
+                userPresenceService.formatLastSeen(presenceData.last_active)
+              );
+            }
+          } catch (presenceError) {
+            // Silently handle presence data errors
+            console.log("[PersonCard] Could not fetch last seen data");
+          }
+        }
+      } catch (error) {
+        // Only log non-permission errors
+        if (
+          !error.message?.includes("Permission denied") &&
+          !error.message?.includes("permission_denied") &&
+          !error.message?.includes("Invalid token")
+        ) {
+          console.error("[PersonCard] Error checking user status:", error);
         }
       }
     };
-  }, [userId, isCurrentUser]);
 
-  // Determine if user is online directly from state
-  const isOnline = isCurrentUser || presenceState.state === "online";
+    // Check immediately
+    checkUserStatus();
 
-  const highlightText = (text, query) => {
-    if (!query || query.trim() === "") return text;
+    // Refresh status periodically with a slightly longer interval
+    intervalId = setInterval(checkUserStatus, 20000); // Check every 20 seconds
 
-    const regex = new RegExp(`(${query})`, "gi");
-    const parts = text.split(regex);
-
-    return (
-      <>
-        {parts.map((part, i) =>
-          regex.test(part) ? (
-            <Text key={i} style={styles.highlightedText}>
-              {part}
-            </Text>
-          ) : (
-            part
-          )
-        )}
-      </>
-    );
-  };
+    return () => {
+      isMounted.current = false;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [userId, isCurrentUser, isOnlineProp, getIsUserOnline]);
 
   return (
     <View style={styles.card}>
@@ -335,18 +653,20 @@ const PersonCard = memo(({ item, defaultAvatarUri, highlightQuery = "" }) => {
           <View
             style={[
               styles.statusIndicator,
-              isOnline ? styles.onlineIndicator : styles.offlineIndicator,
+              userOnlineStatus
+                ? styles.onlineIndicator
+                : styles.offlineIndicator,
             ]}
           />
         </View>
 
         <View style={styles.userInfo}>
           <View style={styles.usernameRow}>
-            <Text style={styles.username} numberOfLines={1}>
-              {highlightQuery
-                ? highlightText(item.username, highlightQuery)
-                : item.username}
-            </Text>
+            <View style={styles.usernameContainer}>
+              <Text style={styles.username} numberOfLines={1}>
+                {item.username}
+              </Text>
+            </View>
 
             {isCurrentUser && (
               <View style={styles.currentUserBadge}>
@@ -356,22 +676,50 @@ const PersonCard = memo(({ item, defaultAvatarUri, highlightQuery = "" }) => {
           </View>
 
           <View style={styles.userDetailsRow}>
-            {isOnline ? (
+            {userOnlineStatus ? (
               <View style={styles.statusTextContainer}>
+                <Ionicons
+                  name="wifi"
+                  size={12}
+                  color="#10B981"
+                  style={styles.statusIcon}
+                />
                 <Text style={styles.onlineText}>Online</Text>
               </View>
-            ) : presenceState.last_active ? (
-              <Text style={styles.lastSeenText}>Last seen {lastSeenText}</Text>
+            ) : lastSeenText ? (
+              <View style={styles.lastSeenContainer}>
+                <Ionicons
+                  name="time-outline"
+                  size={12}
+                  color="#94A3B8"
+                  style={styles.statusIcon}
+                />
+                <Text style={styles.lastSeenText}>
+                  Last seen {lastSeenText}
+                </Text>
+              </View>
             ) : null}
 
             {item.yearLevel && (
               <View style={styles.badgeContainer}>
+                <Ionicons
+                  name="ribbon-outline"
+                  size={14}
+                  color="#6B7280"
+                  style={styles.badgeIcon}
+                />
                 <Text style={styles.badgeText}>Year {item.yearLevel}</Text>
               </View>
             )}
 
             {item.role && (
               <View style={[styles.badgeContainer, styles.roleBadge]}>
+                <Ionicons
+                  name="star-outline"
+                  size={14}
+                  color="#6B7280"
+                  style={styles.badgeIcon}
+                />
                 <Text style={styles.badgeText}>{item.role}</Text>
               </View>
             )}
@@ -417,6 +765,18 @@ const Section = memo(({ title, data, defaultAvatarUri, showCount = true }) => {
     setIsExpanded((prev) => !prev);
   };
 
+  // Get appropriate icon based on section title
+  const getSectionIcon = () => {
+    switch (title.toLowerCase()) {
+      case "officers":
+        return "shield-outline";
+      case "students":
+        return "school-outline";
+      default:
+        return "people-outline";
+    }
+  };
+
   return (
     <View style={styles.section}>
       <TouchableOpacity
@@ -425,6 +785,12 @@ const Section = memo(({ title, data, defaultAvatarUri, showCount = true }) => {
         activeOpacity={0.8}
       >
         <View style={styles.sectionTitleContainer}>
+          <Ionicons
+            name={getSectionIcon()}
+            size={22}
+            color={THEME_COLOR}
+            style={styles.sectionIcon}
+          />
           <Text style={styles.sectionTitle}>{title}</Text>
 
           {showCount && data.length > 0 && (
@@ -448,7 +814,7 @@ const Section = memo(({ title, data, defaultAvatarUri, showCount = true }) => {
           style={{
             maxHeight: heightAnim.interpolate({
               inputRange: [0, 1],
-              outputRange: [0, 2000],
+              outputRange: [0, 4000],
             }),
             opacity: heightAnim,
             overflow: "hidden",
@@ -477,138 +843,25 @@ const People = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [refreshing, setRefreshing] = useState(false);
-  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false); // Initialize to false
   const [showSearchFAB, setShowSearchFAB] = useState(true);
+  const [checkingConnection, setCheckingConnection] = useState(false);
+  const [appActive, setAppActive] = useState(true);
+  const appStateRef = useRef(AppState.currentState);
+
+  const { isOnline, refreshStatus, getIsUserOnline, forceConnectionCheck } =
+    useOnlineStatus();
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef(null);
   const lastScrollY = useRef(0);
   const fabOpacity = useRef(new Animated.Value(1)).current;
+  const cleanupListeners = useRef([]);
+  const isMounted = useRef(true);
 
   const defaultAvatarUri = require("../../../../assets/aito.png");
 
-  // Initialize the presence service when the component mounts
-  useEffect(() => {
-    userPresenceService.initialize().catch(() => {});
-
-    // Force update status every time this screen is focused
-    const updateOnFocus = () => {
-      userPresenceService.forceOnlineUpdate().catch(() => {});
-    };
-
-    // Call immediately
-    updateOnFocus();
-
-    // Clean up on unmount
-    return () => {
-      userPresenceService.cleanup().catch(() => {});
-    };
-  }, []);
-
-  const getAvatarUrl = async (userId) => {
-    try {
-      const avatarRef = ref(storage, `avatars/${userId}`);
-      return await getDownloadURL(avatarRef);
-    } catch (error) {
-      console.warn(`No avatar found for user ${userId}`);
-      return null;
-    }
-  };
-
-  const fetchOfficers = async () => {
-    try {
-      const officersQuery = query(collection(db, "admin"), orderBy("username"));
-      const officersSnapshot = await getDocs(officersQuery);
-
-      const officersData = await Promise.all(
-        officersSnapshot.docs.map(async (doc) => {
-          const data = doc.data();
-          const avatarUrl = data.avatarUrl || (await getAvatarUrl(data.uid));
-          return {
-            id: doc.id,
-            ...data,
-            username: data.username || "Unknown",
-            avatarUrl,
-            role: data.role || "Officer",
-            bio: data.bio || null,
-          };
-        })
-      );
-
-      setOfficers(officersData.filter(Boolean));
-    } catch (error) {
-      console.error("Error fetching officers:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "Failed to fetch officers.",
-      });
-      setOfficers([]);
-    }
-  };
-
-  const fetchStudents = async () => {
-    try {
-      const usersQuery = query(collection(db, "users"), orderBy("username"));
-      const usersSnapshot = await getDocs(usersQuery);
-
-      const usersData = await Promise.all(
-        usersSnapshot.docs.map(async (doc) => {
-          const data = doc.data();
-          const avatarUrl = data.avatarUrl || (await getAvatarUrl(data.uid));
-          return {
-            id: doc.id,
-            ...data,
-            username: data.username || "Unknown",
-            avatarUrl,
-            yearLevel: data.yearLevel || "N/A",
-            bio: data.bio || null,
-          };
-        })
-      );
-
-      setStudents(usersData.filter(Boolean));
-    } catch (error) {
-      console.error("Error fetching students:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "Failed to fetch students.",
-      });
-      setStudents([]);
-    }
-  };
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      await Promise.all([fetchOfficers(), fetchStudents()]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([fetchData(), userPresenceService.forceOnlineUpdate()]);
-      Toast.show({
-        type: "success",
-        text1: "Refreshed",
-        position: "bottom",
-        visibilityTime: 1500,
-      });
-    } catch (error) {
-      console.error("[People] Error refreshing:", error);
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
+  // Define filterAndSortData callback early to ensure consistent hook order
   const filterAndSortData = useCallback(
     (data) => {
       let filteredData = data;
@@ -627,20 +880,413 @@ const People = () => {
     [searchQuery]
   );
 
+  // Define getFilteredPeople callback early to ensure consistent hook order
+  const getFilteredPeople = useCallback(
+    (query) => {
+      if (!query || query.trim() === "") return [];
+
+      const normalizedQuery = query.toLowerCase().trim();
+      const allPeople = [...officers, ...students];
+
+      // Prioritize exact matches first, then partial matches
+      return allPeople
+        .filter((person) => {
+          const username = person.username?.toLowerCase() || "";
+          return username.includes(normalizedQuery);
+        })
+        .sort((a, b) => {
+          const aUsername = a.username?.toLowerCase() || "";
+          const bUsername = b.username?.toLowerCase() || "";
+
+          // Sort exact matches first
+          const aExactMatch = aUsername === normalizedQuery;
+          const bExactMatch = bUsername === normalizedQuery;
+
+          if (aExactMatch && !bExactMatch) return -1;
+          if (!aExactMatch && bExactMatch) return 1;
+
+          // Then sort by starts with
+          const aStartsWith = aUsername.startsWith(normalizedQuery);
+          const bStartsWith = bUsername.startsWith(normalizedQuery);
+
+          if (aStartsWith && !bStartsWith) return -1;
+          if (!aStartsWith && bStartsWith) return 1;
+
+          // Finally sort alphabetically
+          return aUsername.localeCompare(bUsername);
+        });
+    },
+    [officers, students]
+  );
+
+  // Initialize the presence service when the component mounts
+  useEffect(() => {
+    const initializePresence = async () => {
+      try {
+        // Initialize presence service
+        await userPresenceService.initialize();
+
+        // Force refresh online status
+        refreshStatus();
+
+        // Also force a connection check to ensure we have accurate online status
+        if (forceConnectionCheck) {
+          await forceConnectionCheck();
+        }
+      } catch (error) {
+        // Only log meaningful errors
+        if (
+          !error.message?.includes("Permission denied") &&
+          !error.message?.includes("permission_denied")
+        ) {
+          console.error("[People] Failed to initialize presence:", error);
+        }
+      }
+    };
+
+    initializePresence();
+
+    // Cleanup function
+    return () => {
+      isMounted.current = false;
+
+      // Clean up any component-specific presence listeners
+      if (cleanupListeners.current.length > 0) {
+        cleanupListeners.current.forEach((cleanup) => {
+          if (typeof cleanup === "function") {
+            cleanup();
+          }
+        });
+        cleanupListeners.current = [];
+      }
+    };
+  }, [refreshStatus, forceConnectionCheck]);
+
+  // Enhanced direct network status check function
+  const checkDirectNetworkStatus = async () => {
+    // First check if we have network connectivity
+    try {
+      console.log("[People] Performing direct network check");
+      const response = await fetch("https://www.google.com", {
+        method: "HEAD",
+        // Short timeout to avoid hanging
+        timeout: 5000,
+      });
+      const isConnected = response.ok;
+      console.log(
+        "[People] Direct network check result:",
+        isConnected ? "CONNECTED" : "DISCONNECTED"
+      );
+      return isConnected;
+    } catch (e) {
+      console.log("[People] Direct network check failed:", e.message);
+      return false;
+    }
+  };
+
+  // Enhanced handleForceConnectionCheck function with better error handling
+  const handleForceConnectionCheck = async () => {
+    if (!isMounted.current) return;
+
+    setCheckingConnection(true);
+
+    try {
+      console.log("[People] Manual connection check requested by user");
+
+      // Try direct network check first
+      const hasNetwork = await checkDirectNetworkStatus();
+
+      if (!hasNetwork) {
+        console.log("[People] Direct network check confirmed we're offline");
+        Toast.show({
+          type: "error",
+          text1: "No Internet Connection",
+          text2: "Please check your network settings",
+          position: "bottom",
+          visibilityTime: 3000,
+        });
+        setCheckingConnection(false);
+        return false;
+      }
+
+      // If network is available, try Firebase connection check with error handling
+      let result = false;
+      try {
+        if (forceConnectionCheck) {
+          console.log(
+            "[People] Network available, checking Firebase connection"
+          );
+          result = await forceConnectionCheck();
+        }
+      } catch (firebaseError) {
+        // Silently handle Firebase connection errors
+        console.log(
+          "[People] Firebase connection check failed with error:",
+          firebaseError.message?.includes("Invalid token")
+            ? "Invalid token"
+            : firebaseError.message || "Unknown error"
+        );
+        // Continue with the process despite the error
+      }
+
+      // Force status refresh
+      try {
+        await refreshStatus();
+      } catch (refreshError) {
+        // Silently handle refresh errors
+        console.log("[People] Status refresh failed, continuing");
+      }
+
+      // Update UI with result
+      if (isMounted.current) {
+        if (result) {
+          console.log("[People] Successfully reconnected");
+          Toast.show({
+            type: "success",
+            text1: "Connected",
+            text2: "You are now online",
+            position: "bottom",
+            visibilityTime: 1500,
+          });
+        } else {
+          console.log(
+            "[People] Firebase connection limited but network is available"
+          );
+          Toast.show({
+            type: "info",
+            text1: "Connection Limited",
+            text2: "Limited connectivity to the server",
+            position: "bottom",
+            visibilityTime: 3000,
+          });
+        }
+      }
+
+      return result;
+    } catch (error) {
+      // Filter out common Firebase errors to reduce console noise
+      if (
+        !error.message?.includes("Invalid token") &&
+        !error.message?.includes("permission_denied")
+      ) {
+        console.error(
+          "[People] Error checking connection:",
+          error.message || error
+        );
+      } else {
+        console.log("[People] Connection check encountered a handled error");
+      }
+
+      // If there's an error, trigger another network check to verify
+      setTimeout(() => {
+        if (isMounted.current) {
+          refreshStatus();
+        }
+      }, 2000);
+      return false;
+    } finally {
+      if (isMounted.current) {
+        setCheckingConnection(false);
+      }
+    }
+  };
+
+  const getAvatarUrl = async (userId) => {
+    if (!userId) return null;
+
+    try {
+      const avatarRef = ref(storage, `avatars/${userId}`);
+      return await getDownloadURL(avatarRef);
+    } catch (error) {
+      // Silently handle missing avatars
+      return null;
+    }
+  };
+
+  const fetchOfficers = async () => {
+    if (!isMounted.current) return;
+
+    try {
+      const officersQuery = query(collection(db, "admin"), orderBy("username"));
+      const officersSnapshot = await getDocs(officersQuery);
+
+      const officersData = await Promise.all(
+        officersSnapshot.docs.map(async (doc) => {
+          if (!isMounted.current) return null;
+
+          const data = doc.data();
+          const avatarUrl = data.avatarUrl || (await getAvatarUrl(data.uid));
+          return {
+            id: doc.id,
+            ...data,
+            username: data.username || "Unknown",
+            avatarUrl,
+            role: data.role || "Officer",
+            bio: data.bio || null,
+          };
+        })
+      );
+
+      if (isMounted.current) {
+        setOfficers(officersData.filter(Boolean));
+      }
+    } catch (error) {
+      console.error("[People] Error fetching officers:", error);
+      if (isMounted.current) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Failed to fetch officers.",
+        });
+        setOfficers([]);
+      }
+    }
+  };
+
+  const fetchStudents = async () => {
+    if (!isMounted.current) return;
+
+    try {
+      const usersQuery = query(collection(db, "users"), orderBy("username"));
+      const usersSnapshot = await getDocs(usersQuery);
+
+      const usersData = await Promise.all(
+        usersSnapshot.docs.map(async (doc) => {
+          if (!isMounted.current) return null;
+
+          const data = doc.data();
+          const avatarUrl = data.avatarUrl || (await getAvatarUrl(data.uid));
+          return {
+            id: doc.id,
+            ...data,
+            username: data.username || "Unknown",
+            avatarUrl,
+            yearLevel: data.yearLevel || "N/A",
+            bio: data.bio || null,
+          };
+        })
+      );
+
+      if (isMounted.current) {
+        setStudents(usersData.filter(Boolean));
+      }
+    } catch (error) {
+      console.error("[People] Error fetching students:", error);
+      if (isMounted.current) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Failed to fetch students.",
+        });
+        setStudents([]);
+      }
+    }
+  };
+
+  const fetchData = async () => {
+    if (!isMounted.current) return;
+
+    setLoading(true);
+    try {
+      await Promise.all([fetchOfficers(), fetchStudents()]);
+    } finally {
+      if (isMounted.current) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (!isMounted.current) return;
+
+    setRefreshing(true);
+    try {
+      // First force a connection check to make sure online status is accurate
+      if (forceConnectionCheck) {
+        setCheckingConnection(true);
+        await forceConnectionCheck();
+        setCheckingConnection(false);
+      }
+
+      // Then fetch data and refresh online status in parallel
+      await Promise.all([fetchData(), refreshStatus()]);
+
+      // Removed toast notification as requested
+    } catch (error) {
+      console.error("[People] Error refreshing:", error);
+    } finally {
+      if (isMounted.current) {
+        setRefreshing(false);
+        setCheckingConnection(false);
+      }
+    }
+  };
+
+  // filterAndSortData is now defined at the top of the component
+
   const clearSearch = () => {
     setSearchQuery("");
   };
 
-  const toggleSearchModal = () => {
-    setShowSearchModal(!showSearchModal);
+  // Effect to ensure FlatList scrolling is properly managed
+  useEffect(() => {
+    // When search modal is closed, ensure scrolling is enabled
+    if (!showSearchModal && scrollViewRef.current) {
+      // Small delay to ensure animations are complete
+      const timer = setTimeout(() => {
+        try {
+          scrollViewRef.current.setNativeProps({ scrollEnabled: true });
+        } catch (error) {
+          console.log("Error in scroll effect:", error);
+        }
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [showSearchModal]);
+
+  const toggleSearchModal = useCallback(() => {
     if (showSearchModal) {
-      clearSearch();
+      // First dismiss keyboard
+      Keyboard.dismiss();
+
+      // Close overlay with a slight delay to ensure keyboard is dismissed properly
+      setTimeout(() => {
+        setShowSearchModal(false);
+        clearSearch();
+
+        // Give time for animations to complete before re-enabling scroll
+        setTimeout(() => {
+          try {
+            // Re-enable scrolling after the search modal is fully closed
+            if (scrollViewRef.current) {
+              scrollViewRef.current.setNativeProps({ scrollEnabled: true });
+            }
+          } catch (error) {
+            console.log("Error re-enabling scroll:", error);
+          }
+        }, 300);
+      }, 100);
     } else {
       safeHaptics.selectionAsync();
-    }
-  };
 
-  // Add scroll handler to hide/show FAB with simple fade
+      // Disable scrolling in the main list when search is active
+      try {
+        if (scrollViewRef.current) {
+          scrollViewRef.current.setNativeProps({ scrollEnabled: false });
+        }
+      } catch (error) {
+        console.log("Error disabling scroll:", error);
+      }
+
+      // Show search modal
+      setShowSearchModal(true);
+
+      // Note: The keyboard focus happens in the SearchBar component
+    }
+  }, [showSearchModal, clearSearch]);
+
+  // Enhanced scroll handler to smoothly adjust FAB opacity based on scroll position
   const handleScroll = Animated.event(
     [{ nativeEvent: { contentOffset: { y: scrollY } } }],
     {
@@ -652,17 +1298,17 @@ const People = () => {
           currentScrollY > lastScrollY.current &&
           currentScrollY > SCROLL_THRESHOLD
         ) {
-          // Scrolling DOWN - hide FAB
+          // Scrolling DOWN - reduce opacity but don't hide completely
           Animated.timing(fabOpacity, {
-            toValue: 0,
-            duration: 200,
+            toValue: 0.4, // Reduce opacity instead of hiding completely
+            duration: 300, // Slightly longer for smoother transition
             useNativeDriver: true,
           }).start();
         } else if (currentScrollY < lastScrollY.current) {
           // Scrolling UP - show FAB
           Animated.timing(fabOpacity, {
             toValue: 1,
-            duration: 200,
+            duration: 300,
             useNativeDriver: true,
           }).start();
         }
@@ -675,10 +1321,141 @@ const People = () => {
   // Add this activity tracker - updates user's last active time periodically
   useEffect(() => {
     const activityInterval = setInterval(() => {
-      userPresenceService.updateLastActive();
-    }, 3 * 60 * 1000); // Update every 3 minutes while the screen is open
+      if (isMounted.current && auth.currentUser) {
+        userPresenceService.updateLastActive().catch((error) => {
+          // Silently handle permission errors
+          if (
+            !error?.message?.includes("Permission denied") &&
+            !error?.message?.includes("permission_denied")
+          ) {
+            console.warn("[People] Error updating activity:", error);
+          }
+        });
+      }
+    }, 30 * 1000); // Update every 30 seconds while the screen is open
 
     return () => clearInterval(activityInterval);
+  }, []);
+
+  // Add a periodic check for connection status to handle cases where status gets out of sync
+  useEffect(() => {
+    // Function to check and verify online status
+    const verifyOnlineStatus = async () => {
+      try {
+        // Only check if we're shown as offline but might actually be online
+        if (!isOnline) {
+          console.log(
+            "[People] Detected offline status, verifying if it's accurate..."
+          );
+
+          // First check direct network connectivity
+          const hasNetwork = await checkDirectNetworkStatus();
+
+          if (!hasNetwork) {
+            console.log("[People] No network connectivity confirmed");
+            return;
+          }
+
+          // We have network, so try Firebase connection
+          if (forceConnectionCheck) {
+            const actuallyConnected = await forceConnectionCheck();
+
+            if (actuallyConnected) {
+              console.log(
+                "[People] Successfully reconnected after verification"
+              );
+              // Force data refresh since we're actually online
+              await fetchData();
+            }
+          }
+        }
+      } catch (error) {
+        console.error(
+          "[People] Error verifying online status:",
+          error.message || error
+        );
+      }
+    };
+
+    // Check immediately if showing offline
+    if (!isOnline) {
+      verifyOnlineStatus();
+    }
+
+    // Set up interval for periodic checks (less frequent than normal heartbeats)
+    const checkInterval = setInterval(() => {
+      if (isMounted.current) {
+        verifyOnlineStatus();
+      }
+    }, 30000); // Every 30 seconds
+
+    return () => {
+      clearInterval(checkInterval);
+    };
+  }, [isOnline, forceConnectionCheck]);
+
+  useEffect(() => {
+    fetchData();
+
+    // Register for presence callbacks
+    const unregisterCallbacks = userPresenceService.registerConnectionCallbacks(
+      {
+        onOnline: () => {
+          if (isMounted.current) {
+            // Refresh data when we come back online
+            fetchData();
+          }
+        },
+      }
+    );
+
+    // Store for cleanup
+    cleanupListeners.current.push(unregisterCallbacks);
+
+    // Setup cleanup
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  // Add an AppState listener to detect when app goes to background
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      const isActive = nextAppState === "active";
+      setAppActive(isActive);
+
+      if (isActive && appStateRef.current !== "active") {
+        // App came to foreground, refresh data and presence
+        console.log("[People] App came to foreground, refreshing");
+        handleRefresh();
+
+        // Update presence to online when app comes to foreground
+        if (auth.currentUser) {
+          userPresenceService
+            .updatePresenceWithAppState("active")
+            .catch((err) => {
+              // Silent error handling
+            });
+        }
+      } else if (!isActive) {
+        // App went to background, update presence to reflect this
+        console.log("[People] App went to background");
+        if (auth.currentUser) {
+          // Mark the user with app state when app goes to background
+          userPresenceService
+            .updatePresenceWithAppState(nextAppState)
+            .catch((err) => {
+              // Silent error handling
+            });
+        }
+      }
+
+      appStateRef.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
   if (loading) {
@@ -709,15 +1486,7 @@ const People = () => {
     return sections;
   };
 
-  // Helper function to get all people for search results
-  const getFilteredPeople = (query) => {
-    if (!query) return [];
-
-    const allPeople = [...officers, ...students];
-    return allPeople.filter((item) =>
-      item.username.toLowerCase().includes(query.toLowerCase())
-    );
-  };
+  // getFilteredPeople is now defined at the top of the component
 
   return (
     <View style={styles.container}>
@@ -725,7 +1494,10 @@ const People = () => {
 
       <Animated.FlatList
         ref={scrollViewRef}
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[
+          styles.contentContainer,
+          !isOnline && styles.contentContainerOffline,
+        ]}
         data={getFilteredSections()}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
@@ -741,9 +1513,11 @@ const People = () => {
         scrollEventThrottle={16}
         overScrollMode="never"
         bounces={true}
+        scrollEnabled={!showSearchModal} // Disable scrolling when search modal is open
+        removeClippedSubviews={false} // Prevent issues with clipped views
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
+            refreshing={refreshing || checkingConnection}
             onRefresh={handleRefresh}
             colors={[THEME_COLOR]}
             tintColor={THEME_COLOR}
@@ -769,15 +1543,19 @@ const People = () => {
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Search Modal */}
-      <SearchBar
-        visible={showSearchModal}
-        onClose={toggleSearchModal}
-        onSearch={setSearchQuery}
-        searchQuery={searchQuery}
-        onClear={clearSearch}
-        getFilteredPeople={getFilteredPeople}
-      />
+      {/* Search Modal - Only render when showSearchModal is true */}
+      {showSearchModal && (
+        <SearchBar
+          visible={showSearchModal}
+          onClose={toggleSearchModal}
+          onSearch={setSearchQuery}
+          searchQuery={searchQuery}
+          onClear={clearSearch}
+          getFilteredPeople={getFilteredPeople}
+          officers={officers}
+          students={students}
+        />
+      )}
     </View>
   );
 };
@@ -787,15 +1565,91 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
     color: "#666",
+    fontWeight: "500",
   },
   container: {
     flex: 1,
-    backgroundColor: "#f9f9f9",
+    backgroundColor: "#f8f9fa", // Slightly lighter background
     paddingTop: Platform.OS === "android" ? StatusBar.currentHeight || 0 : 0,
   },
-  contentContainer: {
-    paddingBottom: SPACING * 4,
-    paddingTop: SPACING,
+  searchOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+    backgroundColor: "transparent",
+  },
+  blurContainer: {
+    flex: 1,
+    flexDirection: "column",
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  overlayBackdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.7)", // Darker backdrop for better contrast
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+    width: "100%",
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  searchBarContainer: {
+    width: "100%",
+    zIndex: 1001,
+    flex: 1,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  minimalistSearchHeader: {
+    paddingTop: Platform.OS === "ios" ? 50 : StatusBar.currentHeight + 10,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "transparent",
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1002,
+  },
+  minimalistSearchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    paddingHorizontal: SPACING,
+    height: 50,
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.1)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  minimalistSearchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: "#1F2937",
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    fontWeight: "500",
   },
   searchFAB: {
     position: "absolute",
@@ -810,97 +1664,99 @@ const styles = StyleSheet.create({
     backgroundColor: THEME_COLOR,
     justifyContent: "center",
     alignItems: "center",
-    elevation: 4,
+
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
   },
-  searchModalContainer: {
-    flex: 1,
-    backgroundColor: "rgba(255,255,255,0.98)",
-  },
-  searchModalContent: {
-    backgroundColor: "#FFF",
-    paddingVertical: SPACING,
-    paddingHorizontal: SPACING,
-    paddingTop:
-      Platform.OS === "android"
-        ? StatusBar.currentHeight + SPACING || SPACING
-        : SPACING,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
-  },
-  searchResultsContainer: {
-    flex: 1,
-  },
-  searchResultsList: {
-    paddingHorizontal: SPACING,
+  contentContainer: {
+    paddingBottom: SPACING * 1.5, // Further increased padding to prevent cropping
     paddingTop: SPACING,
   },
-  searchResultCard: {
-    marginBottom: 8,
-  },
-  emptySearchContainer: {
-    paddingTop: SPACING * 10,
-    alignItems: "center",
-  },
-  emptySearchTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-    marginTop: SPACING,
-  },
-  modalOverlay: {
+  searchResultsModal: {
     flex: 1,
+    backgroundColor: "#FFFFFF",
+    marginHorizontal: SPACING,
+    marginTop: Platform.OS === "ios" ? 90 : StatusBar.currentHeight + 70,
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    overflow: "hidden",
+    height: height * 0.8, // Changed from maxHeight to fixed height
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
-  searchContainer: {
+  searchResultSection: {
+    paddingHorizontal: SPACING,
+    paddingTop: SPACING / 2, // Reduced top padding
+    marginBottom: SPACING / 2, // Reduced bottom margin
+  },
+  searchResultSectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F5F5F5",
-    borderRadius: 12,
-    paddingHorizontal: SPACING,
-    height: 50,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.05)",
+    marginBottom: SPACING / 2, // Reduced margin
+    paddingHorizontal: SPACING / 2,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0, 0, 0, 0.1)",
+    paddingBottom: 8,
   },
-  searchContainerFocused: {
-    borderColor: THEME_SECONDARY,
-  },
-  clearButton: {
-    padding: 8,
-  },
-  searchInput: {
+  sectionTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
-    marginLeft: SPACING / 2,
-    fontSize: 16,
-    color: "#333",
-    height: 50,
   },
-  highlightedText: {
-    backgroundColor: "rgba(62, 146, 204, 0.2)",
-    color: THEME_COLOR,
-    fontWeight: "bold",
+  sectionIcon: {
+    marginRight: 8,
+  },
+  searchResultSectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  searchResultCountBadge: {
+    backgroundColor: THEME_SECONDARY,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  searchResultCountText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  searchResultsScrollView: {
+    flex: 1,
+    width: "100%",
+  },
+  searchResultsScrollContent: {
+    paddingBottom: SPACING * 4,
+    paddingTop: SPACING,
+    flexGrow: 1, // Added to ensure content fills available space
   },
   section: {
     paddingHorizontal: SPACING,
     paddingTop: 0,
-    marginBottom: SPACING,
+    marginBottom: SPACING, // Reduced from SPACING * 2
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: SPACING,
+    marginBottom: SPACING / 2, // Reduced margin
     marginTop: 0,
-  },
-  sectionTitleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+    paddingVertical: 8, // Increased for better touch area
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: "600",
+    fontWeight: "700",
     color: THEME_COLOR,
     letterSpacing: -0.5,
   },
@@ -908,7 +1764,7 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F5F5F5",
+    backgroundColor: "rgba(62, 146, 204, 0.1)", // Updated to use theme color with opacity
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 8,
@@ -920,28 +1776,35 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     width: "100%",
+    paddingBottom: SPACING * 3, // Increased padding at bottom of list
   },
   card: {
     backgroundColor: "#FFFFFF",
-    marginBottom: 8,
-    borderRadius: 12,
+    marginBottom: 12,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: "rgba(0, 0, 0, 0.05)", // Lighter border
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04, // Reduced shadow opacity
+    shadowRadius: 6, // Increased shadow radius for softer effect
+    elevation: 3,
   },
   cardContent: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
+    padding: 16, // Increased padding for better spacing
     backgroundColor: "white",
   },
   avatarContainer: {
     position: "relative",
+    marginRight: 4, // Added margin
   },
   avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 52, // Slightly larger
+    height: 52, // Slightly larger
+    borderRadius: 26,
     backgroundColor: "#F3F4F6",
     borderWidth: 1,
     borderColor: "#E5E7EB",
@@ -954,10 +1817,17 @@ const styles = StyleSheet.create({
   usernameRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
+  },
+  usernameContainer: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: 8,
   },
   username: {
-    fontSize: 15,
-    fontWeight: "500",
+    fontSize: 16, // Slightly increased
+    fontWeight: "600", // Bolder
     color: "#111827",
     letterSpacing: -0.3,
   },
@@ -974,6 +1844,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginRight: 8,
     marginBottom: 4,
+    flexDirection: "row",
+    alignItems: "center",
   },
   badgeText: {
     fontSize: 12,
@@ -981,14 +1853,14 @@ const styles = StyleSheet.create({
     color: "#6B7280",
   },
   roleBadge: {
-    backgroundColor: "rgba(62, 146, 204, 0.15)",
+    backgroundColor: "rgba(62, 146, 204, 0.1)",
   },
   statusIndicator: {
     position: "absolute",
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
+    width: 15, // Slightly larger
+    height: 15, // Slightly larger
+    borderRadius: 8,
+    borderWidth: 2.5, // Thicker border
     borderColor: "#FFFFFF",
     bottom: 0,
     right: 0,
@@ -999,7 +1871,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   onlineIndicator: {
-    backgroundColor: "#4CAF50",
+    backgroundColor: "#10B981", // A nicer green
     borderColor: "#FFFFFF",
   },
   offlineIndicator: {
@@ -1010,10 +1882,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#f8f9fa",
   },
   emptyText: {
     textAlign: "center",
-    color: "#95A5A6",
+    color: "#94A3B8", // More modern gray
     fontSize: 15,
     marginTop: SPACING,
     fontWeight: "500",
@@ -1038,22 +1911,29 @@ const styles = StyleSheet.create({
   lastSeenText: {
     fontSize: 12,
     color: "#94A3B8",
-    marginBottom: 4,
+    marginBottom: 6, // Increased from 4 to 6
+    marginRight: 8, // Added for spacing
     fontStyle: "italic",
   },
   statusTextContainer: {
     marginRight: 8,
+    backgroundColor: "rgba(16, 185, 129, 0.1)",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    marginBottom: 4,
+    flexDirection: "row",
+    alignItems: "center",
   },
   onlineText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#4CAF50",
+    color: "#10B981", // Matching the status indicator
   },
-
   currentUserBadge: {
     backgroundColor: THEME_COLOR,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3, // Slightly increased
     borderRadius: 10,
     marginLeft: 8,
   },
@@ -1061,6 +1941,51 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 10,
     fontWeight: "bold",
+  },
+  youLabel: {
+    fontStyle: "italic",
+    color: THEME_SECONDARY,
+    fontWeight: "500",
+  },
+  contentContainerOffline: {
+    paddingTop: 0, // Adjust for offline banner
+  },
+  statusIcon: {
+    marginRight: 4,
+  },
+  lastSeenContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+    marginRight: 8,
+  },
+  badgeIcon: {
+    marginRight: 4,
+  },
+  emptySearchContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: SPACING * 2,
+    marginTop: SPACING * 3,
+  },
+  emptySearchTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#4A5568",
+    marginTop: SPACING * 1.5,
+    marginBottom: SPACING / 2,
+    textAlign: "center",
+  },
+  emptySearchSubtitle: {
+    fontSize: 14,
+    color: "#718096",
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
 });
 

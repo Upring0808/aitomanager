@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,16 +7,58 @@ import {
   Image,
   Dimensions,
   SafeAreaView,
+  Animated,
+  Modal,
+  TextInput,
+  ActivityIndicator,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { User, UserPlus, ChevronRight } from "lucide-react-native";
+import { User, Mail, ChevronRight, CheckCircle, X } from "lucide-react-native";
 import aito from "../assets/aito.png";
 import BackgroundImage from "./ImageBackground";
 import { textStyles } from "../fallbackStyles";
+import * as SplashScreen from "expo-splash-screen";
 
 const { width, height } = Dimensions.get("window");
 
 const Index = ({ navigation }) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [modalVisible, setModalVisible] = useState(false);
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    // Hide splash first, then start fade-in
+    SplashScreen.hideAsync().finally(() => {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [fadeAnim]);
+
+  const handleContactAdmin = () => {
+    setModalVisible(true);
+  };
+
+  const handleSendMessage = () => {
+    setSending(true);
+    // Simulate sending the message
+    setTimeout(() => {
+      setSending(false);
+      setSuccess(true);
+      setTimeout(() => {
+        setModalVisible(false);
+        setSuccess(false);
+        setMessage("");
+      }, 2000);
+    }, 1500);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <BackgroundImage>
@@ -24,7 +66,7 @@ const Index = ({ navigation }) => {
           colors={["#ffffffaa", "#16325Bff"]}
           style={styles.gradient}
         >
-          <View style={styles.container}>
+          <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
             <View style={styles.logoContainer}>
               <Image source={aito} style={styles.logo} resizeMode="contain" />
             </View>
@@ -53,33 +95,72 @@ const Index = ({ navigation }) => {
 
                 <TouchableOpacity
                   style={[styles.buttonOutline, styles.elevatedShadow]}
-                  onPress={() => navigation.navigate("Register")}
+                  onPress={handleContactAdmin}
                   activeOpacity={0.7}
                 >
                   <View style={styles.buttonContent}>
-                    <UserPlus
-                      color="#16325B"
-                      size={24}
-                      style={styles.buttonIcon}
-                    />
-                    <Text style={styles.buttonOutlineText}>Register</Text>
+                    <Mail color="#16325B" size={24} style={styles.buttonIcon} />
+                    <Text style={styles.buttonOutlineText}>Contact Admin</Text>
                     <ChevronRight color="#16325B" size={24} />
                   </View>
                 </TouchableOpacity>
 
                 <View style={styles.loginContainer}>
                   <Text style={styles.loginText}>No Account? </Text>
-                  <TouchableOpacity
-                    onPress={() => navigation.navigate("Register")}
-                  >
-                    <Text style={styles.loginLink}>Sign Up</Text>
+                  <TouchableOpacity onPress={handleContactAdmin}>
+                    <Text style={styles.loginLink}>Contact Admin</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
-          </View>
+          </Animated.View>
         </LinearGradient>
       </BackgroundImage>
+
+      {/* Custom full-screen modal implementation */}
+      {modalVisible && (
+        <View style={styles.fullScreenModalContainer}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.fullScreenModalOverlay}>
+              <View style={styles.modalContent}>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setModalVisible(false)}
+                >
+                  <X color="#16325B" size={24} />
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>Contact Admin</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter your message..."
+                  value={message}
+                  onChangeText={setMessage}
+                  multiline
+                  numberOfLines={4}
+                />
+                <TouchableOpacity
+                  style={styles.sendButton}
+                  onPress={handleSendMessage}
+                  disabled={sending || success}
+                >
+                  {sending ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : success ? (
+                    <CheckCircle color="#fff" size={24} />
+                  ) : (
+                    <Text style={styles.sendButtonText}>Send</Text>
+                  )}
+                </TouchableOpacity>
+                {success && (
+                  <Text style={styles.successMessage}>
+                    Thank you for contacting us!
+                  </Text>
+                )}
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -133,7 +214,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     letterSpacing: 1,
   },
-
   description: {
     fontSize: width > 600 ? 20 : 18,
     color: "rgba(255, 255, 255, 0.85)",
@@ -146,7 +226,6 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     letterSpacing: 0.5,
   },
-
   buttonContainer: {
     width: "100%",
     alignItems: "center",
@@ -161,7 +240,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#fff",
   },
-
   buttonOutline: {
     borderWidth: 2,
     borderColor: "#16325B",
@@ -214,6 +292,73 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 5,
     elevation: 8,
+  },
+  // Full-screen modal styles - updated to ensure it covers everything
+  fullScreenModalContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: Dimensions.get("window").width,
+    height: Dimensions.get("window").height + 80, // Add extra height to ensure it covers the bottom
+    zIndex: 9999,
+  },
+  fullScreenModalOverlay: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    width: "80%",
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 20,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 15,
+  },
+  input: {
+    width: "100%",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 15,
+    textAlignVertical: "top",
+  },
+  sendButton: {
+    backgroundColor: "#16325B",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  },
+  sendButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  successMessage: {
+    marginTop: 10,
+    color: "#4CAF50",
+    fontWeight: "bold",
+  },
+  closeButton: {
+    position: "absolute",
+    top: 10,
+    right: 10,
   },
 });
 

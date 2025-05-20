@@ -15,6 +15,7 @@ import {
   TouchableWithoutFeedback,
   Modal,
   Alert,
+  Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -36,7 +37,12 @@ import BackgroundImage from "../../components/ImageBackground";
 import { auth, db } from "../../config/firebaseconfig";
 import aito from "../../assets/aito.png";
 
+// Get screen dimensions
+const { width, height } = Dimensions.get("window");
+const { height: screenHeight, width: screenWidth } = Dimensions.get("screen");
+
 const Login = ({ navigation }) => {
+  // Your existing state variables
   const [loginInput, setLoginInput] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -45,8 +51,8 @@ const Login = ({ navigation }) => {
   const [forgotPasswordModalVisible, setForgotPasswordModalVisible] =
     useState(false);
   const [forgotStudentId, setForgotStudentId] = useState("");
-  // We're handling both student ID and admin email login types internally without showing it in the UI
 
+  // Rest of your functions remain the same...
   const showToast = (type, message) => {
     Toast.show({
       type: type,
@@ -260,8 +266,6 @@ const Login = ({ navigation }) => {
     }
   };
 
-  // Removed toggle login method as we're only showing student ID login
-
   return (
     <BackgroundImage>
       <LinearGradient
@@ -345,78 +349,90 @@ const Login = ({ navigation }) => {
                   </Text>
                 </TouchableOpacity>
 
-                {/* Removed toggle login method button */}
-
                 <View style={styles.registerContainer}>
                   <Text style={styles.registerText}>
                     Don't have an account?{" "}
                   </Text>
                   <TouchableOpacity
-                    onPress={() => navigation.navigate("Register")}
+                    onPress={() => navigation.navigate("Index")}
                   >
-                    <Text style={styles.registerLink}>Register</Text>
+                    <Text style={styles.registerLink}>Contact Admin</Text>
                   </TouchableOpacity>
                 </View>
-
-                {/* Removed admin login button */}
               </ScrollView>
             </TouchableWithoutFeedback>
           </KeyboardAvoidingView>
         </SafeAreaView>
       </LinearGradient>
 
-      {/* Forgot Password Modal */}
+      {/* Forgot Password Modal - Modified for full screen overlay */}
       <Modal
         visible={forgotPasswordModalVisible}
         transparent={true}
         animationType="fade"
+        statusBarTranslucent={true} // This ensures overlay extends behind status bar
+        onRequestClose={() => {
+          setForgotPasswordModalVisible(false);
+          setForgotStudentId("");
+        }}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Reset Password</Text>
-            <Text style={styles.modalText}>
-              Enter your Student ID to receive a password reset link.
-            </Text>
+        <View style={styles.modalOverlay}>
+          <TouchableWithoutFeedback
+            onPress={() => {
+              setForgotPasswordModalVisible(false);
+              setForgotStudentId("");
+            }}
+          >
+            <View style={styles.modalBackdrop}>
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>Reset Password</Text>
+                  <Text style={styles.modalText}>
+                    Enter your Student ID to receive a password reset link.
+                  </Text>
 
-            <View style={styles.modalInputWrapper}>
-              <Ionicons name="id-card-outline" size={20} color="#888" />
-              <TextInput
-                style={styles.modalInput}
-                placeholder="Student ID (e.g., 2022-1114-AB)"
-                placeholderTextColor="#a0a0a0"
-                value={forgotStudentId}
-                onChangeText={setForgotStudentId}
-                autoCapitalize="none"
-              />
+                  <View style={styles.modalInputWrapper}>
+                    <Ionicons name="id-card-outline" size={20} color="#888" />
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="Student ID (e.g., 2022-1114-AB)"
+                      placeholderTextColor="#a0a0a0"
+                      value={forgotStudentId}
+                      onChangeText={setForgotStudentId}
+                      autoCapitalize="none"
+                    />
+                  </View>
+
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.cancelButton]}
+                      onPress={() => {
+                        setForgotPasswordModalVisible(false);
+                        setForgotStudentId("");
+                      }}
+                      disabled={isResetting}
+                    >
+                      <Text style={styles.cancelButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.modalButton,
+                        styles.resetButton,
+                        isResetting && styles.buttonDisabled,
+                      ]}
+                      onPress={handleForgotPassword}
+                      disabled={isResetting}
+                    >
+                      <Text style={styles.resetButtonText}>
+                        {isResetting ? "Sending..." : "Reset Password"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
             </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  setForgotPasswordModalVisible(false);
-                  setForgotStudentId("");
-                }}
-                disabled={isResetting}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  styles.resetButton,
-                  isResetting && styles.buttonDisabled,
-                ]}
-                onPress={handleForgotPassword}
-                disabled={isResetting}
-              >
-                <Text style={styles.resetButtonText}>
-                  {isResetting ? "Sending..." : "Reset Password"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          </TouchableWithoutFeedback>
         </View>
       </Modal>
 
@@ -502,7 +518,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
   },
-  // Removed toggle login method styles
   registerContainer: {
     flexDirection: "row",
     justifyContent: "center",
@@ -517,12 +532,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "bold",
   },
-  // Removed admin login styles
-  modalContainer: {
+  // Improved modal styles for full screen coverage
+  modalOverlay: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    backgroundColor: "transparent",
+  },
+  modalBackdrop: {
     flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   modalContent: {
     backgroundColor: "white",
@@ -530,6 +551,11 @@ const styles = StyleSheet.create({
     padding: 20,
     width: "85%",
     maxWidth: 400,
+    elevation: 5, // for Android shadow
+    shadowColor: "#000", // for iOS shadow
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   modalTitle: {
     fontSize: 20,

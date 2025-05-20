@@ -26,6 +26,7 @@ import * as ImagePicker from "expo-image-picker";
 import { Feather } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { dashboardServices } from "../../../../services/dashboardServices";
+import { LinearGradient } from "expo-linear-gradient";
 
 const AdminProfile = () => {
   const navigation = useNavigation();
@@ -276,34 +277,50 @@ const AdminProfile = () => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.loadingText}>Loading Profile...</Text>
+        <ActivityIndicator size="large" color="#203562" />
+        <Text style={styles.loadingTextNeutral}>Loading Profile...</Text>
       </View>
     );
   }
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.header}>
-          <View>
-            <TouchableOpacity onPress={pickImage}>
-              <Image
-                source={
-                  avatarUrl
-                    ? { uri: avatarUrl }
-                    : require("../../../../assets/aito.png")
-                }
-                style={styles.avatar}
-              />
-              <TouchableOpacity style={styles.editIcon} onPress={pickImage}>
-                <Feather name="edit" size={18} color="black" />
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        showsVerticalScrollIndicator={false}
+        bounces={true}
+      >
+        <LinearGradient
+          colors={["#203562", "#16325B"]}
+          style={styles.headerGradient}
+        >
+          <View style={styles.headerContent}>
+            <View style={styles.avatarContainer}>
+              <TouchableOpacity
+                onPress={pickImage}
+                style={styles.avatarWrapper}
+              >
+                <Image
+                  source={
+                    avatarUrl
+                      ? { uri: avatarUrl }
+                      : require("../../../../assets/aito.png")
+                  }
+                  style={styles.avatar}
+                />
+                <View style={styles.editIconContainer}>
+                  <Feather name="camera" size={18} color="white" />
+                </View>
               </TouchableOpacity>
-            </TouchableOpacity>
+            </View>
+            <Text style={styles.username}>
+              {adminData?.username || "Admin"}
+            </Text>
+            <Text style={styles.userRole}>Admin</Text>
           </View>
-          <Text style={styles.username}>{adminData?.username || "Admin"}</Text>
-        </View>
+        </LinearGradient>
 
-        <View style={styles.contentContainer}>
+        <View style={styles.profileCard}>
+          <Text style={styles.sectionTitle}>Admin Information</Text>
           {["username", "email", "phone"].map((field) => (
             <TouchableOpacity
               key={field}
@@ -313,115 +330,218 @@ const AdminProfile = () => {
               }}
               style={styles.fieldContainer}
             >
-              <Text style={styles.label}>
-                {field.charAt(0).toUpperCase() + field.slice(1)}
-              </Text>
-              <View style={styles.fieldValueContainer}>
-                <Text style={styles.value}>{adminData[field]}</Text>
-                <Feather name="edit" size={18} color="gray" />
+              <View style={styles.fieldIconContainer}>
+                <Feather
+                  name={
+                    field === "username"
+                      ? "user"
+                      : field === "email"
+                      ? "mail"
+                      : "phone"
+                  }
+                  size={20}
+                  color="#203562"
+                />
               </View>
+              <View style={styles.fieldContent}>
+                <Text style={styles.label}>
+                  {field.charAt(0).toUpperCase() + field.slice(1)}
+                </Text>
+                <Text style={styles.value}>{adminData[field]}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={() => {
+                  setEditingField(field);
+                  setModalVisible(true);
+                }}
+              >
+                <Feather name="edit-2" size={16} color="#203562" />
+              </TouchableOpacity>
             </TouchableOpacity>
           ))}
-        </View>
 
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={() => setLogoutModalVisible(true)}
-        >
-          <Text style={styles.logoutButtonText}>Logout</Text>
-        </TouchableOpacity>
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={() => setLogoutModalVisible(true)}
+          >
+            <Feather
+              name="log-out"
+              size={18}
+              color="white"
+              style={styles.logoutIcon}
+            />
+            <Text style={styles.logoutButtonText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       {renderFieldEditModal()}
       {renderLogoutConfirmModal()}
+      <Toast />
     </View>
   );
 };
-// Styles
+
 const styles = StyleSheet.create({
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: "#666",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalText: {
-    fontSize: 16,
-    marginBottom: 20,
-    textAlign: "center",
-  },
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#f8f9fa",
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#f8f9fa",
+    paddingTop: Platform.OS === "ios" ? 20 : 0,
   },
-  scrollContainer: {
-    paddingVertical: 20,
+  loadingTextNeutral: {
+    marginTop: 15,
+    fontSize: 16,
+    color: "#203562",
+    fontWeight: "500",
+    letterSpacing: 0.5,
   },
-  header: {
+  headerGradient: {
+    paddingTop: Platform.OS === "ios" ? 60 : 40,
+    paddingBottom: 25,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+    marginBottom: 15,
+    marginHorizontal: 10,
+  },
+  headerContent: {
     alignItems: "center",
-    marginBottom: 20,
+  },
+  avatarContainer: {
+    marginBottom: 15,
+    alignItems: "center",
+  },
+  avatarWrapper: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
   },
   avatar: {
-    width: 150,
-    height: 150,
-    borderRadius: 80,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     borderWidth: 3,
-    borderColor: "#EEEDED",
+    borderColor: "#ffffff",
   },
-  editIcon: {
+  editIconContainer: {
     position: "absolute",
-    right: -8,
-    bottom: 5,
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 3.5,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "#203562",
+    borderRadius: 18,
+    width: 32,
+    height: 32,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#ffffff",
   },
   username: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "bold",
-    marginTop: 10,
+    color: "#ffffff",
+    marginTop: 5,
   },
-  contentContainer: {
-    paddingHorizontal: 20,
+  userRole: {
+    fontSize: 14,
+    color: "#e0e0e0",
+    marginTop: 3,
+  },
+  scrollContainer: {
+    paddingBottom: 30,
+  },
+  profileCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 15,
+    padding: 20,
+    marginHorizontal: 15,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#203562",
+    marginBottom: 20,
   },
   fieldContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 20,
+    paddingBottom: 15,
     borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
-    paddingVertical: 10,
+    borderBottomColor: "#f0f0f0",
+  },
+  fieldIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#f0f4ff",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 15,
+  },
+  fieldContent: {
+    flex: 1,
   },
   label: {
-    fontSize: 14,
-    color: "#999",
-  },
-  fieldValueContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    fontSize: 13,
+    color: "#888",
+    marginBottom: 4,
   },
   value: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "500",
     color: "#333",
   },
+  editButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#f0f4ff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#e0e0e0",
+    marginVertical: 20,
+  },
   logoutButton: {
-    marginTop: 30,
-    backgroundColor: "#16325B",
+    flexDirection: "row",
+    backgroundColor: "#203562",
     padding: 15,
-    borderRadius: 30,
-    width: 300,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    alignSelf: "center",
+    marginTop: 10,
+    shadowColor: "#203562",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  logoutIcon: {
+    marginRight: 10,
   },
   logoutButtonText: {
     color: "white",
@@ -464,6 +584,11 @@ const styles = StyleSheet.create({
   modalButtonText: {
     fontSize: 16,
     color: "#000",
+  },
+  modalText: {
+    fontSize: 16,
+    marginBottom: 20,
+    textAlign: "center",
   },
 });
 

@@ -66,6 +66,14 @@ const EVENT_COLORS = [
 
 const screenWidth = Dimensions.get("window").width;
 
+const THEME_COLORS = {
+  primary: "#0A2463",
+  textSecondary: "#4A5568",
+  accent: "#3E92CC",
+  fineColor: "#D92626",
+};
+const SPACING = 16;
+
 const Home = () => {
   const [username, setUsername] = useState("");
   const [events, setEvents] = useState([]); // Events for the selected date
@@ -799,13 +807,27 @@ const Home = () => {
     calendarIcon: {
       marginRight: 8,
     },
+    splashContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: "#fff", // Or your splash background color
+    },
+    splashLogo: {
+      width: 180,
+      height: 180,
+      opacity: 0.98,
+    },
   });
 
   if (loading) {
     return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.loadingText}>Loading your schedule...</Text>
+      <View style={styles.splashContainer}>
+        <Image
+          source={require("../../../../assets/aito.png")} // Replace with your splash logo path
+          style={styles.splashLogo}
+          resizeMode="contain"
+        />
       </View>
     );
   }

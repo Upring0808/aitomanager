@@ -3,12 +3,30 @@
     ".read": "auth != null",
     ".write": "auth != null",
     "status": {
+      ".read": true,
       "$uid": {
         ".read": true,
         ".write": "$uid === auth.uid || auth != null",
         ".validate": "newData.hasChildren(['state', 'last_active'])",
         "state": {
           ".validate": "newData.val() === 'online' || newData.val() === 'offline'"
+        },
+        "last_active": {
+          ".validate": "newData.isNumber() || newData.val() === now"
+        }
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "$uid === auth.uid || root.child('admin').child(auth.uid).exists()",
+        "profile": {
+          ".read": true,
+          ".write": "$uid === auth.uid || root.child('admin').child(auth.uid).exists()"
+        },
+        "presence": {
+          ".read": true,
+          ".write": "$uid === auth.uid"
         }
       }
     },
