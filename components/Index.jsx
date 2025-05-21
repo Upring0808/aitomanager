@@ -8,14 +8,25 @@ import {
   Dimensions,
   SafeAreaView,
   Animated,
-  Modal,
   TextInput,
   ActivityIndicator,
   TouchableWithoutFeedback,
   Keyboard,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { User, Mail, ChevronRight, CheckCircle, X } from "lucide-react-native";
+import {
+  User,
+  Mail,
+  ChevronRight,
+  CheckCircle,
+  X,
+  Phone,
+  Building,
+  MessageSquare,
+  Send,
+  AlertCircle,
+} from "lucide-react-native";
 import aito from "../assets/aito.png";
 import BackgroundImage from "./ImageBackground";
 import { textStyles } from "../fallbackStyles";
@@ -29,6 +40,14 @@ const Index = ({ navigation }) => {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [formData, setFormData] = useState({
+    fullName: "",
+    email: "",
+    phone: "",
+    yearLevel: "",
+    message: "",
+  });
+  const [errors, setErrors] = useState({});
 
   useEffect(() => {
     // Hide splash first, then start fade-in
@@ -45,7 +64,24 @@ const Index = ({ navigation }) => {
     setModalVisible(true);
   };
 
+  const validateForm = () => {
+    const newErrors = {};
+    if (!formData.fullName.trim()) newErrors.fullName = "Full name is required";
+    if (!formData.email.trim()) newErrors.email = "Email is required";
+    else if (!/\S+@\S+\.\S+/.test(formData.email))
+      newErrors.email = "Invalid email format";
+    if (!formData.phone.trim()) newErrors.phone = "Phone number is required";
+    if (!formData.yearLevel.trim())
+      newErrors.yearLevel = "Year level is required";
+    if (!formData.message.trim()) newErrors.message = "Message is required";
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSendMessage = () => {
+    if (!validateForm()) return;
+
     setSending(true);
     // Simulate sending the message
     setTimeout(() => {
@@ -54,7 +90,14 @@ const Index = ({ navigation }) => {
       setTimeout(() => {
         setModalVisible(false);
         setSuccess(false);
-        setMessage("");
+        setFormData({
+          fullName: "",
+          email: "",
+          phone: "",
+          yearLevel: "",
+          message: "",
+        });
+        setErrors({});
       }, 2000);
     }, 1500);
   };
@@ -117,7 +160,7 @@ const Index = ({ navigation }) => {
         </LinearGradient>
       </BackgroundImage>
 
-      {/* Custom full-screen modal implementation */}
+      {/* Fixed Modal Implementation */}
       {modalVisible && (
         <View style={styles.fullScreenModalContainer}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -129,33 +172,156 @@ const Index = ({ navigation }) => {
                 >
                   <X color="#16325B" size={24} />
                 </TouchableOpacity>
-                <Text style={styles.modalTitle}>Contact Admin</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your message..."
-                  value={message}
-                  onChangeText={setMessage}
-                  multiline
-                  numberOfLines={4}
-                />
-                <TouchableOpacity
-                  style={styles.sendButton}
-                  onPress={handleSendMessage}
-                  disabled={sending || success}
+
+                <ScrollView
+                  style={styles.modalScrollView}
+                  contentContainerStyle={styles.modalScrollContent}
+                  showsVerticalScrollIndicator={false}
                 >
-                  {sending ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : success ? (
-                    <CheckCircle color="#fff" size={24} />
-                  ) : (
-                    <Text style={styles.sendButtonText}>Send</Text>
+                  <View style={styles.modalHeader}>
+                    <MessageSquare color="#16325B" size={28} />
+                    <Text style={styles.modalTitle}>Contact Admin</Text>
+                    <Text style={styles.modalSubtitle}>
+                      Fill in your details to request access
+                    </Text>
+                  </View>
+
+                  <View style={styles.inputContainer}>
+                    <View style={styles.inputWrapper}>
+                      <User
+                        color="#16325B"
+                        size={20}
+                        style={styles.inputIcon}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Full Name"
+                        value={formData.fullName}
+                        onChangeText={(text) =>
+                          setFormData({ ...formData, fullName: text })
+                        }
+                      />
+                    </View>
+                    {errors.fullName && (
+                      <Text style={styles.errorText}>{errors.fullName}</Text>
+                    )}
+
+                    <View style={styles.inputWrapper}>
+                      <Mail
+                        color="#16325B"
+                        size={20}
+                        style={styles.inputIcon}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Email Address"
+                        value={formData.email}
+                        onChangeText={(text) =>
+                          setFormData({ ...formData, email: text })
+                        }
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                      />
+                    </View>
+                    {errors.email && (
+                      <Text style={styles.errorText}>{errors.email}</Text>
+                    )}
+
+                    <View style={styles.inputWrapper}>
+                      <Phone
+                        color="#16325B"
+                        size={20}
+                        style={styles.inputIcon}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Phone Number"
+                        value={formData.phone}
+                        onChangeText={(text) =>
+                          setFormData({ ...formData, phone: text })
+                        }
+                        keyboardType="phone-pad"
+                      />
+                    </View>
+                    {errors.phone && (
+                      <Text style={styles.errorText}>{errors.phone}</Text>
+                    )}
+
+                    <View style={styles.inputWrapper}>
+                      <Building
+                        color="#16325B"
+                        size={20}
+                        style={styles.inputIcon}
+                      />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Year Level (e.g., 1st Year, 2nd Year)"
+                        value={formData.yearLevel}
+                        onChangeText={(text) =>
+                          setFormData({ ...formData, yearLevel: text })
+                        }
+                      />
+                    </View>
+                    {errors.yearLevel && (
+                      <Text style={styles.errorText}>{errors.yearLevel}</Text>
+                    )}
+
+                    <View style={styles.inputWrapper}>
+                      <MessageSquare
+                        color="#16325B"
+                        size={20}
+                        style={styles.inputIcon}
+                      />
+                      <TextInput
+                        style={[styles.input, styles.messageInput]}
+                        placeholder="Your Message"
+                        value={formData.message}
+                        onChangeText={(text) =>
+                          setFormData({ ...formData, message: text })
+                        }
+                        multiline
+                        numberOfLines={4}
+                        textAlignVertical="top"
+                      />
+                    </View>
+                    {errors.message && (
+                      <Text style={styles.errorText}>{errors.message}</Text>
+                    )}
+                  </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.sendButton,
+                      (sending || success) && styles.sendButtonDisabled,
+                    ]}
+                    onPress={handleSendMessage}
+                    disabled={sending || success}
+                  >
+                    {sending ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : success ? (
+                      <View style={styles.successContainer}>
+                        <CheckCircle color="#fff" size={20} />
+                        <Text style={styles.successText}>Request Sent!</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.sendButtonContent}>
+                        <Send color="#fff" size={18} />
+                        <Text style={styles.sendButtonText}>Send Request</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+
+                  {success && (
+                    <View style={styles.successMessageContainer}>
+                      <AlertCircle color="#4CAF50" size={16} />
+                      <Text style={styles.successMessage}>
+                        Thank you for contacting us! We'll review your request
+                        shortly.
+                      </Text>
+                    </View>
                   )}
-                </TouchableOpacity>
-                {success && (
-                  <Text style={styles.successMessage}>
-                    Thank you for contacting us!
-                  </Text>
-                )}
+                </ScrollView>
               </View>
             </View>
           </TouchableWithoutFeedback>
@@ -293,15 +459,15 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 8,
   },
-  // Full-screen modal styles - updated to ensure it covers everything
+  // Fixed Modal Styles - Properly sized for all devices
   fullScreenModalContainer: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    width: Dimensions.get("window").width,
-    height: Dimensions.get("window").height + 80, // Add extra height to ensure it covers the bottom
+    width: "100%",
+    height: "100%",
     zIndex: 9999,
   },
   fullScreenModalOverlay: {
@@ -310,55 +476,145 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.7)",
     justifyContent: "center",
     alignItems: "center",
+    padding: 15,
   },
   modalContent: {
-    width: "80%",
+    width: "100%",
+    maxWidth: width > 600 ? 500 : "95%",
     backgroundColor: "white",
     borderRadius: 20,
-    padding: 20,
-    alignItems: "center",
+    maxHeight: "90%",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+    position: "relative",
+  },
+  modalScrollView: {
+    width: "100%",
+    maxHeight: "100%",
+  },
+  modalScrollContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 25,
+    paddingTop: 30,
+    paddingBottom: 30,
+  },
+  modalHeader: {
+    alignItems: "center",
+    marginBottom: 20,
+    width: "100%",
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: "bold",
+    color: "#16325B",
+    marginTop: 10,
+    marginBottom: 5,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 5,
+  },
+  inputContainer: {
+    width: "100%",
     marginBottom: 15,
   },
-  input: {
-    width: "100%",
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
     borderColor: "#ddd",
-    borderRadius: 10,
+    borderRadius: 12,
+    marginBottom: 12,
+    backgroundColor: "#f9f9f9",
+    paddingHorizontal: 10,
+    height: 55,
+  },
+  inputIcon: {
+    marginRight: 5,
+    marginLeft: 5,
+  },
+  input: {
+    flex: 1,
     padding: 10,
-    marginBottom: 15,
+    fontSize: 14,
+    paddingLeft: 5,
+  },
+  messageInput: {
+    minHeight: 50,
+    paddingTop: 15,
     textAlignVertical: "top",
+  },
+  errorText: {
+    color: "#ff3b30",
+    fontSize: 12,
+    marginTop: -8,
+    marginBottom: 8,
+    marginLeft: 5,
   },
   sendButton: {
     backgroundColor: "#16325B",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+    paddingVertical: 15,
     borderRadius: 30,
+    width: "100%",
     alignItems: "center",
     justifyContent: "center",
-    width: "100%",
+    marginTop: 10,
+  },
+  sendButtonDisabled: {
+    opacity: 0.7,
+  },
+  sendButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
   sendButtonText: {
     color: "#fff",
     fontWeight: "bold",
+    fontSize: 16,
+    marginLeft: 8,
+  },
+  successContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  successText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
+    marginLeft: 8,
+  },
+  successMessageContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E8F5E9",
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 15,
   },
   successMessage: {
-    marginTop: 10,
     color: "#4CAF50",
-    fontWeight: "bold",
+    flex: 1,
+    fontSize: 13,
+    marginLeft: 8,
   },
   closeButton: {
     position: "absolute",
-    top: 10,
-    right: 10,
+    top: 12,
+    right: 12,
+    zIndex: 10,
+    padding: 5,
+    backgroundColor: "#f0f0f0",
+    borderRadius: 20,
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
 

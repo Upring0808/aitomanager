@@ -12,6 +12,9 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
   Keyboard,
+  Dimensions,
+  Animated,
+  Platform,
 } from "react-native";
 import { db } from "../../../../config/firebaseconfig";
 import {
@@ -27,25 +30,38 @@ import {
 } from "firebase/firestore";
 import { MaterialIcons } from "@expo/vector-icons";
 import DropdownPicker from "../../../../components/DropdownPicker";
+import Toast from "react-native-toast-message";
+import { auth } from "../../../../config/firebaseconfig";
+
+const SCREEN_HEIGHT = Dimensions.get("window").height;
 
 const AdminFines = () => {
   const [users, setUsers] = useState([]);
+  const [officers, setOfficers] = useState([]);
   const [events, setEvents] = useState([]);
   const [fines, setFines] = useState({});
   const [searchText, setSearchText] = useState("");
-  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedUsers, setSelectedUsers] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [fineAmount, setFineAmount] = useState("");
+  const [studentFineAmount, setStudentFineAmount] = useState("");
+  const [officerFineAmount, setOfficerFineAmount] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("students"); // "students" or "officers"
+  const [selectedYearLevel, setSelectedYearLevel] = useState("All");
 
   //history
   // const [showHistory, setShowHistory] = useState(false);
 
   const [selectedUserHistory, setSelectedUserHistory] = useState([]);
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState(null);
 
-  const [selectedYearLevel, setSelectedYearLevel] = useState("All");
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+  const popupOpacity = new Animated.Value(0);
+
+  const [operationLoading, setOperationLoading] = useState(false); // New loading state for specific operations
 
   const calculateUnpaidFines = (userId, finesData) => {
     return finesData
@@ -55,7 +71,7 @@ const AdminFines = () => {
 
   const fetchUserHistory = async (userId) => {
     try {
-      setLoading(true);
+      setOperationLoading(true); // Use operation loading instead of main loading
       const finesRef = collection(db, "fines");
       const q = query(
         finesRef,
@@ -75,7 +91,7 @@ const AdminFines = () => {
       console.error("Error fetching history:", error);
       alert("Error loading history. Please try again.");
     } finally {
-      setLoading(false);
+      setOperationLoading(false);
     }
   };
 
@@ -83,13 +99,23 @@ const AdminFines = () => {
     try {
       setLoading(true);
 
-      // Fetch users
+      // Fetch students
       const usersSnapshot = await getDocs(collection(db, "users"));
       const usersData = usersSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
+        role: "student",
       }));
       setUsers(usersData);
+
+      // Fetch officers
+      const officersSnapshot = await getDocs(collection(db, "admin"));
+      const officersData = officersSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        role: "officer",
+      }));
+      setOfficers(officersData);
 
       // Fetch events
       const eventsSnapshot = await getDocs(collection(db, "events"));
@@ -111,7 +137,7 @@ const AdminFines = () => {
 
       // Calculate unpaid fines per user
       const userFines = {};
-      usersData.forEach((user) => {
+      [...usersData, ...officersData].forEach((user) => {
         userFines[user.id] = calculateUnpaidFines(user.id, finesData);
       });
       setFines(userFines);
@@ -127,77 +153,249 @@ const AdminFines = () => {
     fetchData();
   }, []);
 
+  const showSuccessMessage = (message) => {
+    setSuccessMessage(message);
+    setShowSuccessPopup(true);
+    Animated.sequence([
+      Animated.timing(popupOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.delay(2000),
+      Animated.timing(popupOpacity, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowSuccessPopup(false);
+    });
+  };
+
   const handleMarkAsPaid = async (fineId) => {
     try {
-      setLoading(true);
-      const fineRef = doc(db, "fines", fineId);
-      await updateDoc(fineRef, {
+      setOperationLoading(true);
+      const now = Timestamp.now();
+
+      // Get the fine details
+      const fineDoc = await getDocs(doc(db, "fines", fineId));
+      const fineData = fineDoc.data();
+
+      // Get user details
+      const userDoc = await getDocs(doc(db, "users", fineData.userId));
+      const userData = userDoc.data();
+
+      // Get event details
+      const eventDoc = await getDocs(doc(db, "events", fineData.eventId));
+      const eventData = eventDoc.data();
+
+      // Get current admin details
+      const currentUser = auth.currentUser;
+      const adminQuery = query(
+        collection(db, "admin"),
+        where("uid", "==", currentUser.uid)
+      );
+      const adminSnapshot = await getDocs(adminQuery);
+      const adminData = adminSnapshot.docs[0]?.data();
+
+      // Update fine status
+      await updateDoc(doc(db, "fines", fineId), {
         status: "paid",
-        paidAt: Timestamp.now(),
+        paidAt: now,
+        paidBy: {
+          uid: currentUser.uid,
+          username: adminData?.username || "System",
+          role: "admin",
+        },
       });
 
-      // Refresh all data
-      await fetchData();
-      // Refresh history for the current user
-      if (selectedUser) {
-        await fetchUserHistory(selectedUser.id);
-      }
-      alert("Fine marked as paid successfully!");
+      // Create detailed activity log
+      const activityData = {
+        type: "fine_paid",
+        description: "Fine payment received",
+        timestamp: now,
+        details: {
+          fineId: fineId,
+          amount: fineData.amount,
+          studentName: userData.fullName,
+          studentId: userData.studentId,
+          eventTitle: eventData.title,
+          eventId: fineData.eventId,
+          issuedBy: adminData?.username || "System",
+          adminUid: currentUser.uid,
+          status: "paid",
+          paidAt: now,
+        },
+      };
+
+      // Add activity to Firestore
+      await addDoc(collection(db, "activities"), activityData);
+
+      // Update local state
+      setSelectedUserHistory((prevHistory) =>
+        prevHistory.map((fine) =>
+          fine.id === fineId
+            ? { ...fine, status: "paid", paidAt: now.toDate() }
+            : fine
+        )
+      );
+
+      // Update fines in the main list
+      setFines((prevFines) => ({
+        ...prevFines,
+        [fineData.userId]: (prevFines[fineData.userId] || 0) - fineData.amount,
+      }));
+
+      Toast.show({
+        type: "success",
+        text1: "Success",
+        text2: "Fine marked as paid",
+        position: "bottom",
+      });
+
+      // Refresh the user's history
+      await fetchUserHistory(fineData.userId);
     } catch (error) {
       console.error("Error marking fine as paid:", error);
-      alert("Error updating fine status. Please try again.");
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to mark fine as paid",
+        position: "bottom",
+      });
     } finally {
-      setLoading(false);
+      setOperationLoading(false);
     }
   };
 
-  const handleAssignFine = async () => {
-    if (!selectedUser?.id || !selectedEvent?.id || !fineAmount) {
-      alert("Please fill in all required fields.");
-      return;
-    }
-
-    const amount = parseFloat(fineAmount);
-    if (isNaN(amount) || amount <= 0) {
-      alert("Please enter a valid fine amount.");
+  const handleBulkAssignFine = async () => {
+    if (!selectedEvent?.id || !selectedUsers.length) {
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Please select an event and at least one user",
+        position: "bottom",
+      });
       return;
     }
 
     try {
-      setLoading(true);
+      setOperationLoading(true);
 
-      const fineData = {
-        userId: selectedUser.id,
-        username: selectedUser.username,
-        eventId: selectedEvent.id,
-        eventTitle: selectedEvent.title,
-        amount: amount,
-        status: "unpaid",
-        createdAt: Timestamp.now(),
-        dueDate: selectedEvent.dueDate,
-        timeframe: selectedEvent.timeframe,
-        description: `You are fined for the event ${selectedEvent.title}`,
-      };
+      // Get current admin details
+      const currentUser = auth.currentUser;
+      const adminQuery = query(
+        collection(db, "admin"),
+        where("uid", "==", currentUser.uid)
+      );
+      const adminSnapshot = await getDocs(adminQuery);
+      const adminData = adminSnapshot.docs[0]?.data();
 
-      await addDoc(collection(db, "fines"), fineData);
+      // Get event details
+      const eventDoc = await getDocs(doc(db, "events", selectedEvent.id));
+      const eventData = eventDoc.data();
 
-      // Refresh all data to update the cards
-      await fetchData();
+      // Process each selected user
+      for (const user of selectedUsers) {
+        // Get user details
+        const userDoc = await getDocs(doc(db, "users", user.id));
+        const userData = userDoc.data();
 
-      alert("Fine assigned successfully!");
+        const amount =
+          user.role === "officer"
+            ? parseFloat(officerFineAmount)
+            : parseFloat(studentFineAmount);
+
+        // Create fine document
+        const fineData = {
+          userId: user.id,
+          userFullName: userData.fullName,
+          userStudentId: userData.studentId,
+          userRole: user.role,
+          eventId: selectedEvent.id,
+          eventTitle: eventData.title,
+          eventDueDate: eventData.dueDate,
+          eventTimeframe: eventData.timeframe,
+          amount: amount,
+          status: "unpaid",
+          createdAt: Timestamp.now(),
+          description: `Fine for ${eventData.title}`,
+          issuedBy: {
+            uid: currentUser.uid,
+            username: adminData?.username || "System",
+            role: "admin",
+          },
+        };
+
+        // Add fine to Firestore
+        const fineRef = await addDoc(collection(db, "fines"), fineData);
+
+        // Create detailed activity log
+        const activityData = {
+          type: "fine_added",
+          description: "New fine assigned",
+          timestamp: Timestamp.now(),
+          details: {
+            fineId: fineRef.id,
+            amount: amount,
+            studentName: userData.fullName,
+            studentId: userData.studentId,
+            eventTitle: eventData.title,
+            eventId: selectedEvent.id,
+            issuedBy: adminData?.username || "System",
+            adminUid: currentUser.uid,
+            status: "unpaid",
+          },
+        };
+
+        // Add activity to Firestore
+        await addDoc(collection(db, "activities"), activityData);
+
+        // Update local state
+        setFines((prevFines) => ({
+          ...prevFines,
+          [user.id]: (prevFines[user.id] || 0) + amount,
+        }));
+      }
+
+      Toast.show({
+        type: "success",
+        text1: "Success",
+        text2: "Fines assigned successfully",
+        position: "bottom",
+      });
+
       setModalVisible(false);
-      setFineAmount("");
+      setStudentFineAmount("");
+      setOfficerFineAmount("");
       setSelectedEvent(null);
-      setSelectedUser(null);
+      setSelectedUsers([]);
     } catch (error) {
-      console.error("Error assigning fine:", error);
-      alert(`Error assigning fine: ${error.message}`);
+      console.error("Error assigning fines:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to assign fines",
+        position: "bottom",
+      });
     } finally {
-      setLoading(false);
+      setOperationLoading(false);
     }
   };
 
-  const filteredUsers = users
+  const toggleUserSelection = (user) => {
+    setSelectedUsers((prev) => {
+      const isSelected = prev.some((u) => u.id === user.id);
+      if (isSelected) {
+        return prev.filter((u) => u.id !== user.id);
+      } else {
+        return [...prev, user];
+      }
+    });
+  };
+
+  const filteredUsers = (activeTab === "students" ? users : officers)
     .filter((user) => {
       const matchesSearch = user.username
         ?.toLowerCase()
@@ -231,20 +429,466 @@ const AdminFines = () => {
       ]}
       onPress={() => setSelectedEvent(event)}
     >
-      <MaterialIcons
-        name="event"
-        size={20}
-        color={selectedEvent?.id === event.id ? "#fff" : "#007BFF"}
-      />
-      <Text
-        style={[
-          styles.eventText,
-          selectedEvent?.id === event.id && styles.selectedEventText,
-        ]}
-      >
-        {event.title}
-      </Text>
+      <View style={styles.eventContent}>
+        <View style={styles.eventHeader}>
+          <MaterialIcons
+            name="event"
+            size={20}
+            color={selectedEvent?.id === event.id ? "#fff" : "#007BFF"}
+          />
+          <Text
+            style={[
+              styles.eventText,
+              selectedEvent?.id === event.id && styles.selectedEventText,
+            ]}
+          >
+            {event.title}
+          </Text>
+        </View>
+        <View style={styles.eventDetails}>
+          <View style={styles.eventDetailRow}>
+            <MaterialIcons
+              name="calendar-today"
+              size={16}
+              color={selectedEvent?.id === event.id ? "#fff" : "#64748b"}
+            />
+            <Text
+              style={[
+                styles.eventDate,
+                selectedEvent?.id === event.id && styles.selectedEventText,
+              ]}
+            >
+              {event.dueDate
+                ? new Date(event.dueDate.seconds * 1000).toLocaleDateString()
+                : "No date set"}
+            </Text>
+          </View>
+          <View style={styles.eventDetailRow}>
+            <MaterialIcons
+              name="access-time"
+              size={16}
+              color={selectedEvent?.id === event.id ? "#fff" : "#64748b"}
+            />
+            <Text
+              style={[
+                styles.eventTime,
+                selectedEvent?.id === event.id && styles.selectedEventText,
+              ]}
+            >
+              {event.timeframe || "No time set"}
+            </Text>
+          </View>
+        </View>
+      </View>
     </TouchableOpacity>
+  );
+
+  const renderAssignFineModal = () => (
+    <Modal
+      animationType="slide"
+      transparent
+      visible={modalVisible}
+      onRequestClose={() => setModalVisible(false)}
+      statusBarTranslucent
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior="padding"
+            style={styles.modalContainer}
+          >
+            <ScrollView contentContainerStyle={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <View style={styles.modalHeaderLeft}>
+                  <MaterialIcons
+                    name="arrow-forward"
+                    size={24}
+                    color="#007BFF"
+                  />
+                  <Text style={styles.modalTitle}>Assign Fine</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setModalVisible(false)}
+                >
+                  <MaterialIcons name="close" size={24} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.selectedUsersInfo}>
+                <View style={styles.selectedUsersHeader}>
+                  <View>
+                    <Text style={styles.modalSubtitle}>Selected Users:</Text>
+                    <Text style={styles.selectedCount}>
+                      {selectedUsers.length} {activeTab} selected
+                    </Text>
+                  </View>
+                  {selectedUsers.length > 0 && (
+                    <TouchableOpacity
+                      style={styles.clearAllButton}
+                      onPress={() => setSelectedUsers([])}
+                    >
+                      <MaterialIcons
+                        name="clear-all"
+                        size={20}
+                        color="#ef4444"
+                      />
+                      <Text style={styles.clearAllText}>Clear All</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.eventsSection}>
+                <View style={styles.eventsHeader}>
+                  <Text style={styles.modalLabel}>Select Event</Text>
+                  <View style={styles.slideNotice}>
+                    <MaterialIcons name="swipe" size={16} color="#64748b" />
+                    <Text style={styles.slideNoticeText}>
+                      Slide to see more events
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.eventsContainer}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.eventsScrollContent}
+                  >
+                    {events && events.length > 0 ? (
+                      events.map(renderEventItem)
+                    ) : (
+                      <Text style={styles.noEventsText}>
+                        No events available
+                      </Text>
+                    )}
+                  </ScrollView>
+                </View>
+              </View>
+
+              {selectedUsers.some((user) => user.role === "student") && (
+                <>
+                  <Text style={styles.modalLabel}>Fine Amount (Students)</Text>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.currencySymbol}>₱</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="Enter amount"
+                      placeholderTextColor="#64748b"
+                      keyboardType="numeric"
+                      value={studentFineAmount}
+                      onChangeText={setStudentFineAmount}
+                    />
+                  </View>
+                </>
+              )}
+
+              {selectedUsers.some((user) => user.role === "officer") && (
+                <>
+                  <Text style={styles.modalLabel}>Fine Amount (Officers)</Text>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.currencySymbol}>₱</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="Enter amount"
+                      placeholderTextColor="#64748b"
+                      keyboardType="numeric"
+                      value={officerFineAmount}
+                      onChangeText={setOfficerFineAmount}
+                    />
+                  </View>
+                </>
+              )}
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => setModalVisible(false)}
+                >
+                  <Text style={styles.buttonText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.confirmButton,
+                    (!selectedEvent ||
+                      (selectedUsers.some((user) => user.role === "student") &&
+                        !studentFineAmount) ||
+                      (selectedUsers.some((user) => user.role === "officer") &&
+                        !officerFineAmount) ||
+                      operationLoading) &&
+                      styles.disabledButton,
+                  ]}
+                  onPress={handleBulkAssignFine}
+                  disabled={
+                    !selectedEvent ||
+                    (selectedUsers.some((user) => user.role === "student") &&
+                      !studentFineAmount) ||
+                    (selectedUsers.some((user) => user.role === "officer") &&
+                      !officerFineAmount) ||
+                    operationLoading
+                  }
+                >
+                  {operationLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.buttonText}>Assign</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+
+  const renderHistoryModal = () => (
+    <Modal
+      animationType="slide"
+      transparent
+      visible={historyModalVisible}
+      onRequestClose={() => setHistoryModalVisible(false)}
+      statusBarTranslucent
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderLeft}>
+              <MaterialIcons name="arrow-forward" size={24} color="#007BFF" />
+              <Text style={styles.modalTitle}>More Details</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setHistoryModalVisible(false)}
+            >
+              <MaterialIcons name="close" size={24} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.modalScrollView}
+            contentContainerStyle={styles.modalScrollContent}
+            showsVerticalScrollIndicator={true}
+          >
+            <View style={styles.historyStats}>
+              <View style={styles.statCard}>
+                <MaterialIcons name="payments" size={24} color="#007BFF" />
+                <Text style={styles.statValue}>
+                  ₱
+                  {selectedUserHistory
+                    .reduce(
+                      (total, fine) =>
+                        total + (fine.status === "paid" ? fine.amount : 0),
+                      0
+                    )
+                    .toFixed(2)}
+                </Text>
+                <Text style={styles.statLabel}>Total Paid</Text>
+              </View>
+              <View style={styles.statCard}>
+                <MaterialIcons
+                  name="pending-actions"
+                  size={24}
+                  color="#ef4444"
+                />
+                <Text style={[styles.statValue, { color: "#ef4444" }]}>
+                  ₱
+                  {selectedUserHistory
+                    .reduce(
+                      (total, fine) =>
+                        total + (fine.status === "unpaid" ? fine.amount : 0),
+                      0
+                    )
+                    .toFixed(2)}
+                </Text>
+                <Text style={styles.statLabel}>Pending</Text>
+              </View>
+            </View>
+
+            <View style={styles.historyFilters}>
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  !historyFilter && styles.activeFilter,
+                ]}
+                onPress={() => setHistoryFilter(null)}
+              >
+                <Text
+                  style={[
+                    styles.filterText,
+                    !historyFilter && styles.activeFilterText,
+                  ]}
+                >
+                  All
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  historyFilter === "unpaid" && styles.activeFilter,
+                ]}
+                onPress={() => setHistoryFilter("unpaid")}
+              >
+                <Text
+                  style={[
+                    styles.filterText,
+                    historyFilter === "unpaid" && styles.activeFilterText,
+                  ]}
+                >
+                  Unpaid
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  historyFilter === "paid" && styles.activeFilter,
+                ]}
+                onPress={() => setHistoryFilter("paid")}
+              >
+                <Text
+                  style={[
+                    styles.filterText,
+                    historyFilter === "paid" && styles.activeFilterText,
+                  ]}
+                >
+                  Paid
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.historyList}>
+              {selectedUserHistory
+                .filter(
+                  (fine) => !historyFilter || fine.status === historyFilter
+                )
+                .map((item) => (
+                  <View key={item.id} style={styles.historyCard}>
+                    <View style={styles.historyCardHeader}>
+                      <View style={styles.eventInfo}>
+                        <MaterialIcons name="event" size={20} color="#007BFF" />
+                        <Text style={styles.eventTitle}>{item.eventTitle}</Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          item.status === "paid"
+                            ? styles.paidBadge
+                            : styles.unpaidBadge,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusText,
+                            item.status === "paid"
+                              ? styles.paidText
+                              : styles.unpaidText,
+                          ]}
+                        >
+                          {item.status === "paid" ? "Paid" : "Unpaid"}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.historyDetails}>
+                      <View style={styles.amountRow}>
+                        <MaterialIcons
+                          name="payments"
+                          size={20}
+                          color="#007BFF"
+                        />
+                        <Text style={styles.amountText}>
+                          ₱{item.amount.toFixed(2)}
+                        </Text>
+                      </View>
+                      <View style={styles.dateRow}>
+                        <MaterialIcons
+                          name="calendar-today"
+                          size={20}
+                          color="#64748b"
+                        />
+                        <Text style={styles.dateText}>
+                          {item.createdAt?.toLocaleDateString()}
+                        </Text>
+                      </View>
+                      {item.status === "paid" && (
+                        <View style={styles.paidDateRow}>
+                          <MaterialIcons
+                            name="check-circle"
+                            size={20}
+                            color="#16a34a"
+                          />
+                          <Text style={styles.paidDateText}>
+                            Paid on {item.paidAt?.toLocaleDateString()}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {item.status === "unpaid" && (
+                      <TouchableOpacity
+                        style={[
+                          styles.markAsPaidButton,
+                          operationLoading && styles.disabledButton,
+                        ]}
+                        onPress={() => handleMarkAsPaid(item.id)}
+                        disabled={operationLoading}
+                      >
+                        {operationLoading ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <>
+                            <MaterialIcons
+                              name="payment"
+                              size={20}
+                              color="#fff"
+                            />
+                            <Text style={styles.markAsPaidText}>
+                              Mark as Paid
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              {selectedUserHistory.length === 0 && (
+                <View style={styles.emptyContainer}>
+                  <MaterialIcons name="history" size={48} color="#64748b" />
+                  <Text style={styles.emptyText}>No fine history</Text>
+                </View>
+              )}
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderSuccessPopup = () => (
+    <Animated.View
+      style={[
+        styles.successPopup,
+        {
+          opacity: popupOpacity,
+          transform: [
+            {
+              translateY: popupOpacity.interpolate({
+                inputRange: [0, 1],
+                outputRange: [20, 0],
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      <View style={styles.successContent}>
+        <View style={styles.successIconContainer}>
+          <MaterialIcons name="check-circle" size={24} color="#fff" />
+        </View>
+        <Text style={styles.successText}>{successMessage}</Text>
+      </View>
+    </Animated.View>
   );
 
   if (loading) {
@@ -258,6 +902,45 @@ const AdminFines = () => {
 
   return (
     <View style={styles.container}>
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === "students" && styles.activeTab]}
+          onPress={() => setActiveTab("students")}
+        >
+          <MaterialIcons
+            name="school"
+            size={24}
+            color={activeTab === "students" ? "#007BFF" : "#666"}
+          />
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "students" && styles.activeTabText,
+            ]}
+          >
+            Students
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === "officers" && styles.activeTab]}
+          onPress={() => setActiveTab("officers")}
+        >
+          <MaterialIcons
+            name="security"
+            size={24}
+            color={activeTab === "officers" ? "#007BFF" : "#666"}
+          />
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === "officers" && styles.activeTabText,
+            ]}
+          >
+            Officers
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.searchAndFilterContainer}>
         <View style={styles.searchContainer}>
           <MaterialIcons
@@ -268,34 +951,42 @@ const AdminFines = () => {
           />
           <TextInput
             style={styles.searchBar}
-            placeholder="Search students by username"
+            placeholder={`Search ${activeTab} by username`}
             value={searchText}
             onChangeText={setSearchText}
           />
         </View>
-        <View style={styles.filterContainer}>
-          <DropdownPicker
-            options={yearLevelOptions}
-            selectedValue={selectedYearLevel}
-            onValueChange={setSelectedYearLevel}
-            formatOption={(value) => formatYearLevel(value)} // Add this prop
-          />
-        </View>
+        {activeTab === "students" && (
+          <View style={styles.filterContainer}>
+            <DropdownPicker
+              options={yearLevelOptions}
+              selectedValue={selectedYearLevel}
+              onValueChange={setSelectedYearLevel}
+              formatOption={(value) => formatYearLevel(value)}
+            />
+          </View>
+        )}
       </View>
+
       <FlatList
         data={filteredUsers}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={styles.card}
-            onPress={() => {
-              setSelectedUser(item);
-              setModalVisible(true);
-            }}
+            style={[
+              styles.card,
+              selectedUsers.some((u) => u.id === item.id) &&
+                styles.selectedCard,
+            ]}
+            onPress={() => toggleUserSelection(item)}
           >
             <View style={styles.cardContent}>
               <View style={styles.userInfo}>
-                <MaterialIcons name="person" size={24} color="#007BFF" />
+                <MaterialIcons
+                  name={item.role === "officer" ? "security" : "person"}
+                  size={24}
+                  color="#007BFF"
+                />
                 <View>
                   <Text style={styles.username}>{item.username}</Text>
                   {fines[item.id] > 0 && (
@@ -317,198 +1008,51 @@ const AdminFines = () => {
                   style={styles.historyButton}
                   onPress={(e) => {
                     e.stopPropagation();
-                    setSelectedUser(item);
                     fetchUserHistory(item.id);
                   }}
                 >
-                  <MaterialIcons name="history" size={24} color="#007BFF" />
+                  <MaterialIcons name="receipt" size={24} color="#007BFF" />
                 </TouchableOpacity>
               </View>
             </View>
           </TouchableOpacity>
         )}
         ListEmptyComponent={
-          selectedYearLevel === "All" ? (
-            <View style={styles.emptyContainer}>
-              <MaterialIcons name="search-off" size={48} color="#666" />
-              <Text style={styles.emptyText}>No students found</Text>
-            </View>
-          ) : (
-            <View style={styles.emptyContainer}>
-              <MaterialIcons name="person-off" size={48} color="#666" />
-              <Text style={styles.emptyText}>
-                No{" "}
-                {yearLevelOptions.find((level) => level === selectedYearLevel)}{" "}
-                Year students found
-              </Text>
-            </View>
-          )
+          <View style={styles.emptyContainer}>
+            <MaterialIcons
+              name={activeTab === "students" ? "school" : "security"}
+              size={48}
+              color="#666"
+            />
+            <Text style={styles.emptyText}>No {activeTab} found</Text>
+          </View>
         }
       />
-      {/* Assign Fine Modal */}
-      <Modal visible={modalVisible} transparent animationType="fade">
-        <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
-          <View style={styles.modalContainer}>
-            <KeyboardAvoidingView
-              behavior="padding"
-              style={styles.modalContent}
-            >
-              <ScrollView>
-                <View style={styles.modalHeader}>
-                  <MaterialIcons name="person" size={24} color="#007BFF" />
-                  <Text style={styles.modalTitle}>Assign Fine</Text>
-                </View>
-                <View style={styles.selectedUserInfo}>
-                  <Text style={styles.modalSubtitle}>Student:</Text>
-                  <Text style={styles.selectedUsername}>
-                    {selectedUser?.username}
-                  </Text>
-                </View>
-                <Text style={styles.label}>Select Event</Text>
-                <View style={styles.eventsContainer}>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    {events.map(renderEventItem)}
-                  </ScrollView>
-                </View>
-                <Text style={styles.label}>Fine Amount (₱)</Text>
-                <View style={styles.inputContainer}>
-                  <Text
-                    style={{ fontSize: 20, color: "#007BFF", marginRight: 5 }}
-                  >
-                    ₱
-                  </Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholderTextColor="#666"
-                    placeholder="Enter amount"
-                    keyboardType="numeric"
-                    value={fineAmount}
-                    onChangeText={setFineAmount}
-                  />
-                </View>
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    style={[styles.button, styles.cancelButton]}
-                    onPress={() => setModalVisible(false)}
-                  >
-                    <MaterialIcons name="close" size={15} color="#fff" />
-                    <Text style={styles.buttonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.button, styles.assignButton]}
-                    onPress={handleAssignFine}
-                  >
-                    <MaterialIcons name="check" size={15} color="#fff" />
-                    <Text style={styles.buttonText}>Assign Fine</Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </KeyboardAvoidingView>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-      {/* History Modal */}
-      <Modal visible={historyModalVisible} transparent animationType="fade">
-        <View style={styles.modalContainer}>
-          <View style={[styles.modalContent, { maxHeight: "85%" }]}>
-            <View style={styles.modalHeader}>
-              <MaterialIcons name="history" size={24} color="#007BFF" />
-              <Text style={styles.modalTitle}>Fine History</Text>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setHistoryModalVisible(false)}
-              >
-                <MaterialIcons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
-            <FlatList
-              data={selectedUserHistory}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <View style={styles.historyCard}>
-                  <View style={styles.historyCardHeader}>
-                    <MaterialIcons name="event" size={20} color="#007BFF" />
-                    <Text style={styles.historyEventTitle}>
-                      {item.eventTitle}
-                    </Text>
-                  </View>
-                  <View style={styles.historyDetails}>
-                    <View style={styles.historyInfo}>
-                      <Text
-                        style={{
-                          fontSize: 20,
-                          color: "#007BFF",
-                          marginLeft: 2.5,
-                        }}
-                      >
-                        ₱
-                      </Text>
-                      <Text style={styles.historyAmount}>
-                        ₱{item.amount.toFixed(2)}
-                      </Text>
-                    </View>
-                    <View style={styles.historyInfo}>
-                      <MaterialIcons
-                        name="access-time"
-                        size={20}
-                        color="#666"
-                      />
-                      <Text style={styles.historyDate}>
-                        {item.createdAt.toLocaleTimeString("en-US", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </Text>
-                    </View>
-                    <View style={styles.statusContainer}>
-                      {item.status === "paid" ? (
-                        <>
-                          <MaterialIcons
-                            name="check-circle"
-                            size={20}
-                            color="#27ae60"
-                          />
-                          <Text style={styles.paidStatus}>
-                            Paid on{" "}
-                            {item.paidAt.toLocaleDateString("en-US", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </Text>
-                        </>
-                      ) : (
-                        <TouchableOpacity
-                          style={styles.markAsPaidButton}
-                          onPress={() => handleMarkAsPaid(item.id)}
-                        >
-                          <MaterialIcons
-                            name="payment"
-                            size={20}
-                            color="#fff"
-                          />
-                          <Text style={styles.markAsPaidText}>
-                            Mark as Paid
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              )}
-              contentContainerStyle={{ paddingBottom: 20 }}
-              scrollEnabled={true}
-              nestedScrollEnabled={true}
-              keyboardShouldPersistTaps="handled"
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <MaterialIcons name="history" size={48} color="#666" />
-                  <Text style={styles.emptyText}>No fine history</Text>
-                </View>
-              }
-            />
-          </View>
-        </View>
-      </Modal>
+
+      {selectedUsers.length === 0 ? (
+        <TouchableOpacity
+          style={styles.fabButton}
+          onPress={() => alert("Select users to assign fines.")}
+        >
+          <MaterialIcons name="add" size={28} color="#fff" />
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={styles.assignButton}
+          onPress={() => setModalVisible(true)}
+        >
+          <MaterialIcons name="add" size={24} color="#fff" />
+          <Text style={styles.assignButtonText}>
+            Assign Fine ({selectedUsers.length})
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {renderAssignFineModal()}
+
+      {renderHistoryModal()}
+
+      {renderSuccessPopup()}
     </View>
   );
 };
@@ -516,342 +1060,602 @@ const AdminFines = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#f8f9fa",
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 0, // Adjusted for tab navigation
   },
-  header: {
+  tabContainer: {
+    flexDirection: "row",
+    marginBottom: 20,
+    backgroundColor: "#fff",
+    borderRadius: 15,
+    padding: 8,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  tab: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 20,
+    justifyContent: "center",
+    padding: 12,
+    borderRadius: 12,
+    marginHorizontal: 4,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginLeft: 10,
-    color: "#333",
+  activeTab: {
+    backgroundColor: "#e3f2fd",
+  },
+  tabText: {
+    marginLeft: 8,
+    fontSize: 15,
+    color: "#64748b",
+    fontWeight: "600",
+  },
+  activeTabText: {
+    color: "#007BFF",
   },
   searchAndFilterContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: -10,
-    marginBottom: 10,
+    marginBottom: 16,
+    gap: 12,
   },
-
-  filterContainer: {
-    width: 80,
-    zIndex: 9999,
-    fontSize: 10,
-  },
-
   searchContainer: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#fff",
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    marginRight: 5,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 50,
     elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
-
   searchBar: {
     flex: 1,
     height: 50,
+    fontSize: 15,
+    color: "#1e293b",
   },
-
   searchIcon: {
-    marginRight: 10,
+    marginRight: 12,
+  },
+  filterContainer: {
+    width: 100,
+    zIndex: 9999,
   },
   card: {
     backgroundColor: "#fff",
-    borderRadius: 10,
-    marginBottom: 10,
+    borderRadius: 15,
+    marginBottom: 12,
     elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  selectedCard: {
+    borderColor: "#007BFF",
+    borderWidth: 2,
+    backgroundColor: "#f0f7ff",
   },
   cardContent: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 15,
+    padding: 16,
   },
   userInfo: {
     flexDirection: "row",
     alignItems: "center",
+    flex: 1,
   },
   username: {
     fontSize: 16,
     fontWeight: "600",
-    marginLeft: 10,
-    color: "#333",
+    marginLeft: 12,
+    color: "#1e293b",
   },
   fineInfo: {
     flexDirection: "row",
     alignItems: "center",
+    marginLeft: 12,
   },
   hasFine: {
-    color: "#e74c3c",
+    color: "#dc2626",
     fontWeight: "600",
     fontSize: 16,
   },
   noFine: {
-    color: "#27ae60",
+    color: "#16a34a",
     fontWeight: "500",
     fontSize: 14,
   },
-  //modals
-  modalContainer: {
-    flex: 1,
-    justifyContent: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-    paddingHorizontal: 20,
+  historyButton: {
+    marginLeft: 12,
+    padding: 8,
+    backgroundColor: "#f1f5f9",
+    borderRadius: 8,
   },
-  modalContent: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 24,
-    maxHeight: "85%",
-    width: "100%",
-    marginBottom: 20,
+  fabButton: {
+    position: "absolute",
+    bottom: 15, // Positioned above tab navigation
+    right: 20,
+    backgroundColor: "#007BFF",
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 5,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    overflow: "scroll",
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
-    elevation: 5,
+    zIndex: 100,
   },
-
-  //assign
+  assignButton: {
+    position: "absolute",
+    bottom: 15, // Positioned above tab navigation
+    right: 20,
+    backgroundColor: "#007BFF",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 30,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    zIndex: 100,
+  },
+  assignButtonText: {
+    color: "#fff",
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "#fff",
+    marginTop: 0,
+  },
+  modalContent: {
+    padding: 20,
+    paddingTop: 0,
+  },
   modalHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 20,
-    paddingBottom: 10,
+    justifyContent: "space-between",
+    padding: 20,
+    paddingTop: Platform.OS === "ios" ? 60 : 40,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomColor: "#e2e8f0",
+    backgroundColor: "#fff",
+  },
+  modalHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
     marginLeft: 12,
-    color: "#1a1a1a",
-    letterSpacing: 0.5,
+    color: "#1e293b",
   },
-  selectedUserInfo: {
-    backgroundColor: "#f9f9f9",
+  closeButton: {
+    padding: 4,
+  },
+  selectedUsersInfo: {
+    backgroundColor: "#f8fafc",
     padding: 16,
     borderRadius: 12,
+    marginTop: 20,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#e9e9e9",
+    borderColor: "#e2e8f0",
+  },
+  selectedUsersHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   modalSubtitle: {
     fontSize: 14,
-    color: "#718096",
-    marginBottom: 6,
+    color: "#64748b",
+    marginBottom: 4,
   },
-  selectedUsername: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#2d3748",
-    letterSpacing: 0.3,
-  },
-  label: {
+  selectedCount: {
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "600",
+    color: "#1e293b",
+  },
+  clearAllButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fee2e2",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  clearAllText: {
+    color: "#ef4444",
+    marginLeft: 4,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1e293b",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  eventsSection: {
+    marginBottom: 24,
+  },
+  eventsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
-    color: "#2c3e50",
+  },
+  slideNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f1f5f9",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  slideNoticeText: {
+    color: "#64748b",
+    fontSize: 12,
+    marginLeft: 4,
+    fontWeight: "500",
   },
   eventsContainer: {
     marginBottom: 20,
+    maxHeight: 180,
+  },
+  eventsScrollContent: {
+    paddingRight: 20,
+    paddingBottom: 10,
   },
   eventButton: {
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    padding: 16,
+    marginRight: 12,
+    minWidth: 220,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  eventContent: {
+    flexDirection: "column",
+  },
+  eventHeader: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "#3498db",
-    borderRadius: 25,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    marginRight: 10,
-    transition: "background-color 0.3s ease",
+    marginBottom: 8,
   },
-  selectedEvent: {
-    backgroundColor: "#3498db",
+  eventDetails: {
+    marginLeft: 28,
+  },
+  eventDetailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
   },
   eventText: {
-    color: "#3498db",
-    marginLeft: 5,
+    color: "#64748b",
+    marginLeft: 8,
     fontSize: 14,
     fontWeight: "600",
+    flex: 1,
+  },
+  eventDate: {
+    color: "#64748b",
+    fontSize: 12,
+    marginLeft: 8,
+  },
+  eventTime: {
+    color: "#64748b",
+    fontSize: 12,
+    marginLeft: 8,
+  },
+  selectedEvent: {
+    backgroundColor: "#007BFF",
+    borderColor: "#007BFF",
   },
   selectedEventText: {
     color: "#ffffff",
   },
+  noEventsText: {
+    color: "#64748b",
+    fontStyle: "italic",
+    padding: 12,
+  },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#ffffff",
+    backgroundColor: "#f8fafc",
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    height: 48,
   },
-  input: {
-    flex: 1,
-    height: 50,
-    marginLeft: 10,
+  currencySymbol: {
     fontSize: 16,
-    color: "#2d3748",
+    color: "#007BFF",
+    marginRight: 8,
   },
-  modalActions: {
+  modalInput: {
+    flex: 1,
+    height: 48,
+    fontSize: 14,
+    color: "#1e293b",
+  },
+  modalButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 10,
-  },
-  button: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 15,
-    borderRadius: 12,
-    marginHorizontal: 5,
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    marginTop: 24,
+    gap: 12,
+    paddingBottom: Platform.OS === "ios" ? 40 : 20,
   },
   cancelButton: {
-    backgroundColor: "#e74c3c",
+    flex: 1,
+    backgroundColor: "#ef4444",
+    padding: 12,
+    borderRadius: 8,
+    alignItems: "center",
   },
-  assignButton: {
-    backgroundColor: "#2ecc71",
+  confirmButton: {
+    flex: 1,
+    backgroundColor: "#007BFF",
+    padding: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  disabledButton: {
+    backgroundColor: "#94a3b8",
+    opacity: 0.7,
   },
   buttonText: {
-    color: "#ffffff",
+    color: "#fff",
     fontWeight: "600",
-    fontSize: 16,
-    marginLeft: 8,
-    letterSpacing: 0.5,
+    fontSize: 14,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#f8f9fa",
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: 12,
     fontSize: 16,
-    color: "#666",
+    color: "#64748b",
   },
   emptyContainer: {
     alignItems: "center",
-    marginTop: 50,
+    justifyContent: "center",
+    padding: 32,
+    marginTop: 32,
   },
   emptyText: {
-    marginTop: 10,
+    marginTop: 12,
     fontSize: 16,
-    color: "#666",
+    color: "#64748b",
+    textAlign: "center",
   },
-  eventTitlesContainer: {
-    marginTop: 5,
+  historyStats: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 20,
   },
-  eventTitle: {
-    fontSize: 12,
-    color: "#666",
-    marginTop: 2,
+  statCard: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
-  historyButton: {
-    marginLeft: 10,
-    padding: 5,
+  statValue: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#007BFF",
+    marginTop: 8,
+  },
+  statLabel: {
+    fontSize: 14,
+    color: "#64748b",
+    marginTop: 4,
+  },
+  historyFilters: {
+    flexDirection: "row",
+    paddingBottom: 16,
+    gap: 8,
+  },
+  filterButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#f1f5f9",
+  },
+  activeFilter: {
+    backgroundColor: "#007BFF",
+  },
+  filterText: {
+    fontSize: 14,
+    color: "#64748b",
+    fontWeight: "500",
+  },
+  activeFilterText: {
+    color: "#fff",
+  },
+  historyList: {
+    flex: 1,
   },
   historyCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 10,
-    marginBottom: 10,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    marginBottom: 12,
     padding: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
   historyCardHeader: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
   },
-  historyEventTitle: {
+  eventInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  eventTitle: {
     fontSize: 16,
     fontWeight: "600",
-    marginLeft: 10,
-    color: "#1a1a1a",
+    marginLeft: 8,
+    color: "#1e293b",
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  paidBadge: {
+    backgroundColor: "#dcfce7",
+  },
+  unpaidBadge: {
+    backgroundColor: "#fee2e2",
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  paidText: {
+    color: "#16a34a",
+  },
+  unpaidText: {
+    color: "#ef4444",
   },
   historyDetails: {
-    marginLeft: 30,
+    marginLeft: 28,
   },
-  historyInfo: {
+  amountRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 5,
+    marginBottom: 8,
   },
-  historyAmount: {
-    fontSize: 15,
+  amountText: {
+    fontSize: 18,
     fontWeight: "700",
-    marginLeft: 10,
-    color: "#333",
+    marginLeft: 8,
+    color: "#1e293b",
   },
-  historyDate: {
-    fontSize: 14,
-    marginLeft: 10,
-    color: "#777",
-  },
-  statusContainer: {
+  dateRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 5,
+    marginBottom: 8,
   },
-  paidStatus: {
+  dateText: {
     fontSize: 14,
-    marginLeft: 10,
-    color: "#2ecc71",
-    fontWeight: "600",
+    color: "#64748b",
+    marginLeft: 8,
+  },
+  paidDateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  paidDateText: {
+    fontSize: 14,
+    color: "#16a34a",
+    marginLeft: 8,
   },
   markAsPaidButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#007bff",
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 6,
-    shadowColor: "#007bff",
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    justifyContent: "center",
+    backgroundColor: "#007BFF",
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
   },
   markAsPaidText: {
-    color: "#ffffff",
-    marginLeft: 5,
-    fontWeight: "500",
+    color: "#fff",
+    marginLeft: 8,
+    fontWeight: "600",
     fontSize: 14,
   },
-  closeButton: {
+  successPopup: {
     position: "absolute",
-    right: 0,
-    padding: 5,
+    top: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: "#10b981",
+    borderRadius: 12,
+    padding: 16,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    zIndex: 1000,
+  },
+  successContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  successIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  successText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+    flex: 1,
+  },
+  modalScrollView: {
+    flex: 1,
+  },
+  modalScrollContent: {
+    padding: 20,
+    paddingBottom: 40,
   },
 });
 

@@ -10,6 +10,10 @@ import {
   Image,
   Dimensions,
   Platform,
+  Modal,
+  TextInput,
+  Alert,
+  Switch,
 } from "react-native";
 import {
   collection,
@@ -18,6 +22,12 @@ import {
   getDocs,
   where,
   Timestamp,
+  addDoc,
+  orderBy,
+  limit,
+  updateDoc,
+  doc,
+  getDoc,
 } from "firebase/firestore";
 import { auth, db } from "../../../../config/firebaseconfig";
 import {
@@ -36,9 +46,13 @@ import {
   ChevronRight,
   Calendar,
   Clock,
+  Plus,
+  Users,
+  DollarSign,
 } from "lucide-react-native";
-
+import { Picker } from "@react-native-picker/picker";
 import Icon from "react-native-vector-icons/Ionicons";
+import Toast from "react-native-toast-message";
 
 const TIMELINE_HEIGHT = 660;
 const EVENT_COLORS = [
@@ -76,8 +90,8 @@ const SPACING = 16;
 
 const AdminHome = () => {
   const [username, setUsername] = useState("");
-  const [events, setEvents] = useState([]); // Events for the selected date
-  const [allEvents, setAllEvents] = useState([]); // All events for the week
+  const [events, setEvents] = useState([]);
+  const [allEvents, setAllEvents] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [weekDays, setWeekDays] = useState([]);
@@ -86,10 +100,26 @@ const AdminHome = () => {
     startOfWeek(new Date(), { weekStartsOn: 1 })
   );
   const [scrollY] = useState(new Animated.Value(0));
-  //upcoming
   const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [totalStudentFines, setTotalStudentFines] = useState(0);
   const [finesLoading, setFinesLoading] = useState(true);
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [newUser, setNewUser] = useState({
+    fullName: "",
+    studentId: "",
+    yearLevel: "1",
+    role: "student",
+    password: "",
+  });
+  const [addUserLoading, setAddUserLoading] = useState(false);
+  const [recentActivities, setRecentActivities] = useState([]);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settings, setSettings] = useState({
+    notifications: true,
+    autoGenerateReports: false,
+    fineReminderDays: 7,
+    theme: "light",
+  });
 
   const fetchData = async () => {
     setLoading(true);
@@ -431,6 +461,145 @@ const AdminHome = () => {
 
     fetchTotalFines();
   }, []);
+
+  useEffect(() => {
+    fetchRecentActivities();
+    // Set up real-time listener for activities
+    const activitiesRef = collection(db, "activities");
+    const q = query(activitiesRef, orderBy("timestamp", "desc"), limit(5));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const activities = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        timestamp: doc.data().timestamp?.toDate(),
+      }));
+      setRecentActivities(activities);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const fetchRecentActivities = async () => {
+    try {
+      const activitiesRef = collection(db, "activities");
+      const q = query(activitiesRef, orderBy("timestamp", "desc"), limit(20));
+      const snapshot = await getDocs(q);
+
+      const activities = await Promise.all(
+        snapshot.docs.map(async (docSnapshot) => {
+          const activityData = docSnapshot.data();
+          const activity = {
+            id: docSnapshot.id,
+            type: activityData.type,
+            timestamp: activityData.timestamp?.toDate(),
+            details: activityData.details || {},
+          };
+
+          // No need to fetch related data here if it's already stored in details
+          // We rely on the data being stored accurately when the activity is created
+
+          return activity;
+        })
+      );
+
+      // Filter out activities that might not have the necessary details yet if needed, though ideally creation logs should be complete
+      const filteredActivities = activities.filter(
+        (activity) =>
+          activity.type !== "fine_paid" ||
+          (activity.details?.studentName &&
+            activity.details?.studentId &&
+            activity.details?.eventTitle)
+      );
+
+      setRecentActivities(filteredActivities);
+    } catch (error) {
+      console.error("Error fetching activities:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to fetch activities",
+        position: "bottom",
+      });
+    }
+  };
+
+  const formatTimeAgo = (timestamp) => {
+    if (
+      !timestamp ||
+      !(timestamp instanceof Date) ||
+      isNaN(timestamp.getTime())
+    )
+      return "";
+    const now = new Date();
+    const diff = now - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) return `${days}d ago`;
+    if (hours > 0) return `${hours}h ago`;
+    if (minutes > 0) return `${minutes}m ago`;
+    return "Just now";
+  };
+
+  const formatActivityDescription = (activity) => {
+    if (!activity || !activity.details) {
+      return "Activity details not available";
+    }
+
+    const details = activity.details;
+    switch (activity.type) {
+      case "student_added":
+        return `New ${details.studentRole || "student"} ${
+          details.studentName || "Unknown"
+        } (${details.studentId || "No ID"}) added by ${
+          details.issuedBy || "System"
+        } (${details.adminRole || "Admin"})`;
+
+      case "fine_added":
+        return `Fine of ₱${details.amount || "0"} added to ${
+          details.studentName || "Unknown"
+        } (${details.studentId || "No ID"}) for ${
+          details.eventTitle || "Unknown Event"
+        } by ${details.issuedBy || "System"} (${details.adminRole || "Admin"})`;
+
+      case "fine_paid": {
+        const paidDate = details.paidAt?.toDate();
+        const displayDate =
+          paidDate && !isNaN(paidDate.getTime())
+            ? format(paidDate, "MMM d, yyyy")
+            : "Unknown Date";
+        return `Fine of ₱${details.amount || "0"} paid by ${
+          details.studentName || "Unknown"
+        } (${details.studentId || "No ID"}) for ${
+          details.eventTitle || "Unknown Event"
+        } on ${displayDate}`;
+      }
+
+      case "event_added":
+        return `New event "${details.eventTitle || "Untitled Event"}" (${
+          details.eventTimeframe || "No timeframe"
+        }) created by ${details.issuedBy || "System"} (${
+          details.adminRole || "Admin"
+        })`;
+
+      case "role_changed":
+        return `Role changed for ${details.studentName || "Unknown"} from ${
+          details.oldRole || "Unknown"
+        } to ${details.newRole || "Unknown"} by ${
+          details.issuedBy || "System"
+        } (${details.adminRole || "Admin"})`;
+
+      case "settings_updated":
+        return `Settings updated by ${details.issuedBy || "System"} (${
+          details.adminRole || "Admin"
+        })`;
+
+      default:
+        return activity.description || "No description available";
+    }
+  };
 
   const styles = StyleSheet.create({
     sectionHeader: {
@@ -897,13 +1066,709 @@ const AdminHome = () => {
       fontFamily: Platform.OS === "ios" ? "System" : "sans-serif",
       opacity: 0.92,
     },
+    modalContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+    },
+    modalContent: {
+      width: "90%",
+      maxHeight: "80%",
+      backgroundColor: "#FFFFFF",
+      borderRadius: 16,
+      overflow: "hidden",
+    },
+    modalHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: SPACING,
+      borderBottomWidth: 1,
+      borderBottomColor: "#E2E8F0",
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: "700",
+      color: THEME_COLORS.primary,
+    },
+    modalBody: {
+      padding: SPACING,
+    },
+    modalFooter: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      padding: SPACING,
+      borderTopWidth: 1,
+      borderTopColor: "#E2E8F0",
+    },
+    formGroup: {
+      marginBottom: SPACING,
+    },
+    label: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: "#475569",
+      marginBottom: 8,
+    },
+    input: {
+      backgroundColor: "#F1F5F9",
+      borderRadius: 8,
+      padding: 12,
+      fontSize: 16,
+      color: "#1E293B",
+    },
+    pickerContainer: {
+      backgroundColor: "#F1F5F9",
+      borderRadius: 8,
+      overflow: "hidden",
+    },
+    picker: {
+      height: 50,
+      color: "#1E293B",
+    },
+    button: {
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+      borderRadius: 8,
+      marginLeft: SPACING,
+    },
+    cancelButton: {
+      backgroundColor: "#E2E8F0",
+    },
+    submitButton: {
+      backgroundColor: THEME_COLORS.primary,
+    },
+    buttonText: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#FFFFFF",
+    },
+    addButton: {
+      backgroundColor: THEME_COLORS.primary,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      justifyContent: "center",
+      alignItems: "center",
+      marginLeft: 10,
+    },
+    quickActionsContainer: {
+      padding: 16,
+      marginBottom: 24,
+    },
+    quickActionsGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "space-between",
+      gap: 16,
+    },
+    quickActionCard: {
+      width: "47%",
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 16,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    quickActionContent: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    quickActionIconContainer: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: "rgba(255, 255, 255, 0.2)",
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 12,
+    },
+    quickActionTextContainer: {
+      flex: 1,
+    },
+    quickActionTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#FFFFFF",
+      marginBottom: 4,
+    },
+    quickActionDescription: {
+      fontSize: 12,
+      color: "rgba(255, 255, 255, 0.8)",
+    },
+    recentActivityContainer: {
+      padding: 16,
+      marginBottom: 24,
+    },
+    activityCard: {
+      backgroundColor: "#FFFFFF",
+      borderRadius: 16,
+      padding: 16,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    activityHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 16,
+    },
+    activityTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#1E293B",
+      marginLeft: 8,
+    },
+    activityList: {
+      gap: 16,
+    },
+    activityItem: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    activityIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: "#F1F5F9",
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 12,
+    },
+    activityContent: {
+      flex: 1,
+    },
+    activityText: {
+      fontSize: 14,
+      color: "#1E293B",
+      marginBottom: 2,
+    },
+    activityTime: {
+      fontSize: 12,
+      color: "#64748B",
+    },
+    fullScreenModalContainer: {
+      flex: 1,
+      backgroundColor: "#FFFFFF",
+    },
+    fullScreenModalContent: {
+      flex: 1,
+      paddingTop: Platform.OS === "ios" ? 50 : 20,
+    },
+    settingsGroup: {
+      marginBottom: 24,
+    },
+    settingsGroupTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#1E293B",
+      marginBottom: 16,
+    },
+    settingItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: "#E2E8F0",
+    },
+    settingInfo: {
+      flex: 1,
+      marginRight: 16,
+    },
+    settingLabel: {
+      fontSize: 16,
+      color: "#1E293B",
+      marginBottom: 4,
+    },
+    settingDescription: {
+      fontSize: 14,
+      color: "#64748B",
+    },
   });
+
+  const generateStudentId = () => {
+    const year = new Date().getFullYear();
+    const randomNum = Math.floor(Math.random() * 10000)
+      .toString()
+      .padStart(4, "0");
+    const randomLetters = Math.random()
+      .toString(36)
+      .substring(2, 4)
+      .toUpperCase();
+    return `${year}-${randomNum}-${randomLetters}`;
+  };
+
+  const handleAddUser = async () => {
+    if (!newUser.fullName || !newUser.password) {
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Please fill in all required fields",
+        position: "bottom",
+      });
+      return;
+    }
+
+    setAddUserLoading(true);
+    try {
+      const studentId = generateStudentId();
+      const currentUser = auth.currentUser;
+
+      // Get admin details
+      const adminDoc = await getDocs(
+        query(collection(db, "admin"), where("uid", "==", currentUser.uid))
+      );
+      const adminData = adminDoc.docs[0]?.data() || { username: "System" };
+
+      // Add user to Firestore
+      await addDoc(collection(db, "users"), {
+        fullName: newUser.fullName,
+        studentId,
+        yearLevel: newUser.yearLevel,
+        role: newUser.role,
+        password: newUser.password,
+        createdAt: Timestamp.now(),
+        addedBy: {
+          uid: currentUser.uid,
+          username: adminData.username,
+        },
+      });
+
+      // Add detailed activity log
+      await addDoc(collection(db, "activities"), {
+        type: "student_added",
+        description: "New student registered",
+        timestamp: Timestamp.now(),
+        details: {
+          studentName: newUser.fullName,
+          studentId,
+          yearLevel: newUser.yearLevel,
+          role: newUser.role,
+          issuedBy: adminData.username,
+          adminUid: currentUser.uid,
+        },
+      });
+
+      Toast.show({
+        type: "success",
+        text1: "Success",
+        text2: "Student added successfully",
+        position: "bottom",
+      });
+
+      setShowAddUserModal(false);
+      setNewUser({
+        fullName: "",
+        studentId: "",
+        yearLevel: "1",
+        role: "student",
+        password: "",
+      });
+    } catch (error) {
+      console.error("Error adding user:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to add student",
+        position: "bottom",
+      });
+    } finally {
+      setAddUserLoading(false);
+    }
+  };
+
+  const getActivityIcon = (type) => {
+    switch (type) {
+      case "student_added":
+        return "person-add-outline";
+      case "fine_added":
+        return "cash-outline";
+      case "fine_paid":
+        return "checkmark-circle-outline";
+      case "event_added":
+        return "calendar-outline";
+      case "role_changed":
+        return "swap-horizontal-outline";
+      case "settings_updated":
+        return "settings-outline";
+      default:
+        return "information-circle-outline";
+    }
+  };
+
+  const getActivityColor = (type) => {
+    switch (type) {
+      case "student_added":
+        return "#0A2463";
+      case "fine_added":
+        return "#D92626";
+      case "fine_paid":
+        return "#16a34a";
+      case "event_added":
+        return "#2E7D32";
+      case "role_changed":
+        return "#6D28D9";
+      case "settings_updated":
+        return "#64748B";
+      default:
+        return "#64748B";
+    }
+  };
+
+  const SettingsModal = () => (
+    <Modal
+      visible={showSettingsModal}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowSettingsModal(false)}
+    >
+      <View style={styles.modalContainer}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Admin Settings</Text>
+            <TouchableOpacity onPress={() => setShowSettingsModal(false)}>
+              <Icon name="close" size={24} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalBody}>
+            <View style={styles.settingsGroup}>
+              <Text style={styles.settingsGroupTitle}>Notifications</Text>
+              <View style={styles.settingItem}>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Enable Notifications</Text>
+                  <Text style={styles.settingDescription}>
+                    Receive alerts for new activities
+                  </Text>
+                </View>
+                <Switch
+                  value={settings.notifications}
+                  onValueChange={(value) =>
+                    setSettings({ ...settings, notifications: value })
+                  }
+                />
+              </View>
+            </View>
+
+            <View style={styles.settingsGroup}>
+              <Text style={styles.settingsGroupTitle}>Reports</Text>
+              <View style={styles.settingItem}>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Auto-generate Reports</Text>
+                  <Text style={styles.settingDescription}>
+                    Generate weekly reports automatically
+                  </Text>
+                </View>
+                <Switch
+                  value={settings.autoGenerateReports}
+                  onValueChange={(value) =>
+                    setSettings({ ...settings, autoGenerateReports: value })
+                  }
+                />
+              </View>
+            </View>
+
+            <View style={styles.settingsGroup}>
+              <Text style={styles.settingsGroupTitle}>Fine Management</Text>
+              <View style={styles.settingItem}>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Fine Reminder Days</Text>
+                  <Text style={styles.settingDescription}>
+                    Days before sending fine reminders
+                  </Text>
+                </View>
+                <View style={styles.pickerContainer}>
+                  <Picker
+                    selectedValue={settings.fineReminderDays.toString()}
+                    onValueChange={(value) =>
+                      setSettings({
+                        ...settings,
+                        fineReminderDays: parseInt(value),
+                      })
+                    }
+                    style={styles.picker}
+                  >
+                    {[3, 5, 7, 10, 14].map((days) => (
+                      <Picker.Item
+                        key={days}
+                        label={`${days} days`}
+                        value={days.toString()}
+                      />
+                    ))}
+                  </Picker>
+                </View>
+              </View>
+            </View>
+          </ScrollView>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              style={[styles.button, styles.cancelButton]}
+              onPress={() => setShowSettingsModal(false)}
+            >
+              <Text style={styles.buttonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, styles.submitButton]}
+              onPress={() => {
+                // Save settings to Firestore
+                setShowSettingsModal(false);
+              }}
+            >
+              <Text style={styles.buttonText}>Save Changes</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const AddUserModal = () => (
+    <Modal
+      visible={showAddUserModal}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowAddUserModal(false)}
+    >
+      <View style={styles.fullScreenModalContainer}>
+        <View style={styles.fullScreenModalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add New Student</Text>
+            <TouchableOpacity onPress={() => setShowAddUserModal(false)}>
+              <Icon name="close" size={24} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalBody}>
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Full Name</Text>
+              <TextInput
+                style={styles.input}
+                value={newUser.fullName}
+                onChangeText={(text) =>
+                  setNewUser({ ...newUser, fullName: text })
+                }
+                placeholder="Enter full name"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Password</Text>
+              <TextInput
+                style={styles.input}
+                value={newUser.password}
+                onChangeText={(text) =>
+                  setNewUser({ ...newUser, password: text })
+                }
+                placeholder="Enter password"
+                secureTextEntry
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Year Level</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={newUser.yearLevel}
+                  onValueChange={(value) =>
+                    setNewUser({ ...newUser, yearLevel: value })
+                  }
+                  style={styles.picker}
+                >
+                  {[1, 2, 3, 4, 5].map((year) => (
+                    <Picker.Item
+                      key={year}
+                      label={`Year ${year}`}
+                      value={year.toString()}
+                    />
+                  ))}
+                </Picker>
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Role</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={newUser.role}
+                  onValueChange={(value) =>
+                    setNewUser({ ...newUser, role: value })
+                  }
+                  style={styles.picker}
+                >
+                  <Picker.Item label="Student" value="student" />
+                  <Picker.Item label="Treasurer" value="treasurer" />
+                  <Picker.Item label="Secretary" value="secretary" />
+                </Picker>
+              </View>
+            </View>
+          </ScrollView>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              style={[styles.button, styles.cancelButton]}
+              onPress={() => setShowAddUserModal(false)}
+              disabled={addUserLoading}
+            >
+              <Text style={styles.buttonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, styles.submitButton]}
+              onPress={handleAddUser}
+              disabled={addUserLoading}
+            >
+              {addUserLoading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.buttonText}>Add Student</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const QuickActionCard = ({ title, description, icon, onPress, color }) => (
+    <TouchableOpacity
+      style={[styles.quickActionCard, { backgroundColor: color }]}
+      onPress={onPress}
+    >
+      <View style={styles.quickActionContent}>
+        <View style={styles.quickActionIconContainer}>
+          <Icon name={icon} size={24} color="#FFFFFF" />
+        </View>
+        <View style={styles.quickActionTextContainer}>
+          <Text style={styles.quickActionTitle}>{title}</Text>
+          <Text style={styles.quickActionDescription}>{description}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const handleMarkAsPaid = async (fineId) => {
+    try {
+      const now = Timestamp.now();
+      await updateDoc(doc(db, "fines", fineId), {
+        status: "paid",
+        paidAt: now,
+      });
+
+      // Add activity log
+      await addDoc(collection(db, "activities"), {
+        type: "fine_paid",
+        description: "Fine payment received",
+        timestamp: now,
+        details: {
+          fineId,
+        },
+      });
+
+      Toast.show({
+        type: "success",
+        text1: "Success",
+        text2: "Fine marked as paid",
+        position: "bottom",
+      });
+    } catch (error) {
+      console.error("Error marking fine as paid:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to mark fine as paid",
+        position: "bottom",
+      });
+    }
+  };
+
+  const RecentActivitySection = () => (
+    <View style={styles.recentActivityContainer}>
+      <Text style={styles.sectionTitle}>Latest Updates</Text>
+      <View style={styles.activityCard}>
+        <View style={styles.activityHeader}>
+          <Icon name="time-outline" size={20} color="#64748B" />
+          <Text style={styles.activityTitle}>Recent Activities</Text>
+        </View>
+        <View style={styles.activityList}>
+          {recentActivities.slice(0, 3).map((activity) => (
+            <View key={activity.id} style={styles.activityItem}>
+              <View
+                style={[
+                  styles.activityIcon,
+                  { backgroundColor: `${getActivityColor(activity.type)}20` },
+                ]}
+              >
+                <Icon
+                  name={getActivityIcon(activity.type)}
+                  size={16}
+                  color={getActivityColor(activity.type)}
+                />
+              </View>
+              <View style={styles.activityContent}>
+                <Text style={styles.activityText}>
+                  {formatActivityDescription(activity)}
+                </Text>
+                <Text style={styles.activityTime}>
+                  {formatTimeAgo(activity.timestamp)}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+
+  const ActivityHistorySection = () => (
+    <View style={styles.recentActivityContainer}>
+      <Text style={styles.sectionTitle}>Activity History</Text>
+      <View style={styles.activityCard}>
+        <View style={styles.activityHeader}>
+          <Icon name="list-outline" size={20} color="#64748B" />
+          <Text style={styles.activityTitle}>Detailed Logs</Text>
+        </View>
+        <View style={styles.activityList}>
+          {recentActivities.map((activity) => (
+            <View key={activity.id} style={styles.activityItem}>
+              <View
+                style={[
+                  styles.activityIcon,
+                  { backgroundColor: `${getActivityColor(activity.type)}20` },
+                ]}
+              >
+                <Icon
+                  name={getActivityIcon(activity.type)}
+                  size={16}
+                  color={getActivityColor(activity.type)}
+                />
+              </View>
+              <View style={styles.activityContent}>
+                <Text style={styles.activityText}>
+                  {formatActivityDescription(activity)}
+                </Text>
+                <Text style={styles.activityTime}>
+                  {format(activity.timestamp, "MMM d, yyyy 'at' h:mm a")}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
 
   if (loading) {
     return (
       <View style={styles.loader}>
         <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.loadingText}>Loading your schedule...</Text>
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
   }
@@ -913,21 +1778,20 @@ const AdminHome = () => {
       <View style={styles.header}>
         <View style={styles.leftContent}>
           <Icon
-            name="wallet-outline"
+            name="shield-checkmark-outline"
             size={24}
             color="#FFD700"
             style={styles.icon}
           />
-          <Text style={styles.greeting}>{getGreeting()}</Text>
+          <Text style={styles.greeting}>Welcome,</Text>
         </View>
         <View style={styles.rightContent}>
           <Text style={styles.username}>{username.split(" ")[0]}</Text>
         </View>
       </View>
 
-      {/* Modern Stats Container */}
+      {/* Total Fines Card */}
       <View style={styles.statsContainer}>
-        {/* Landscape, attractive Fines Stat Card */}
         <View style={styles.landscapeFineStatCard}>
           <View style={styles.landscapeFineStatIconWrap}>
             <Icon
@@ -953,291 +1817,52 @@ const AdminHome = () => {
         </View>
       </View>
 
-      {/* Current Date Display */}
-      <View style={styles.dateHeader}>
-        <Icon
-          name="calendar-outline"
-          size={18}
-          color="#024CAA"
-          style={styles.calendarIcon}
-        />
-        <Text style={styles.currentDate}>
-          {format(selectedDate, "d MMMM yyyy")}
-        </Text>
-      </View>
-
-      {/* Calendar Navigation Controls */}
-      <View style={styles.calendarControls}>
-        <TouchableOpacity
-          style={styles.controlButton}
-          onPress={handlePreviousWeek}
-        >
-          <Icon name="chevron-back-outline" size={20} color="#024CAA" />
-        </TouchableOpacity>
-
-        <Text style={{ color: "#666", fontWeight: "500" }}>
-          Week of {format(weekStart, "MMM d")}
-        </Text>
-
-        <TouchableOpacity style={styles.controlButton} onPress={handleNextWeek}>
-          <Icon name="chevron-forward-outline" size={20} color="#024CAA" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Week Row with Days */}
-      <View style={styles.weekRow}>
-        {weekDays.map((day, index) => {
-          return (
-            <TouchableOpacity
-              key={index}
-              style={[
-                styles.dayColumn,
-                day.isSelected && styles.selectedColumn,
-                day.isToday && !day.isSelected && styles.todayColumn,
-              ]}
-              onPress={() => handleDateSelect(day.date)}
-            >
-              {day.hasEvents && <View style={styles.eventDot} />}
-              <Text
-                style={[
-                  styles.dateText,
-                  day.isSelected && styles.selectedText,
-                  day.isToday && !day.isSelected && styles.todayText,
-                ]}
-              >
-                {day.dayNumber}
-              </Text>
-              <Text
-                style={[
-                  styles.dayText,
-                  day.isSelected && styles.selectedText,
-                  day.isToday && !day.isSelected && styles.todayText,
-                ]}
-              >
-                {day.dayName}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {/* Section Title */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{getSectionTitle()}</Text>
-        <Icon
-          name="calendar-outline"
-          size={20}
-          color="#024CAA"
-          style={styles.sectionIcon}
-        />
-      </View>
-      <Text style={styles.sectionDescription}>
-        All events scheduled for this day
-      </Text>
-
-      {/* Timeline and Events */}
-      <View style={styles.timelineContainer}>
-        <View style={styles.timelineDateBanner}>
-          <Icon name="calendar-outline" size={16} color="#424242" />
-          <Text style={styles.timelineDateText}>
-            {format(selectedDate, "EEEE, MMMM d")}
-          </Text>
-        </View>
-
-        {/* Events Column */}
-        <View style={styles.eventsContainer}>
-          {events.length > 0 ? (
-            events
-              .sort((a, b) => {
-                const convertToTimeValue = (time) => {
-                  const [hour, minute, period] = time
-                    .match(/(\d+):(\d+)\s?(AM|PM)/i)
-                    .slice(1);
-                  let hours = parseInt(hour, 10);
-                  const minutes = parseInt(minute, 10);
-                  if (period.toUpperCase() === "PM" && hours !== 12)
-                    hours += 12;
-                  if (period.toUpperCase() === "AM" && hours === 12) hours = 0;
-                  return hours * 60 + minutes;
-                };
-                return (
-                  convertToTimeValue(a.timeframe) -
-                  convertToTimeValue(b.timeframe)
-                );
-              })
-              .map((event, index) => {
-                // Create a solid color from the semi-transparent color
-                const baseColor = event.color
-                  .replace(/rgba?\(/, "")
-                  .replace(/\)/, "")
-                  .split(",");
-                const solidColor = `rgba(${baseColor[0]},${baseColor[1]},${baseColor[2]},1)`;
-
-                // Get time for badge
-                const timeMatch = event.timeframe.match(/(\d+:\d+)\s?(AM|PM)/i);
-                const time = timeMatch ? timeMatch[0] : event.timeframe;
-
-                // Determine a badge type based on index for variety
-                const badgeTypes = ["Event", "Meeting", "Task", "Reminder"];
-                const badgeType = badgeTypes[index % badgeTypes.length];
-
-                return (
-                  <View key={event.id} style={styles.eventCard}>
-                    <View style={styles.eventCardInner}>
-                      {/* Solid background */}
-                      <View
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          backgroundColor: event.color,
-                          zIndex: 1,
-                        }}
-                      />
-
-                      {/* Pattern overlay for added dimension */}
-                      <View
-                        style={[
-                          styles.patternOverlay,
-                          { backgroundColor: "transparent" },
-                        ]}
-                      >
-                        {/* Pattern would be implemented here */}
-                      </View>
-
-                      {/* Card accent */}
-                      <View
-                        style={[
-                          styles.eventCardAccent,
-                          { backgroundColor: solidColor },
-                        ]}
-                      />
-
-                      {/* Badge indicator */}
-                      <View style={styles.eventBadge}>
-                        <Icon
-                          name={
-                            badgeType === "Event"
-                              ? "calendar-outline"
-                              : badgeType === "Meeting"
-                              ? "people-outline"
-                              : badgeType === "Task"
-                              ? "checkmark-circle-outline"
-                              : "alert-circle-outline"
-                          }
-                          size={10}
-                          color="#fff"
-                        />
-                        <Text style={styles.eventBadgeText}>{badgeType}</Text>
-                      </View>
-
-                      {/* Main content */}
-                      <View style={styles.eventCardContent}>
-                        <View style={styles.eventRow}>
-                          <View style={styles.eventIcon}>
-                            <Icon
-                              name="calendar-outline"
-                              size={22}
-                              color="#FFFFFF"
-                            />
-                          </View>
-                          <View style={styles.eventContent}>
-                            <Text style={styles.eventTitle}>{event.title}</Text>
-                            <View style={styles.eventTimeContainer}>
-                              <Icon
-                                name="time-outline"
-                                size={12}
-                                color="rgba(255,255,255,0.95)"
-                              />
-                              <Text style={styles.eventTime}>
-                                {event.timeframe}
-                              </Text>
-                            </View>
-                          </View>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                );
-              })
-          ) : (
-            <View style={styles.noEventsContainer}>
-              <Image
-                source={{
-                  uri: "https://cdn-icons-png.flaticon.com/512/6195/6195678.png",
-                }}
-                style={styles.noEventsImage}
-              />
-              <Text style={styles.noEventsText}>
-                No events scheduled for today
-              </Text>
-            </View>
-          )}
-        </View>
-      </View>
-
-      {/* Upcoming Events Section */}
-      <View style={styles.ReminderContainer}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Upcoming Events</Text>
-          <Icon
-            name="time-outline"
-            size={20}
-            color="#024CAA"
-            style={styles.sectionIcon}
+      {/* Quick Actions Section */}
+      <View style={styles.quickActionsContainer}>
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <View style={styles.quickActionsGrid}>
+          <QuickActionCard
+            title="Add Student"
+            description="Register new student account"
+            icon="person-add-outline"
+            onPress={() => setShowAddUserModal(true)}
+            color="#0A2463"
+          />
+          <QuickActionCard
+            title="Manage Fines"
+            description="View and update student fines"
+            icon="cash-outline"
+            onPress={() => {
+              /* TODO: Navigate to fines management */
+            }}
+            color="#3E92CC"
+          />
+          <QuickActionCard
+            title="View Reports"
+            description="Generate and view reports"
+            icon="bar-chart-outline"
+            onPress={() => {
+              /* TODO: Navigate to reports */
+            }}
+            color="#2E7D32"
+          />
+          <QuickActionCard
+            title="Settings"
+            description="Configure system settings"
+            icon="settings-outline"
+            onPress={() => setShowSettingsModal(true)}
+            color="#6D28D9"
           />
         </View>
-        <Text style={styles.sectionDescription}>
-          Be prepared for your scheduled events ahead
-        </Text>
-        <ScrollView>
-          {upcomingEvents.length > 0 ? (
-            upcomingEvents.map((event) => {
-              const eventDate = event.dueDate?.toDate() || new Date();
-              return (
-                <View key={event.id} style={styles.ReminderCardContainer}>
-                  <View style={styles.ReminderCard}>
-                    <View style={styles.ReminderCardContent}>
-                      <View style={styles.ReminderDateTimeContainer}>
-                        <Text style={styles.ReminderDateText}>
-                          {format(eventDate, "d")}
-                        </Text>
-                        <Text style={styles.ReminderDayText}>
-                          {format(eventDate, "MMM")}
-                        </Text>
-                      </View>
-                      <View style={styles.ReminderEventDetails}>
-                        <Text style={styles.ReminderEventTitle}>
-                          {event.title}
-                        </Text>
-                        <View
-                          style={{ flexDirection: "row", alignItems: "center" }}
-                        >
-                          <Icon
-                            name="time-outline"
-                            size={16}
-                            color="#666"
-                            style={styles.ReminderEventTimeIcon}
-                          />
-                          <Text style={styles.ReminderEventTimeframe}>
-                            {format(eventDate, "h:mm a")} -{" "}
-                            {format(eventDate, "EEEE")}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              );
-            })
-          ) : (
-            <Text style={styles.ReminderNoEvent}>No upcoming events</Text>
-          )}
-        </ScrollView>
       </View>
+
+      <RecentActivitySection />
+      <ActivityHistorySection />
+
+      <AddUserModal />
+      <SettingsModal />
     </ScrollView>
   );
 };
+
 export default AdminHome;

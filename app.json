@@ -17,8 +17,7 @@
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "This app requires access to your photo library to upload your profile picture."
       },
-      "bundleIdentifier": "com.anonymous.FirebaseAuth",
-      "useFrameworks": "static"
+      "bundleIdentifier": "com.anonymous.FirebaseAuth"
     },
     "android": {
       "adaptiveIcon": {
@@ -29,10 +28,6 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    },
-    "entryPoint": "./index.js",
-    "packagerOpts": {
-      "config": "metro.config.js"
     },
     "experiments": {
       "tsconfigPaths": true
