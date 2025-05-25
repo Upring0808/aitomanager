@@ -54,9 +54,7 @@ const EventDetailsCard = ({ event }) => {
     outputRange: ["0deg", "180deg"],
   });
 
-  const eventDate = event.dueDate
-    ? new Date(event.dueDate.seconds * 1000)
-    : null;
+  const eventDate = event.dueDate ? new Date(event.dueDate) : null;
 
   const formattedDate = eventDate
     ? eventDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })

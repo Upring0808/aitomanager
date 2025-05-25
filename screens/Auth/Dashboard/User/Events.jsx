@@ -8,47 +8,101 @@ import {
   RefreshControl,
   Animated,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { db } from "../../../../config/firebaseconfig";
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import {
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+  getDocs,
+} from "firebase/firestore";
 import Toast from "react-native-toast-message";
 import EventDetailsCard from "../../../../components/EventDetailsCard";
 import DropdownPicker from "../../../../components/DropdownPicker";
 import { Styles } from "../../../../styles/Styles";
 
-const Events = () => {
-  const [events, setEvents] = useState([]);
+const Events = ({ initialData = [] }) => {
+  const [events, setEvents] = useState(initialData);
   const [filter, setFilter] = useState("All");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const unsubscribeRef = useRef(null);
+  const isInitialMount = useRef(true);
 
-  const fetchEvents = useCallback(() => {
-    if (!refreshing) setLoading(true);
-    const eventsCollection = collection(db, "events");
-    const eventsQuery = query(eventsCollection, orderBy("createdAt", "desc"));
-
-    const unsubscribe = onSnapshot(eventsQuery, (snapshot) => {
-      const eventsList = snapshot.docs.map((doc) => ({
+  const fetchEvents = useCallback(async () => {
+    try {
+      const eventsRef = collection(db, "events");
+      const q = query(eventsRef, orderBy("dueDate", "asc"));
+      const snapshot = await getDocs(q);
+      const eventsData = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
+        dueDate: doc.data().dueDate?.toDate(),
       }));
-      setEvents(eventsList);
-      animateEventsEntrance();
+      setEvents(eventsData);
       setLoading(false);
       setRefreshing(false);
-    });
+    } catch (error) {
+      console.error("[Events] Error fetching events:", error);
+      setLoading(false);
+      setRefreshing(false);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to refresh events",
+      });
+    }
+  }, []);
 
-    return unsubscribe;
-  }, [refreshing]);
-
+  // Set up real-time listener for events
   useEffect(() => {
-    const unsubscribe = fetchEvents();
-    return () => unsubscribe();
-  }, [fetchEvents]);
+    // Skip initial setup if we have preloaded data
+    if (isInitialMount.current && initialData.length > 0) {
+      isInitialMount.current = false;
+      return;
+    }
 
-  const onRefresh = useCallback(() => {
+    const eventsRef = collection(db, "events");
+    const q = query(eventsRef, orderBy("dueDate", "asc"));
+
+    // Store the unsubscribe function in the ref
+    unsubscribeRef.current = onSnapshot(
+      q,
+      (snapshot) => {
+        const eventsData = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          dueDate: doc.data().dueDate?.toDate(),
+        }));
+        setEvents(eventsData);
+        setLoading(false);
+        setRefreshing(false);
+      },
+      (error) => {
+        console.error("[Events] Error in snapshot listener:", error);
+        setLoading(false);
+        setRefreshing(false);
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Failed to load events",
+        });
+      }
+    );
+
+    // Cleanup function
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+    };
+  }, [initialData]);
+
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    fetchEvents();
+    await fetchEvents();
   }, [fetchEvents]);
 
   const animateEventsEntrance = () => {
@@ -61,8 +115,11 @@ const Events = () => {
   };
 
   const filteredEvents = events.filter((event) => {
-    const eventDate = new Date(event.dueDate.seconds * 1000);
+    if (!event.dueDate) return false;
+
+    const eventDate = event.dueDate;
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     if (filter === "Current") {
       return (
@@ -93,6 +150,11 @@ const Events = () => {
 
   return (
     <SafeAreaView style={Styles.safeArea}>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="#FFFFFF"
+        translucent={true}
+      />
       <View style={Styles.mainContainer}>
         <ScrollView
           contentContainerStyle={Styles.scrollContainer}
@@ -100,14 +162,14 @@ const Events = () => {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={["#D3D6DB"]}
-              tintColor="#D3D6DB"
+              colors={["#007BFF"]}
+              tintColor="#007BFF"
             />
           }
         >
           <View style={Styles.filterContainer}>
             <DropdownPicker
-              options={["All", "Current", "Upcoming"]}
+              options={["All", "Current", "Upcoming", "Past"]}
               selectedValue={filter}
               onValueChange={setFilter}
             />

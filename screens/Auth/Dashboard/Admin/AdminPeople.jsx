@@ -11,21 +11,21 @@ import {
   FlatList,
   RefreshControl,
   Platform,
+  Alert,
   ScrollView,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
-import { db, auth } from "../../../../config/firebaseconfig";
+import { db } from "../../../../config/firebaseconfig";
 import {
   collection,
   query,
   getDocs,
   orderBy,
-  addDoc,
   doc,
   updateDoc,
+  deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
-import { createUserWithEmailAndPassword } from "firebase/auth";
 import Toast from "react-native-toast-message";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -35,11 +35,13 @@ const SPACING = 16;
 
 const AdminPeople = () => {
   const [users, setUsers] = useState([]);
+  const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -52,6 +54,7 @@ const AdminPeople = () => {
       }));
 
       setUsers(usersData);
+      setFilteredUsers(usersData);
     } catch (error) {
       console.error("Error fetching users:", error);
       Toast.show({
@@ -69,6 +72,72 @@ const AdminPeople = () => {
     fetchUsers();
   }, []);
 
+  useEffect(() => {
+    if (searchQuery.trim() === "") {
+      setFilteredUsers(users);
+    } else {
+      const filtered = users.filter((user) => {
+        const username = (user.username || "").toLowerCase();
+        const email = (user.email || "").toLowerCase();
+        const role = (user.role || "").toLowerCase();
+        const searchLower = searchQuery.toLowerCase();
+
+        return (
+          username.includes(searchLower) ||
+          email.includes(searchLower) ||
+          role.includes(searchLower)
+        );
+      });
+      setFilteredUsers(filtered);
+    }
+  }, [searchQuery, users]);
+
+  const getGroupedUsers = () => {
+    const officers = filteredUsers.filter(
+      (user) => user.role && user.role !== "student"
+    );
+    const students = filteredUsers.filter(
+      (user) => !user.role || user.role === "student"
+    );
+    return { officers, students };
+  };
+
+  const renderSectionHeader = (title, count) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionCount}>
+        <Text style={styles.sectionCountText}>{count}</Text>
+      </View>
+    </View>
+  );
+
+  const handleDeleteUser = async (user) => {
+    setSelectedUser(user);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    try {
+      await deleteDoc(doc(db, "users", selectedUser.id));
+      Toast.show({
+        type: "success",
+        text1: "User Deleted",
+        text2: "User has been deleted successfully",
+        position: "bottom",
+      });
+      setShowDeleteModal(false);
+      fetchUsers();
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to delete user",
+        position: "bottom",
+      });
+    }
+  };
+
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchUsers();
@@ -80,55 +149,123 @@ const AdminPeople = () => {
     setShowRoleModal(true);
   };
 
-  const AddUserModal = ({ visible, onClose }) => {
-    const [formData, setFormData] = useState({
-      username: "",
-      email: "",
-      password: "",
-      yearLevel: "1",
-      role: "student",
-    });
+  const RoleAssignmentModal = ({ visible, onClose, user }) => {
+    const [selectedRole, setSelectedRole] = useState(user?.role || "student");
+    const [selectedYear, setSelectedYear] = useState(
+      user?.yearLevel?.toString() || "1"
+    );
     const [loading, setLoading] = useState(false);
 
-    const handleCreateUser = async () => {
-      if (!formData.username || !formData.email || !formData.password) {
-        Toast.show({
-          type: "error",
-          text1: "Missing Information",
-          text2: "Please fill in all required fields",
-          position: "bottom",
-        });
-        return;
-      }
+    const roleDetails = {
+      student: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      governor: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      vice_governor: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      secretary: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      assistant_secretary: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      treasurer: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      assistant_treasurer: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      auditor: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      business_manager: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      food_committee_chairperson: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      public_information_officer: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      gentleman_officer: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      lady_officer: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      first_year_mayor: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      second_year_mayor: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      third_year_mayor: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+      fourth_year_mayor: {
+        color: "#F8FAFC",
+        borderColor: "#E2E8F0",
+        selectedColor: "#0A2463",
+      },
+    };
 
+    const handleUpdateRole = async () => {
+      if (!user) return;
       setLoading(true);
       try {
-        const userCredential = await createUserWithEmailAndPassword(
-          auth,
-          formData.email,
-          formData.password
-        );
-
-        await addDoc(collection(db, "users"), {
-          uid: userCredential.user.uid,
-          username: formData.username,
-          email: formData.email,
-          yearLevel: formData.yearLevel,
-          role: formData.role,
-          createdAt: serverTimestamp(),
+        const userRef = doc(db, "users", user.id);
+        await updateDoc(userRef, {
+          role: selectedRole,
+          yearLevel: parseInt(selectedYear),
+          updatedAt: serverTimestamp(),
         });
 
         Toast.show({
           type: "success",
-          text1: "User Created",
-          text2: "New user has been added successfully",
+          text1: "Profile Updated",
+          text2: "User profile has been updated successfully",
           position: "bottom",
         });
 
         onClose();
         fetchUsers();
       } catch (error) {
-        console.error("Error creating user:", error);
+        console.error("Error updating user:", error);
         Toast.show({
           type: "error",
           text1: "Error",
@@ -141,91 +278,168 @@ const AdminPeople = () => {
     };
 
     return (
-      <Modal visible={visible} animationType="slide" transparent={true}>
-        <View style={styles.modalContainer}>
+      <Modal
+        visible={visible}
+        animationType="fade"
+        transparent={true}
+        statusBarTranslucent
+      >
+        <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add New User</Text>
-              <TouchableOpacity onPress={onClose}>
+              <View style={styles.modalHeaderContent}>
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={24}
+                  color={THEME_COLOR}
+                />
+                <Text style={styles.modalTitle}>Update User Profile</Text>
+              </View>
+              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                 <Ionicons name="close" size={24} color="#64748B" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalBody}>
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Username</Text>
-                <TextInput
-                  style={styles.input}
-                  value={formData.username}
-                  onChangeText={(text) =>
-                    setFormData({ ...formData, username: text })
-                  }
-                  placeholder="Enter username"
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Email</Text>
-                <TextInput
-                  style={styles.input}
-                  value={formData.email}
-                  onChangeText={(text) =>
-                    setFormData({ ...formData, email: text })
-                  }
-                  placeholder="Enter email"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Password</Text>
-                <TextInput
-                  style={styles.input}
-                  value={formData.password}
-                  onChangeText={(text) =>
-                    setFormData({ ...formData, password: text })
-                  }
-                  placeholder="Enter password"
-                  secureTextEntry
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Year Level</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={formData.yearLevel}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, yearLevel: value })
+            <ScrollView
+              style={styles.modalScrollView}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.modalBody}>
+                <View style={styles.userInfoContainer}>
+                  <Image
+                    source={
+                      user?.avatarUrl
+                        ? { uri: user.avatarUrl }
+                        : require("../../../../assets/aito.png")
                     }
-                    style={styles.picker}
-                  >
-                    {[1, 2, 3, 4, 5].map((year) => (
-                      <Picker.Item
-                        key={year}
-                        label={`Year ${year}`}
-                        value={year.toString()}
-                      />
-                    ))}
-                  </Picker>
+                    style={styles.userAvatar}
+                  />
+                  <View style={styles.userInfo}>
+                    <Text style={styles.userName}>{user?.username}</Text>
+                    <Text style={styles.userEmail}>{user?.email}</Text>
+                  </View>
                 </View>
-              </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Role</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={formData.role}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, role: value })
-                    }
-                    style={styles.picker}
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Current Year Level</Text>
+                  <View style={styles.currentRoleContainer}>
+                    <Text style={styles.currentRole}>
+                      Year {user?.yearLevel || "Not Set"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Select Year Level</Text>
+                  <View style={styles.yearLevelContainer}>
+                    {[1, 2, 3, 4].map((year) => (
+                      <TouchableOpacity
+                        key={year}
+                        style={[
+                          styles.yearLevelButton,
+                          selectedYear === year.toString() &&
+                            styles.selectedYearLevelButton,
+                        ]}
+                        onPress={() => setSelectedYear(year.toString())}
+                      >
+                        <Text
+                          style={[
+                            styles.yearLevelButtonText,
+                            selectedYear === year.toString() &&
+                              styles.selectedYearLevelButtonText,
+                          ]}
+                        >
+                          Year {year}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Current Role</Text>
+                  <View
+                    style={[
+                      styles.currentRoleContainer,
+                      {
+                        backgroundColor:
+                          roleDetails[user?.role || "student"].color,
+                      },
+                    ]}
                   >
-                    <Picker.Item label="Student" value="student" />
-                    <Picker.Item label="Treasurer" value="treasurer" />
-                    <Picker.Item label="Secretary" value="secretary" />
-                  </Picker>
+                    <Text style={styles.currentRole}>
+                      {user?.role
+                        ? user.role
+                            .split("_")
+                            .map(
+                              (word) =>
+                                word.charAt(0).toUpperCase() + word.slice(1)
+                            )
+                            .join(" ")
+                        : "Student"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <View style={styles.roleHeaderContainer}>
+                    <Text style={styles.label}>Select New Role</Text>
+                    <View style={styles.slideNotice}>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={16}
+                        color="#64748B"
+                      />
+                      <Text style={styles.slideNoticeText}>
+                        Slide to see more
+                      </Text>
+                    </View>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.roleScrollView}
+                    contentContainerStyle={styles.roleScrollContent}
+                  >
+                    <View style={styles.roleOptionsContainer}>
+                      {Object.entries(roleDetails).map(([role, details]) => (
+                        <TouchableOpacity
+                          key={role}
+                          style={[
+                            styles.roleCard,
+                            selectedRole === role && styles.selectedRoleCard,
+                            {
+                              backgroundColor:
+                                selectedRole === role
+                                  ? details.selectedColor
+                                  : details.color,
+                              borderColor:
+                                selectedRole === role
+                                  ? details.selectedColor
+                                  : details.borderColor,
+                            },
+                          ]}
+                          onPress={() => setSelectedRole(role)}
+                        >
+                          <Text
+                            style={[
+                              styles.roleCardTitle,
+                              selectedRole === role &&
+                                styles.selectedRoleCardTitle,
+                            ]}
+                          >
+                            {role
+                              .split("_")
+                              .map(
+                                (word) =>
+                                  word.charAt(0).toUpperCase() + word.slice(1)
+                              )
+                              .join(" ")}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
                 </View>
               </View>
             </ScrollView>
@@ -236,17 +450,27 @@ const AdminPeople = () => {
                 onPress={onClose}
                 disabled={loading}
               >
-                <Text style={styles.buttonText}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.button, styles.submitButton]}
-                onPress={handleCreateUser}
-                disabled={loading}
+                style={[
+                  styles.button,
+                  styles.submitButton,
+                  selectedRole === user?.role &&
+                    selectedYear === user?.yearLevel?.toString() &&
+                    styles.disabledButton,
+                ]}
+                onPress={handleUpdateRole}
+                disabled={
+                  loading ||
+                  (selectedRole === user?.role &&
+                    selectedYear === user?.yearLevel?.toString())
+                }
               >
                 {loading ? (
                   <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
-                  <Text style={styles.buttonText}>Create User</Text>
+                  <Text style={styles.buttonText}>Update Profile</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -256,112 +480,67 @@ const AdminPeople = () => {
     );
   };
 
-  const RoleAssignmentModal = ({ visible, onClose, user }) => {
-    const [selectedRole, setSelectedRole] = useState(user?.role || "student");
-    const [loading, setLoading] = useState(false);
-
-    const handleUpdateRole = async () => {
-      if (!user) return;
-      setLoading(true);
-      try {
-        const userRef = doc(db, "users", user.id);
-        await updateDoc(userRef, {
-          role: selectedRole,
-          updatedAt: serverTimestamp(),
-        });
-
-        Toast.show({
-          type: "success",
-          text1: "Role Updated",
-          text2: "User role has been updated successfully",
-          position: "bottom",
-        });
-
-        onClose();
-        fetchUsers();
-      } catch (error) {
-        console.error("Error updating role:", error);
-        Toast.show({
-          type: "error",
-          text1: "Error",
-          text2: error.message,
-          position: "bottom",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
+  const DeleteConfirmationModal = ({ visible, onClose, user }) => {
+    if (!user) return null;
 
     return (
-      <Modal visible={visible} animationType="slide" transparent={true}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Update User Role</Text>
-              <TouchableOpacity onPress={onClose}>
-                <Ionicons name="close" size={24} color="#64748B" />
-              </TouchableOpacity>
+      <Modal
+        visible={visible}
+        animationType="fade"
+        transparent={true}
+        statusBarTranslucent
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.deleteModalContent}>
+            <View style={styles.deleteModalHeader}>
+              <Ionicons name="warning" size={32} color="#EF4444" />
+              <Text style={styles.deleteModalTitle}>Delete User</Text>
             </View>
 
-            <View style={styles.modalBody}>
-              <View style={styles.userInfoContainer}>
+            <View style={styles.deleteModalBody}>
+              <Text style={styles.deleteModalText}>
+                Are you sure you want to delete this user?
+              </Text>
+              <View style={styles.deleteUserInfo}>
                 <Image
                   source={
-                    user?.avatarUrl
+                    user.avatarUrl
                       ? { uri: user.avatarUrl }
                       : require("../../../../assets/aito.png")
                   }
-                  style={styles.userAvatar}
+                  style={styles.deleteUserAvatar}
                 />
-                <View style={styles.userInfo}>
-                  <Text style={styles.userName}>{user?.username}</Text>
-                  <Text style={styles.userEmail}>{user?.email}</Text>
-                </View>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Current Role</Text>
-                <View style={styles.currentRoleContainer}>
-                  <Text style={styles.currentRole}>
-                    {user?.role || "Student"}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>New Role</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={selectedRole}
-                    onValueChange={(value) => setSelectedRole(value)}
-                    style={styles.picker}
-                  >
-                    <Picker.Item label="Student" value="student" />
-                    <Picker.Item label="Treasurer" value="treasurer" />
-                    <Picker.Item label="Secretary" value="secretary" />
-                  </Picker>
+                <View style={styles.deleteUserDetails}>
+                  <Text style={styles.deleteUserName}>{user.username}</Text>
+                  <Text style={styles.deleteUserEmail}>{user.email}</Text>
+                  {user.role && (
+                    <View
+                      style={[
+                        styles.badge,
+                        user.role === "student"
+                          ? styles.studentBadge
+                          : styles.officerBadge,
+                      ]}
+                    >
+                      <Text style={styles.badgeText}>{user.role}</Text>
+                    </View>
+                  )}
                 </View>
               </View>
             </View>
 
-            <View style={styles.modalFooter}>
+            <View style={styles.deleteModalFooter}>
               <TouchableOpacity
-                style={[styles.button, styles.cancelButton]}
+                style={[styles.deleteModalButton, styles.cancelDeleteButton]}
                 onPress={onClose}
-                disabled={loading}
               >
-                <Text style={styles.buttonText}>Cancel</Text>
+                <Text style={styles.cancelDeleteButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.button, styles.submitButton]}
-                onPress={handleUpdateRole}
-                disabled={loading}
+                style={[styles.deleteModalButton, styles.confirmDeleteButton]}
+                onPress={confirmDelete}
               >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={styles.buttonText}>Update Role</Text>
-                )}
+                <Text style={styles.confirmDeleteButtonText}>Delete User</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -369,6 +548,52 @@ const AdminPeople = () => {
       </Modal>
     );
   };
+
+  const renderUserCard = (item) => (
+    <TouchableOpacity
+      style={styles.userCard}
+      onPress={() => handleUserPress(item)}
+    >
+      <View style={styles.userCardContent}>
+        <Image
+          source={
+            item.avatarUrl
+              ? { uri: item.avatarUrl }
+              : require("../../../../assets/aito.png")
+          }
+          style={styles.userAvatar}
+        />
+        <View style={styles.userInfo}>
+          <Text style={styles.userName}>{item.username}</Text>
+          <Text style={styles.userEmail}>{item.email}</Text>
+          <View style={styles.userDetails}>
+            {item.role && (
+              <View
+                style={[
+                  styles.badge,
+                  item.role === "student"
+                    ? styles.studentBadge
+                    : styles.officerBadge,
+                ]}
+              >
+                <Text style={styles.badgeText}>{item.role}</Text>
+              </View>
+            )}
+            <Text style={styles.yearLevel}>Year {item.yearLevel}</Text>
+          </View>
+        </View>
+        <View style={styles.cardActions}>
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => handleDeleteUser(item)}
+          >
+            <Ionicons name="trash-outline" size={20} color="#EF4444" />
+          </TouchableOpacity>
+          <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
 
   if (loading) {
     return (
@@ -380,52 +605,56 @@ const AdminPeople = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Users</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => setShowAddUserModal(true)}
-        >
-          <Ionicons name="add" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
+      <View style={styles.searchContainer}>
+        <Ionicons
+          name="search"
+          size={20}
+          color="#64748B"
+          style={styles.searchIcon}
+        />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search users..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholderTextColor="#94A3B8"
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity
+            onPress={() => setSearchQuery("")}
+            style={styles.clearButton}
+          >
+            <Ionicons name="close-circle" size={20} color="#64748B" />
+          </TouchableOpacity>
+        )}
       </View>
 
       <FlatList
-        data={users}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.userCard}
-            onPress={() => handleUserPress(item)}
-          >
-            <Image
-              source={
-                item.avatarUrl
-                  ? { uri: item.avatarUrl }
-                  : require("../../../../assets/aito.png")
-              }
-              style={styles.userAvatar}
-            />
-            <View style={styles.userInfo}>
-              <Text style={styles.userName}>{item.username}</Text>
-              <Text style={styles.userEmail}>{item.email}</Text>
-              <View style={styles.userDetails}>
-                <View
-                  style={[
-                    styles.badge,
-                    item.role === "student"
-                      ? styles.studentBadge
-                      : styles.officerBadge,
-                  ]}
-                >
-                  <Text style={styles.badgeText}>{item.role}</Text>
+        data={[]}
+        renderItem={null}
+        ListHeaderComponent={() => {
+          const { officers, students } = getGroupedUsers();
+          return (
+            <View>
+              {officers.length > 0 && (
+                <View style={styles.sectionContainer}>
+                  {renderSectionHeader("Officers", officers.length)}
+                  {officers.map((item) => (
+                    <View key={item.id}>{renderUserCard(item)}</View>
+                  ))}
                 </View>
-                <Text style={styles.yearLevel}>Year {item.yearLevel}</Text>
-              </View>
+              )}
+              {students.length > 0 && (
+                <View style={styles.sectionContainer}>
+                  {renderSectionHeader("Students", students.length)}
+                  {students.map((item) => (
+                    <View key={item.id}>{renderUserCard(item)}</View>
+                  ))}
+                </View>
+              )}
             </View>
-            <Ionicons name="chevron-forward" size={24} color="#CBD5E1" />
-          </TouchableOpacity>
-        )}
+          );
+        }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -434,25 +663,17 @@ const AdminPeople = () => {
             tintColor={THEME_COLOR}
           />
         }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="people" size={60} color="#CBD5E1" />
-            <Text style={styles.emptyTitle}>No Users Found</Text>
-            <Text style={styles.emptySubtitle}>
-              Add new users to get started
-            </Text>
-          </View>
-        }
-      />
-
-      <AddUserModal
-        visible={showAddUserModal}
-        onClose={() => setShowAddUserModal(false)}
       />
 
       <RoleAssignmentModal
         visible={showRoleModal}
         onClose={() => setShowRoleModal(false)}
+        user={selectedUser}
+      />
+
+      <DeleteConfirmationModal
+        visible={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
         user={selectedUser}
       />
     </View>
@@ -469,47 +690,86 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  header: {
+  searchContainer: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    padding: SPACING,
+    backgroundColor: "#FFFFFF",
+    margin: SPACING,
+    paddingHorizontal: SPACING,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    height: 44,
+    fontSize: 16,
+    color: "#1E293B",
+  },
+  clearButton: {
+    padding: 4,
+  },
+  sectionContainer: {
+    marginBottom: SPACING,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: SPACING,
+    paddingVertical: SPACING / 2,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: "#E2E8F0",
+    marginBottom: 8,
   },
-  headerTitle: {
-    fontSize: 24,
+  sectionTitle: {
+    fontSize: 18,
     fontWeight: "700",
     color: THEME_COLOR,
   },
-  addButton: {
+  sectionCount: {
     backgroundColor: THEME_COLOR,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  sectionCountText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   userCard: {
+    marginHorizontal: SPACING,
+    marginVertical: 4,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  userCardContent: {
     flexDirection: "row",
     alignItems: "center",
-    padding: SPACING,
-    backgroundColor: "#FFFFFF",
-    marginHorizontal: SPACING,
-    marginVertical: SPACING / 2,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    padding: 12,
   },
   userAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: SPACING,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
   userInfo: {
     flex: 1,
@@ -518,11 +778,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#1E293B",
+    marginBottom: 2,
   },
   userEmail: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#64748B",
-    marginBottom: 4,
+    marginBottom: 6,
   },
   userDetails: {
     flexDirection: "row",
@@ -530,24 +791,26 @@ const styles = StyleSheet.create({
   },
   badge: {
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 3,
+    borderRadius: 8,
     marginRight: 8,
   },
   studentBadge: {
-    backgroundColor: "#E2E8F0",
+    backgroundColor: "#F1F5F9",
   },
   officerBadge: {
     backgroundColor: "#DBEAFE",
   },
   badgeText: {
-    fontSize: 12,
+    fontSize: 11,
+    fontWeight: "600",
     color: "#475569",
     textTransform: "capitalize",
   },
   yearLevel: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#64748B",
+    fontWeight: "500",
   },
   emptyContainer: {
     flex: 1,
@@ -567,18 +830,28 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 4,
   },
-  modalContainer: {
-    flex: 1,
+  modalOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    zIndex: 9999,
   },
   modalContent: {
     width: "90%",
-    maxHeight: "80%",
+    height: "80%",
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     overflow: "hidden",
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
   modalHeader: {
     flexDirection: "row",
@@ -587,6 +860,24 @@ const styles = StyleSheet.create({
     padding: SPACING,
     borderBottomWidth: 1,
     borderBottomColor: "#E2E8F0",
+    backgroundColor: "#FFFFFF",
+  },
+  modalHeaderContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  labelContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  infoButton: {
+    padding: 4,
   },
   modalTitle: {
     fontSize: 20,
@@ -595,6 +886,7 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     padding: SPACING,
+    paddingBottom: SPACING / 2,
   },
   modalFooter: {
     flexDirection: "row",
@@ -602,6 +894,11 @@ const styles = StyleSheet.create({
     padding: SPACING,
     borderTopWidth: 1,
     borderTopColor: "#E2E8F0",
+    backgroundColor: "#FFFFFF",
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
   },
   formGroup: {
     marginBottom: SPACING,
@@ -612,53 +909,243 @@ const styles = StyleSheet.create({
     color: "#475569",
     marginBottom: 8,
   },
-  input: {
-    backgroundColor: "#F1F5F9",
-    borderRadius: 8,
-    padding: 12,
+  currentRoleContainer: {
+    padding: SPACING,
+    borderRadius: 12,
+    marginBottom: SPACING,
+  },
+  currentRole: {
     fontSize: 16,
-    color: "#1E293B",
+    fontWeight: "600",
+    color: "#475569",
   },
-  pickerContainer: {
+  roleHeaderContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  slideNotice: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "#F1F5F9",
-    borderRadius: 8,
-    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  picker: {
-    height: 50,
-    color: "#1E293B",
+  slideNoticeText: {
+    fontSize: 12,
+    color: "#64748B",
+    marginLeft: 4,
+  },
+  roleScrollView: {
+    height: 100,
+    marginBottom: 16,
+  },
+  roleScrollContent: {
+    paddingRight: 16,
+  },
+  roleOptionsContainer: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  roleCard: {
+    width: 140,
+    height: 60,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  roleCardTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#475569",
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  selectedRoleCard: {
+    borderWidth: 2,
+    transform: [{ scale: 1.02 }],
+  },
+  selectedRoleCardTitle: {
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   button: {
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
     marginLeft: SPACING,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   cancelButton: {
-    backgroundColor: "#E2E8F0",
+    backgroundColor: "#F1F5F9",
   },
   submitButton: {
     backgroundColor: THEME_COLOR,
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
   buttonText: {
     fontSize: 16,
     fontWeight: "600",
     color: "#FFFFFF",
   },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#475569",
+  },
   userInfoContainer: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: SPACING,
+    padding: SPACING,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
   },
-  currentRoleContainer: {
-    backgroundColor: "#F1F5F9",
-    padding: 12,
-    borderRadius: 8,
+  cardActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
-  currentRole: {
+  deleteButton: {
+    padding: 4,
+  },
+  deleteModalContent: {
+    width: "90%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    overflow: "hidden",
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  deleteModalHeader: {
+    alignItems: "center",
+    padding: SPACING,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    backgroundColor: "#FEF2F2",
+  },
+  deleteModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#EF4444",
+    marginTop: 8,
+  },
+  deleteModalBody: {
+    padding: SPACING,
+  },
+  deleteModalText: {
     fontSize: 16,
     color: "#1E293B",
-    textTransform: "capitalize",
+    textAlign: "center",
+    marginBottom: SPACING,
+  },
+  deleteUserInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+    padding: SPACING,
+    borderRadius: 12,
+  },
+  deleteUserAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: SPACING,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  deleteUserDetails: {
+    flex: 1,
+  },
+  deleteUserName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1E293B",
+    marginBottom: 2,
+  },
+  deleteUserEmail: {
+    fontSize: 14,
+    color: "#64748B",
+    marginBottom: 4,
+  },
+  deleteModalFooter: {
+    flexDirection: "row",
+    padding: SPACING,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    gap: SPACING,
+  },
+  deleteModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  cancelDeleteButton: {
+    backgroundColor: "#F1F5F9",
+  },
+  confirmDeleteButton: {
+    backgroundColor: "#EF4444",
+  },
+  cancelDeleteButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#475569",
+  },
+  confirmDeleteButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  yearLevelContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    gap: 8,
+  },
+  yearLevelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    alignItems: "center",
+  },
+  selectedYearLevelButton: {
+    backgroundColor: THEME_COLOR,
+    borderColor: THEME_COLOR,
+  },
+  yearLevelButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#475569",
+  },
+  selectedYearLevelButtonText: {
+    color: "#FFFFFF",
+  },
+  modalScrollView: {
+    flex: 1,
   },
 });
 

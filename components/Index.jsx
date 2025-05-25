@@ -13,8 +13,15 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   ScrollView,
+  StatusBar,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import {
+  useNavigation,
+  useNavigationState,
+  CommonActions,
+  useFocusEffect,
+} from "@react-navigation/native";
 import {
   User,
   Mail,
@@ -34,12 +41,15 @@ import * as SplashScreen from "expo-splash-screen";
 
 const { width, height } = Dimensions.get("window");
 
-const Index = ({ navigation }) => {
+const Index = () => {
+  const navigation = useNavigation();
+  const navigationState = useNavigationState((state) => state);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [modalVisible, setModalVisible] = useState(false);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [navigationReady, setNavigationReady] = useState(false);
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -48,17 +58,132 @@ const Index = ({ navigation }) => {
     message: "",
   });
   const [errors, setErrors] = useState({});
+  const navigationTimeoutRef = useRef(null);
 
+  // Better navigation readiness check using useFocusEffect
+  useFocusEffect(
+    React.useCallback(() => {
+      // This ensures the navigation is ready when the screen is focused
+      setNavigationReady(true);
+      return () => {
+        // Cleanup if needed
+      };
+    }, [])
+  );
+
+  // Enhanced navigation readiness check
   useEffect(() => {
-    // Hide splash first, then start fade-in
-    SplashScreen.hideAsync().finally(() => {
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }).start();
-    });
+    const checkNavigation = () => {
+      try {
+        // Check if navigation object exists and has the required methods
+        if (
+          navigation &&
+          navigation.dispatch &&
+          navigationState &&
+          navigationState.routes &&
+          navigationState.routes.length > 0
+        ) {
+          setNavigationReady(true);
+          console.log("[Index] Navigation is ready");
+          if (navigationTimeoutRef.current) {
+            clearTimeout(navigationTimeoutRef.current);
+            navigationTimeoutRef.current = null;
+          }
+        } else {
+          // If navigation is not ready, try again after a short delay
+          if (!navigationTimeoutRef.current) {
+            navigationTimeoutRef.current = setTimeout(checkNavigation, 200);
+          }
+        }
+      } catch (error) {
+        console.warn("[Index] Navigation check error:", error);
+        // Retry after a longer delay if there's an error
+        if (!navigationTimeoutRef.current) {
+          navigationTimeoutRef.current = setTimeout(checkNavigation, 500);
+        }
+      }
+    };
+
+    checkNavigation();
+
+    return () => {
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+        navigationTimeoutRef.current = null;
+      }
+    };
+  }, [navigation, navigationState]);
+
+  // Handle splash screen and fade-in animation
+  useEffect(() => {
+    const initializeScreen = async () => {
+      try {
+        await SplashScreen.hideAsync();
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }).start();
+      } catch (error) {
+        console.error("[Index] Error initializing screen:", error);
+      }
+    };
+
+    initializeScreen();
   }, [fadeAnim]);
+
+  const handleLoginPress = () => {
+    if (!navigationReady || !navigation) {
+      console.warn("[Index] Navigation not ready yet");
+      return;
+    }
+
+    try {
+      // Additional safety check before navigation
+      if (navigation.dispatch && typeof navigation.dispatch === "function") {
+        navigation.dispatch(
+          CommonActions.navigate({
+            name: "Login",
+          })
+        );
+        console.log("[Index] Navigation dispatched successfully");
+      } else {
+        throw new Error("Navigation dispatch method not available");
+      }
+    } catch (error) {
+      console.error("[Index] Navigation error:", error);
+
+      // Alternative navigation method as fallback
+      try {
+        if (navigation.navigate && typeof navigation.navigate === "function") {
+          navigation.navigate("Login");
+          console.log("[Index] Fallback navigation successful");
+        } else {
+          console.error("[Index] No navigation methods available");
+        }
+      } catch (fallbackError) {
+        console.error(
+          "[Index] Fallback navigation also failed:",
+          fallbackError
+        );
+
+        // Final retry with delay
+        setTimeout(() => {
+          try {
+            if (navigation && navigation.dispatch) {
+              navigation.dispatch(
+                CommonActions.navigate({
+                  name: "Login",
+                })
+              );
+            }
+          } catch (retryError) {
+            console.error("[Index] Final retry failed:", retryError);
+          }
+        }, 1000);
+      }
+    }
+  };
 
   const handleContactAdmin = () => {
     setModalVisible(true);
@@ -83,7 +208,6 @@ const Index = ({ navigation }) => {
     if (!validateForm()) return;
 
     setSending(true);
-    // Simulate sending the message
     setTimeout(() => {
       setSending(false);
       setSuccess(true);
@@ -104,6 +228,11 @@ const Index = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="transparent"
+        translucent={true}
+      />
       <BackgroundImage>
         <LinearGradient
           colors={["#ffffffaa", "#16325Bff"]}
@@ -125,13 +254,20 @@ const Index = ({ navigation }) => {
             <View style={styles.formContainer}>
               <View style={styles.buttonContainer}>
                 <TouchableOpacity
-                  style={[styles.button, styles.elevatedShadow]}
-                  onPress={() => navigation.navigate("Login")}
+                  style={[
+                    styles.button,
+                    styles.elevatedShadow,
+                    !navigationReady && styles.buttonDisabled,
+                  ]}
+                  onPress={handleLoginPress}
                   activeOpacity={0.7}
+                  disabled={!navigationReady}
                 >
                   <View style={styles.buttonContent}>
                     <User color="#fff" size={24} style={styles.buttonIcon} />
-                    <Text style={styles.buttonText}>Login</Text>
+                    <Text style={styles.buttonText}>
+                      {navigationReady ? "Login" : "Loading..."}
+                    </Text>
                     <ChevronRight color="#fff" size={24} />
                   </View>
                 </TouchableOpacity>
@@ -147,20 +283,12 @@ const Index = ({ navigation }) => {
                     <ChevronRight color="#16325B" size={24} />
                   </View>
                 </TouchableOpacity>
-
-                <View style={styles.loginContainer}>
-                  <Text style={styles.loginText}>No Account? </Text>
-                  <TouchableOpacity onPress={handleContactAdmin}>
-                    <Text style={styles.loginLink}>Contact Admin</Text>
-                  </TouchableOpacity>
-                </View>
               </View>
             </View>
           </Animated.View>
         </LinearGradient>
       </BackgroundImage>
 
-      {/* Fixed Modal Implementation */}
       {modalVisible && (
         <View style={styles.fullScreenModalContainer}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -406,6 +534,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#fff",
   },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
   buttonOutline: {
     borderWidth: 2,
     borderColor: "#16325B",
@@ -438,20 +569,6 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
   },
-  loginContainer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    marginTop: 20,
-  },
-  loginText: {
-    color: "#666",
-    fontSize: 15,
-  },
-  loginLink: {
-    color: "#16325B",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
   elevatedShadow: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
@@ -459,7 +576,6 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 8,
   },
-  // Fixed Modal Styles - Properly sized for all devices
   fullScreenModalContainer: {
     position: "absolute",
     top: 0,

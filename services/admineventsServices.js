@@ -77,6 +77,21 @@ export const addEvent = async (
       createdBy: username,
     });
 
+    // Add activity log for event creation
+    await addDoc(collection(db, "activities"), {
+      type: "event_added",
+      description: "New event created",
+      timestamp: Timestamp.now(),
+      details: {
+        eventId: docRef.id,
+        eventTitle: title,
+        eventTimeframe: timeframe,
+        eventDueDate: dueDateTimestamp,
+        issuedBy: username,
+        adminUid: user.uid,
+      },
+    });
+
     return {
       id: docRef.id,
       title,

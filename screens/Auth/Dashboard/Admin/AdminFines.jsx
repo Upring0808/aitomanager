@@ -27,6 +27,7 @@ import {
   orderBy,
   query,
   where,
+  getDoc,
 } from "firebase/firestore";
 import { MaterialIcons } from "@expo/vector-icons";
 import DropdownPicker from "../../../../components/DropdownPicker";
@@ -99,23 +100,24 @@ const AdminFines = () => {
     try {
       setLoading(true);
 
-      // Fetch students
-      const usersSnapshot = await getDocs(collection(db, "users"));
+      // Fetch all users
+      const usersQuery = query(collection(db, "users"), orderBy("username"));
+      const usersSnapshot = await getDocs(usersQuery);
       const usersData = usersSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
-        role: "student",
       }));
-      setUsers(usersData);
 
-      // Fetch officers
-      const officersSnapshot = await getDocs(collection(db, "admin"));
-      const officersData = officersSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        role: "officer",
-      }));
-      setOfficers(officersData);
+      // Separate students and officers
+      const students = usersData.filter(
+        (user) => !user.role || user.role === "student"
+      );
+      const officers = usersData.filter(
+        (user) => user.role && user.role !== "student"
+      );
+
+      setUsers(students);
+      setOfficers(officers);
 
       // Fetch events
       const eventsSnapshot = await getDocs(collection(db, "events"));
@@ -137,7 +139,7 @@ const AdminFines = () => {
 
       // Calculate unpaid fines per user
       const userFines = {};
-      [...usersData, ...officersData].forEach((user) => {
+      [...students, ...officers].forEach((user) => {
         userFines[user.id] = calculateUnpaidFines(user.id, finesData);
       });
       setFines(userFines);
@@ -178,17 +180,34 @@ const AdminFines = () => {
       setOperationLoading(true);
       const now = Timestamp.now();
 
-      // Get the fine details
-      const fineDoc = await getDocs(doc(db, "fines", fineId));
-      const fineData = fineDoc.data();
+      // Get the fine details using getDoc
+      const fineDocRef = doc(db, "fines", fineId);
+      const fineDocSnap = await getDoc(fineDocRef);
 
-      // Get user details
-      const userDoc = await getDocs(doc(db, "users", fineData.userId));
-      const userData = userDoc.data();
+      if (!fineDocSnap.exists()) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Fine not found",
+          position: "bottom",
+        });
+        setOperationLoading(false);
+        return;
+      }
 
-      // Get event details
-      const eventDoc = await getDocs(doc(db, "events", fineData.eventId));
-      const eventData = eventDoc.data();
+      const fineData = fineDocSnap.data();
+
+      // Get user details using getDoc
+      const userDocRef = doc(db, "users", fineData.userId);
+      const userDocSnap = await getDoc(userDocRef);
+
+      const userData = userDocSnap.exists() ? userDocSnap.data() : {}; // Get user data or empty object with fallback
+
+      // Get event details using getDoc
+      const eventDocRef = doc(db, "events", fineData.eventId);
+      const eventDocSnap = await getDoc(eventDocRef);
+
+      const eventData = eventDocSnap.exists() ? eventDocSnap.data() : {}; // Get event data or empty object with fallback
 
       // Get current admin details
       const currentUser = auth.currentUser;
@@ -213,39 +232,51 @@ const AdminFines = () => {
       // Create detailed activity log
       const activityData = {
         type: "fine_paid",
-        description: "Fine payment received",
+        description: "Fine payment received", // This description might be overridden by formatActivityDescription
         timestamp: now,
         details: {
           fineId: fineId,
-          amount: fineData.amount,
-          studentName: userData.fullName,
-          studentId: userData.studentId,
-          eventTitle: eventData.title,
+          amount: fineData.amount || 0,
+          // Use fetched user and event data, with fallbacks
+          studentName:
+            userData.fullName || fineData.userFullName || "Unknown User",
+          studentId: userData.studentId || fineData.userStudentId || "No ID",
+          eventTitle: eventData.title || fineData.eventTitle || "Unknown Event",
           eventId: fineData.eventId,
           issuedBy: adminData?.username || "System",
           adminUid: currentUser.uid,
-          status: "paid",
-          paidAt: now,
+          status: "paid", // Include status in details
+          paidAt: now, // Include paidAt timestamp in details
         },
       };
 
       // Add activity to Firestore
       await addDoc(collection(db, "activities"), activityData);
 
-      // Update local state
-      setSelectedUserHistory((prevHistory) =>
-        prevHistory.map((fine) =>
-          fine.id === fineId
-            ? { ...fine, status: "paid", paidAt: now.toDate() }
-            : fine
-        )
-      );
+      // Update local state (assuming fineData includes userId)
+      if (fineData.userId) {
+        setSelectedUserHistory((prevHistory) =>
+          prevHistory.map((fine) =>
+            fine.id === fineId
+              ? { ...fine, status: "paid", paidAt: now.toDate() } // Update local history item
+              : fine
+          )
+        );
 
-      // Update fines in the main list
-      setFines((prevFines) => ({
-        ...prevFines,
-        [fineData.userId]: (prevFines[fineData.userId] || 0) - fineData.amount,
-      }));
+        // Update fines in the main list
+        setFines((prevFines) => ({
+          ...prevFines,
+          [fineData.userId]:
+            (prevFines[fineData.userId] || 0) - (fineData.amount || 0),
+        }));
+
+        // Refresh the user's history if modal is open
+        // This ensures the history modal reflects the change immediately
+        // You might want to add a check here if historyModalVisible is true
+        // if (historyModalVisible) {
+        //   fetchUserHistory(fineData.userId);
+        // }
+      }
 
       Toast.show({
         type: "success",
@@ -253,9 +284,6 @@ const AdminFines = () => {
         text2: "Fine marked as paid",
         position: "bottom",
       });
-
-      // Refresh the user's history
-      await fetchUserHistory(fineData.userId);
     } catch (error) {
       console.error("Error marking fine as paid:", error);
       Toast.show({
@@ -292,35 +320,67 @@ const AdminFines = () => {
       const adminSnapshot = await getDocs(adminQuery);
       const adminData = adminSnapshot.docs[0]?.data();
 
-      // Get event details
-      const eventDoc = await getDocs(doc(db, "events", selectedEvent.id));
-      const eventData = eventDoc.data();
+      // Get event details using getDoc for a single document
+      const eventDocRef = doc(db, "events", selectedEvent.id);
+      const eventDocSnap = await getDoc(eventDocRef);
+
+      if (!eventDocSnap.exists()) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Selected event not found",
+          position: "bottom",
+        });
+        setOperationLoading(false);
+        return;
+      }
+
+      const eventData = eventDocSnap.data();
 
       // Process each selected user
       for (const user of selectedUsers) {
-        // Get user details
-        const userDoc = await getDocs(doc(db, "users", user.id));
-        const userData = userDoc.data();
+        // Get user details using getDoc for a single document
+        const userDocRef = doc(db, "users", user.id);
+        const userDocSnap = await getDoc(userDocRef);
 
+        if (!userDocSnap.exists()) {
+          console.warn(
+            `User with ID ${user.id} not found, skipping fine assignment.`
+          );
+          continue;
+        }
+
+        const userData = userDocSnap.data();
         const amount =
           user.role === "officer"
-            ? parseFloat(officerFineAmount)
-            : parseFloat(studentFineAmount);
+            ? parseFloat(officerFineAmount || "0")
+            : parseFloat(studentFineAmount || "0");
+
+        // Basic validation for amount
+        if (isNaN(amount) || amount <= 0) {
+          Toast.show({
+            type: "error",
+            text1: "Error",
+            text2: `Invalid fine amount for ${userData.fullName || user.id}`,
+            position: "bottom",
+          });
+          continue;
+        }
 
         // Create fine document
         const fineData = {
-          userId: user.id,
-          userFullName: userData.fullName,
-          userStudentId: userData.studentId,
-          userRole: user.role,
+          userId: user.id, // Use the document ID as userId
+          userFullName: userData.fullName || "Unknown User",
+          userStudentId: userData.studentId || "No ID",
+          userRole: userData.role || "student",
           eventId: selectedEvent.id,
-          eventTitle: eventData.title,
-          eventDueDate: eventData.dueDate,
-          eventTimeframe: eventData.timeframe,
+          eventTitle: eventData.title || "Unknown Event",
+          eventDueDate: eventData.dueDate || null,
+          eventTimeframe: eventData.timeframe || "No timeframe",
           amount: amount,
           status: "unpaid",
           createdAt: Timestamp.now(),
-          description: `Fine for ${eventData.title}`,
+          description: `Fine for ${eventData.title || "an event"}`,
           issuedBy: {
             uid: currentUser.uid,
             username: adminData?.username || "System",
@@ -339,9 +399,9 @@ const AdminFines = () => {
           details: {
             fineId: fineRef.id,
             amount: amount,
-            studentName: userData.fullName,
-            studentId: userData.studentId,
-            eventTitle: eventData.title,
+            studentName: userData.fullName || "Unknown User",
+            studentId: userData.studentId || "No ID",
+            eventTitle: eventData.title || "Unknown Event",
             eventId: selectedEvent.id,
             issuedBy: adminData?.username || "System",
             adminUid: currentUser.uid,
@@ -566,7 +626,9 @@ const AdminFines = () => {
                 </View>
               </View>
 
-              {selectedUsers.some((user) => user.role === "student") && (
+              {selectedUsers.some(
+                (user) => !user.role || user.role === "student"
+              ) && (
                 <>
                   <Text style={styles.modalLabel}>Fine Amount (Students)</Text>
                   <View style={styles.inputContainer}>
@@ -583,7 +645,9 @@ const AdminFines = () => {
                 </>
               )}
 
-              {selectedUsers.some((user) => user.role === "officer") && (
+              {selectedUsers.some(
+                (user) => user.role && user.role !== "student"
+              ) && (
                 <>
                   <Text style={styles.modalLabel}>Fine Amount (Officers)</Text>
                   <View style={styles.inputContainer}>
@@ -968,66 +1032,88 @@ const AdminFines = () => {
         )}
       </View>
 
-      <FlatList
-        data={filteredUsers}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[
-              styles.card,
-              selectedUsers.some((u) => u.id === item.id) &&
-                styles.selectedCard,
-            ]}
-            onPress={() => toggleUserSelection(item)}
-          >
-            <View style={styles.cardContent}>
-              <View style={styles.userInfo}>
-                <MaterialIcons
-                  name={item.role === "officer" ? "security" : "person"}
-                  size={24}
-                  color="#007BFF"
-                />
-                <View>
-                  <Text style={styles.username}>{item.username}</Text>
-                  {fines[item.id] > 0 && (
-                    <View style={styles.eventTitlesContainer}></View>
+      <View style={styles.listContainer}>
+        <FlatList
+          data={filteredUsers}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={true}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[
+                styles.card,
+                selectedUsers.some((u) => u.id === item.id) &&
+                  styles.selectedCard,
+              ]}
+              onPress={() => toggleUserSelection(item)}
+            >
+              <View style={styles.cardContent}>
+                <View style={styles.userInfo}>
+                  <View style={styles.avatarContainer}>
+                    <MaterialIcons
+                      name={item.role === "officer" ? "security" : "person"}
+                      size={24}
+                      color="#007BFF"
+                    />
+                  </View>
+                  <View style={styles.userDetails}>
+                    <Text
+                      style={styles.username}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      {item.username}
+                    </Text>
+                    {item.yearLevel && (
+                      <Text style={styles.yearLevel}>
+                        Year {item.yearLevel}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+                <View style={styles.fineInfo}>
+                  {fines[item.id] > 0 ? (
+                    <>
+                      <MaterialIcons name="warning" size={16} color="#dc2626" />
+                      <Text style={styles.hasFine}>
+                        ₱{fines[item.id].toFixed(2)}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <MaterialIcons
+                        name="check-circle"
+                        size={16}
+                        color="#16a34a"
+                      />
+                      <Text style={styles.noFine}>No fines</Text>
+                    </>
                   )}
+                  <TouchableOpacity
+                    style={styles.historyButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      fetchUserHistory(item.id);
+                    }}
+                  >
+                    <MaterialIcons name="receipt" size={20} color="#007BFF" />
+                  </TouchableOpacity>
                 </View>
               </View>
-              <View style={styles.fineInfo}>
-                <Text style={styles.fineAmount}>
-                  {fines[item.id] > 0 ? (
-                    <Text style={styles.hasFine}>
-                      ₱{fines[item.id].toFixed(2)}
-                    </Text>
-                  ) : (
-                    <Text style={styles.noFine}>No fines</Text>
-                  )}
-                </Text>
-                <TouchableOpacity
-                  style={styles.historyButton}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    fetchUserHistory(item.id);
-                  }}
-                >
-                  <MaterialIcons name="receipt" size={24} color="#007BFF" />
-                </TouchableOpacity>
-              </View>
+            </TouchableOpacity>
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <MaterialIcons
+                name={activeTab === "students" ? "school" : "security"}
+                size={48}
+                color="#666"
+              />
+              <Text style={styles.emptyText}>No {activeTab} found</Text>
             </View>
-          </TouchableOpacity>
-        )}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <MaterialIcons
-              name={activeTab === "students" ? "school" : "security"}
-              size={48}
-              color="#666"
-            />
-            <Text style={styles.emptyText}>No {activeTab} found</Text>
-          </View>
-        }
-      />
+          }
+        />
+      </View>
 
       {selectedUsers.length === 0 ? (
         <TouchableOpacity
@@ -1063,11 +1149,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8f9fa",
     paddingHorizontal: 16,
     paddingTop: 6,
-    paddingBottom: 0, // Adjusted for tab navigation
+    paddingBottom: 0, // Removed bottom padding to maximize space
   },
   tabContainer: {
     flexDirection: "row",
-    marginBottom: 20,
+    marginBottom: 12, // Reduced from 20 to 12
     backgroundColor: "#fff",
     borderRadius: 15,
     padding: 8,
@@ -1101,7 +1187,7 @@ const styles = StyleSheet.create({
   searchAndFilterContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 8,
     gap: 12,
   },
   searchContainer: {
@@ -1142,6 +1228,7 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     borderWidth: 1,
     borderColor: "#e2e8f0",
+    overflow: "hidden", // Ensure content doesn't overflow rounded corners
   },
   selectedCard: {
     borderColor: "#007BFF",
@@ -1158,22 +1245,50 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
+    marginRight: 16,
+  },
+  avatarContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#f8fafc",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  userDetails: {
+    flexDirection: "column",
+    marginLeft: 12,
+    flex: 1,
   },
   username: {
     fontSize: 16,
     fontWeight: "600",
-    marginLeft: 12,
     color: "#1e293b",
+    marginBottom: 2,
+  },
+  yearLevel: {
+    fontSize: 12,
+    color: "#64748b",
+    marginTop: 2,
   },
   fineInfo: {
     flexDirection: "row",
     alignItems: "center",
-    marginLeft: 12,
+    flexShrink: 0,
+    backgroundColor: "#f8fafc",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    gap: 6,
   },
   hasFine: {
     color: "#dc2626",
     fontWeight: "600",
-    fontSize: 16,
+    fontSize: 15,
   },
   noFine: {
     color: "#16a34a",
@@ -1181,15 +1296,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   historyButton: {
-    marginLeft: 12,
-    padding: 8,
+    marginLeft: 8,
+    padding: 6,
     backgroundColor: "#f1f5f9",
-    borderRadius: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
   fabButton: {
     position: "absolute",
-    bottom: 15, // Positioned above tab navigation
-    right: 20,
+    bottom: 16,
+    right: 16,
     backgroundColor: "#007BFF",
     width: 60,
     height: 60,
@@ -1205,8 +1322,8 @@ const styles = StyleSheet.create({
   },
   assignButton: {
     position: "absolute",
-    bottom: 15, // Positioned above tab navigation
-    right: 20,
+    bottom: 16,
+    right: 16,
     backgroundColor: "#007BFF",
     flexDirection: "row",
     alignItems: "center",
@@ -1656,6 +1773,14 @@ const styles = StyleSheet.create({
   modalScrollContent: {
     padding: 20,
     paddingBottom: 40,
+  },
+  listContainer: {
+    flex: 1,
+    marginBottom: 80, // Reduced to give more space for the list
+  },
+  listContent: {
+    paddingBottom: 100, // Adjusted to account for the floating button
+    paddingTop: 4,
   },
 });
 

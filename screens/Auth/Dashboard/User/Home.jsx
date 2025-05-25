@@ -18,6 +18,8 @@ import {
   getDocs,
   where,
   Timestamp,
+  doc,
+  getDoc,
 } from "firebase/firestore";
 import { auth, db } from "../../../../config/firebaseconfig";
 import {
@@ -37,6 +39,7 @@ import {
   Calendar,
   Clock,
 } from "lucide-react-native";
+import { StatusBar } from "expo-status-bar";
 
 import Icon from "react-native-vector-icons/Ionicons";
 
@@ -75,7 +78,7 @@ const THEME_COLORS = {
 const SPACING = 16;
 
 const Home = () => {
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState("User");
   const [events, setEvents] = useState([]); // Events for the selected date
   const [allEvents, setAllEvents] = useState([]); // All events for the week
   const [isAdmin, setIsAdmin] = useState(false);
@@ -90,7 +93,6 @@ const Home = () => {
   const [upcomingEvents, setUpcomingEvents] = useState([]);
 
   const fetchData = async () => {
-    setLoading(true);
     try {
       await Promise.all([fetchEvents()]);
     } finally {
@@ -187,25 +189,58 @@ const Home = () => {
   const checkUserAndFetchData = async () => {
     try {
       const currentUser = auth.currentUser;
+      console.log(
+        "[DEBUG] Current user:",
+        currentUser?.uid,
+        currentUser?.email
+      );
+
       if (currentUser) {
-        const adminDoc = await getDocs(
-          query(collection(db, "admin"), where("uid", "==", currentUser.uid))
+        // First try to get user data from the users collection
+        const usersRef = collection(db, "users");
+        const q = query(usersRef, where("uid", "==", currentUser.uid));
+        console.log(
+          "[DEBUG] Querying users collection for uid:",
+          currentUser.uid
         );
 
-        if (!adminDoc.empty) {
-          setIsAdmin(true);
-          setUsername(adminDoc.docs[0].data().username);
+        const querySnapshot = await getDocs(q);
+        console.log("[DEBUG] Query results count:", querySnapshot.size);
+
+        if (!querySnapshot.empty) {
+          const userData = querySnapshot.docs[0].data();
+          console.log("[DEBUG] User data found:", userData);
+          setUsername(userData.username || "User");
         } else {
-          const userDoc = await getDocs(
-            query(collection(db, "users"), where("uid", "==", currentUser.uid))
+          console.log(
+            "[DEBUG] User not found in users collection, checking admin collection"
           );
-          if (!userDoc.empty) {
-            setUsername(userDoc.docs[0].data().username);
+
+          // Check admin collection
+          const adminRef = collection(db, "admin");
+          const adminQuery = query(
+            adminRef,
+            where("uid", "==", currentUser.uid)
+          );
+          const adminSnapshot = await getDocs(adminQuery);
+
+          if (!adminSnapshot.empty) {
+            const adminData = adminSnapshot.docs[0].data();
+            console.log("[DEBUG] Admin data found:", adminData);
+            setIsAdmin(true);
+            setUsername(adminData.username || "User");
+          } else {
+            console.log("[DEBUG] User not found in either collection");
+            setUsername("User");
           }
         }
+      } else {
+        console.log("[DEBUG] No current user found");
+        setUsername("User");
       }
     } catch (error) {
-      console.error("Error checking user role:", error);
+      console.error("[DEBUG] Error in checkUserAndFetchData:", error);
+      setUsername("User");
     }
   };
 
@@ -807,33 +842,15 @@ const Home = () => {
     calendarIcon: {
       marginRight: 8,
     },
-    splashContainer: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: "#fff", // Or your splash background color
-    },
-    splashLogo: {
-      width: 180,
-      height: 180,
-      opacity: 0.98,
-    },
   });
-
-  if (loading) {
-    return (
-      <View style={styles.splashContainer}>
-        <Image
-          source={require("../../../../assets/aito.png")} // Replace with your splash logo path
-          style={styles.splashLogo}
-          resizeMode="contain"
-        />
-      </View>
-    );
-  }
 
   return (
     <ScrollView style={styles.mainContainer}>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="#FFFFFF"
+        translucent={true}
+      />
       <View style={styles.header}>
         <View style={styles.leftContent}>
           <Icon
@@ -845,7 +862,9 @@ const Home = () => {
           <Text style={styles.greeting}>{getGreeting()}</Text>
         </View>
         <View style={styles.rightContent}>
-          <Text style={styles.username}>{username.split(" ")[0]}</Text>
+          <Text style={styles.username}>
+            {username ? username.split(" ")[0] : "User"}
+          </Text>
         </View>
       </View>
 

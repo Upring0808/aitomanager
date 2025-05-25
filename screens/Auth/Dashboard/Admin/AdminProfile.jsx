@@ -10,6 +10,8 @@ import {
   TextInput,
   Modal,
   Platform,
+  StatusBar,
+  SafeAreaView,
 } from "react-native";
 import { auth, db, storage } from "../../../../config/firebaseconfig";
 import {
@@ -24,9 +26,10 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Toast from "react-native-toast-message";
 import * as ImagePicker from "expo-image-picker";
 import { Feather } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, CommonActions } from "@react-navigation/native";
 import { dashboardServices } from "../../../../services/dashboardServices";
 import { LinearGradient } from "expo-linear-gradient";
+import { userPresenceService } from "../../../../services/UserPresenceService";
 
 const AdminProfile = () => {
   const navigation = useNavigation();
@@ -189,15 +192,27 @@ const AdminProfile = () => {
 
   const handleLogout = async () => {
     try {
+      if (
+        userPresenceService &&
+        typeof userPresenceService.cleanup === "function"
+      ) {
+        try {
+          await userPresenceService.cleanup();
+        } catch (e) {}
+      }
+      if (unsubscribeAvatar) {
+        try {
+          unsubscribeAvatar();
+        } catch (e) {}
+      }
       await auth.signOut();
-      navigation.replace("Index");
       Toast.show({
         type: "success",
         text1: "Logged out",
         text2: "You have been logged out.",
       });
+      // DO NOT navigate here! Let App.js handle the stack change.
     } catch (error) {
-      console.error("Error logging out:", error);
       Toast.show({
         type: "error",
         text1: "Error",
@@ -276,14 +291,24 @@ const AdminProfile = () => {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
+        <StatusBar
+          barStyle="dark-content"
+          backgroundColor="#f8f9fa"
+          translucent={true}
+        />
         <ActivityIndicator size="large" color="#203562" />
         <Text style={styles.loadingTextNeutral}>Loading Profile...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="#f8f9fa"
+        translucent={true}
+      />
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
@@ -347,7 +372,14 @@ const AdminProfile = () => {
                 <Text style={styles.label}>
                   {field.charAt(0).toUpperCase() + field.slice(1)}
                 </Text>
-                <Text style={styles.value}>{adminData[field]}</Text>
+                <Text
+                  style={[
+                    styles.value,
+                    !adminData?.[field] && styles.placeholderText,
+                  ]}
+                >
+                  {adminData?.[field] || `Add ${field}`}
+                </Text>
               </View>
               <TouchableOpacity
                 style={styles.editButton}
@@ -381,7 +413,7 @@ const AdminProfile = () => {
       {renderFieldEditModal()}
       {renderLogoutConfirmModal()}
       <Toast />
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -395,7 +427,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#f8f9fa",
-    paddingTop: Platform.OS === "ios" ? 20 : 0,
   },
   loadingTextNeutral: {
     marginTop: 15,
@@ -405,7 +436,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   headerGradient: {
-    paddingTop: Platform.OS === "ios" ? 60 : 40,
+    paddingTop: Platform.OS === "ios" ? 20 : StatusBar.currentHeight + 20,
     paddingBottom: 25,
     borderBottomLeftRadius: 25,
     borderBottomRightRadius: 25,
@@ -413,7 +444,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
-    elevation: 5,
     marginBottom: 15,
     marginHorizontal: 10,
   },
@@ -589,6 +619,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 20,
     textAlign: "center",
+  },
+  placeholderText: {
+    color: "#94A3B8",
+    fontWeight: "400",
   },
 });
 

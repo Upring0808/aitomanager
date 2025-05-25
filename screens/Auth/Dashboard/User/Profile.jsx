@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import {
   getDocs,
   updateDoc,
   doc,
+  onSnapshot,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Toast from "react-native-toast-message";
@@ -31,28 +32,94 @@ import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { dashboardServices } from "../../../../services/dashboardServices";
 import userPresenceService from "../../../../services/UserPresenceService";
+import {
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword,
+} from "firebase/auth";
 
-const Profile = () => {
+const Profile = ({ initialData, onAvatarUpdate, isDataPreloaded = false }) => {
   const navigation = useNavigation();
-  const [userData, setUserData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [docId, setDocId] = useState(null);
-  const [avatarUrl, setAvatarUrl] = useState(null);
+  const [userData, setUserData] = useState(initialData || null);
+  const [loading, setLoading] = useState(!isDataPreloaded && !initialData);
+  const [docId, setDocId] = useState(initialData?.id || null);
+  const [avatarUrl, setAvatarUrl] = useState(initialData?.avatarUrl || null);
   const [editingField, setEditingField] = useState(null);
   const [tempData, setTempData] = useState({
-    username: "",
-    email: "",
-    phone: "",
+    username: initialData?.username || "",
+    email: initialData?.email || "",
+    phone: initialData?.phone || "",
   });
   const [modalVisible, setModalVisible] = useState(false);
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
   const [unsubscribeAvatar, setUnsubscribeAvatar] = useState(null);
+  const [isConfirmingPassword, setIsConfirmingPassword] = useState(false);
+  const [confirmPasswordTimeout, setConfirmPasswordTimeout] = useState(null);
 
   // Animation values
-  const [fadeAnim] = useState(new Animated.Value(0));
-  const [slideAnim] = useState(new Animated.Value(50));
+  const [fadeAnim] = useState(new Animated.Value(isDataPreloaded ? 1 : 0));
+  const [slideAnim] = useState(new Animated.Value(isDataPreloaded ? 0 : 50));
+
+  // Use refs to prevent unnecessary re-renders
+  const userDataRef = useRef(initialData);
+  const avatarUrlRef = useRef(initialData?.avatarUrl || null);
+  const isMounted = useRef(true);
 
   useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  // Handle data updates when new initialData is passed
+  useEffect(() => {
+    if (
+      initialData &&
+      JSON.stringify(initialData) !== JSON.stringify(userData)
+    ) {
+      setUserData(initialData);
+      userDataRef.current = initialData;
+      setDocId(initialData.id);
+      setTempData({
+        username: initialData.username || "",
+        email: initialData.email || "",
+        phone: initialData.phone || "",
+      });
+      setAvatarUrl(initialData.avatarUrl);
+      avatarUrlRef.current = initialData.avatarUrl;
+
+      // If data is preloaded, no need to show loading
+      if (isDataPreloaded) {
+        setLoading(false);
+        // Start animations immediately for preloaded data
+        Animated.parallel([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(slideAnim, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }
+    }
+  }, [initialData, isDataPreloaded]);
+
+  useEffect(() => {
+    // Only fetch data if not preloaded and no initial data provided
+    if (isDataPreloaded || initialData) {
+      return;
+    }
+
     const fetchUserData = async () => {
       const currentUser = auth.currentUser;
       if (!currentUser) {
@@ -61,23 +128,43 @@ const Profile = () => {
       }
 
       try {
-        const userQuery = query(
+        // Query users collection with uid
+        const usersQuery = query(
           collection(db, "users"),
           where("uid", "==", currentUser.uid)
         );
-        const userSnapshot = await getDocs(userQuery);
+
+        const userSnapshot = await getDocs(usersQuery);
+
         if (!userSnapshot.empty) {
           const userDoc = userSnapshot.docs[0];
-          setUserData(userDoc.data());
+          const userData = userDoc.data();
+
+          if (!isMounted.current) return;
+
+          // Set all user data
+          setUserData(userData);
+          userDataRef.current = userData;
           setDocId(userDoc.id);
-          setTempData(userDoc.data());
-          setAvatarUrl(userDoc.data().avatarUrl);
+          setTempData({
+            username: userData.username || "",
+            email: userData.email || "",
+            phone: userData.phone || "",
+          });
+          setAvatarUrl(userData.avatarUrl);
+          avatarUrlRef.current = userData.avatarUrl;
 
           // Set up real-time avatar subscription
           const unsubscribe = dashboardServices.subscribeToAvatarUpdates(
             currentUser,
             (newAvatarUrl) => {
-              setAvatarUrl(newAvatarUrl);
+              if (isMounted.current) {
+                setAvatarUrl(newAvatarUrl);
+                avatarUrlRef.current = newAvatarUrl;
+                if (onAvatarUpdate) {
+                  onAvatarUpdate(newAvatarUrl);
+                }
+              }
             }
           );
           setUnsubscribeAvatar(() => unsubscribe);
@@ -89,27 +176,29 @@ const Profile = () => {
           });
         }
       } catch (error) {
-        console.error("Error fetching user data:", error);
+        console.error("[DEBUG] Error fetching user data:", error);
         Toast.show({
           type: "error",
           text1: "Error",
           text2: "Failed to fetch data.",
         });
       } finally {
-        setLoading(false);
-        // Start animations when data is loaded
-        Animated.parallel([
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 800,
-            useNativeDriver: true,
-          }),
-          Animated.timing(slideAnim, {
-            toValue: 0,
-            duration: 600,
-            useNativeDriver: true,
-          }),
-        ]).start();
+        if (isMounted.current) {
+          setLoading(false);
+          // Start animations when data is loaded
+          Animated.parallel([
+            Animated.timing(fadeAnim, {
+              toValue: 1,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(slideAnim, {
+              toValue: 0,
+              duration: 600,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        }
       }
     };
 
@@ -121,26 +210,40 @@ const Profile = () => {
         unsubscribeAvatar();
       }
     };
-  }, []);
+  }, [initialData, isDataPreloaded]);
 
-  const handleSave = async (field) => {
-    try {
-      const userDocRef = doc(db, "users", docId);
-      await updateDoc(userDocRef, { [field]: tempData[field] });
-      setUserData((prevState) => ({ ...prevState, [field]: tempData[field] }));
-      setEditingField(null);
-      Toast.show({
-        type: "success",
-        text1: "Saved",
-        text2: "Profile updated!",
-      });
-    } catch (error) {
-      console.error("Error updating user profile:", error);
-      Toast.show({ type: "error", text1: "Error", text2: "Update failed." });
-    }
-  };
+  const handleSave = useCallback(
+    async (field) => {
+      try {
+        if (!docId) {
+          console.error("[DEBUG] No document ID found");
+          return;
+        }
+        const userDocRef = doc(db, "users", docId);
+        await updateDoc(userDocRef, { [field]: tempData[field] });
 
-  const pickImage = async () => {
+        if (isMounted.current) {
+          setUserData((prevState) => {
+            const newState = { ...prevState, [field]: tempData[field] };
+            userDataRef.current = newState;
+            return newState;
+          });
+          setEditingField(null);
+          Toast.show({
+            type: "success",
+            text1: "Saved",
+            text2: "Profile updated!",
+          });
+        }
+      } catch (error) {
+        console.error("[DEBUG] Error updating user profile:", error);
+        Toast.show({ type: "error", text1: "Error", text2: "Update failed." });
+      }
+    },
+    [docId, tempData]
+  );
+
+  const pickImage = useCallback(async () => {
     try {
       const permissionResult =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -171,43 +274,60 @@ const Profile = () => {
         text2: "Failed to pick image. Please try again.",
       });
     }
-  };
+  }, []);
 
-  const uploadImage = async (uri) => {
-    try {
-      setLoading(true);
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const filename = `avatars/${auth.currentUser.uid}/${Date.now()}.jpg`;
-      const storageRef = ref(storage, filename);
+  const uploadImage = useCallback(
+    async (uri) => {
+      try {
+        setLoading(true);
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const filename = `avatars/${auth.currentUser.uid}/${Date.now()}.jpg`;
+        const storageRef = ref(storage, filename);
 
-      await uploadBytes(storageRef, blob);
-      const downloadURL = await getDownloadURL(storageRef);
+        await uploadBytes(storageRef, blob);
+        const downloadURL = await getDownloadURL(storageRef);
 
-      const userDocRef = doc(db, "users", docId);
-      await updateDoc(userDocRef, { avatarUrl: downloadURL });
-      setUserData((prevState) => ({ ...prevState, avatarUrl: downloadURL }));
-      setAvatarUrl(downloadURL);
+        const currentUser = auth.currentUser;
+        if (!currentUser) return;
+        const userDocRef = doc(db, "users", docId);
+        await updateDoc(userDocRef, { avatarUrl: downloadURL });
 
-      // Notify dashboard of avatar update
-      dashboardServices.updateAvatarUrl(auth.currentUser, downloadURL);
+        if (isMounted.current) {
+          setUserData((prevState) => {
+            const newState = { ...prevState, avatarUrl: downloadURL };
+            userDataRef.current = newState;
+            return newState;
+          });
+          setAvatarUrl(downloadURL);
+          avatarUrlRef.current = downloadURL;
 
-      Toast.show({
-        type: "success",
-        text1: "Success",
-        text2: "Avatar updated!",
-      });
-    } catch (error) {
-      console.error("Error uploading image:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "Avatar update failed. Please try again.",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+          // Notify parent component of avatar update
+          if (onAvatarUpdate) {
+            onAvatarUpdate(downloadURL);
+          }
+
+          Toast.show({
+            type: "success",
+            text1: "Success",
+            text2: "Avatar updated!",
+          });
+        }
+      } catch (error) {
+        console.error("Error uploading image:", error);
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Avatar update failed. Please try again.",
+        });
+      } finally {
+        if (isMounted.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [docId, onAvatarUpdate]
+  );
 
   const handleLogout = async () => {
     try {
@@ -234,6 +354,65 @@ const Profile = () => {
     }
   };
 
+  const handlePasswordChange = async () => {
+    try {
+      const { currentPassword, newPassword, confirmPassword } = passwordData;
+
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "All fields are required",
+        });
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "New passwords do not match",
+        });
+        return;
+      }
+
+      setIsConfirmingPassword(true);
+      const user = auth.currentUser;
+      const credential = EmailAuthProvider.credential(
+        user.email,
+        currentPassword
+      );
+
+      // Reauthenticate user
+      await reauthenticateWithCredential(user, credential);
+
+      // Update password
+      await updatePassword(user, newPassword);
+
+      setPasswordModalVisible(false);
+      setPasswordData({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+
+      Toast.show({
+        type: "success",
+        text1: "Success",
+        text2: "Password updated successfully",
+      });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: error.message || "Failed to update password",
+      });
+    } finally {
+      setIsConfirmingPassword(false);
+    }
+  };
+
   const renderFieldEditModal = () => (
     <Modal
       transparent={true}
@@ -242,15 +421,33 @@ const Profile = () => {
       statusBarTranslucent={true}
     >
       <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
+        <Animated.View
+          style={[
+            styles.modalContent,
+            {
+              transform: [{ scale: fadeAnim }],
+              opacity: fadeAnim,
+            },
+          ]}
+        >
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>
               Edit{" "}
               {editingField &&
                 editingField.charAt(0).toUpperCase() + editingField.slice(1)}
             </Text>
-            <TouchableOpacity onPress={() => setModalVisible(false)}>
-              <Feather name="x" size={24} color="#203562" />
+            <TouchableOpacity
+              onPress={() => setModalVisible(false)}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: "#f0f4ff",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Feather name="x" size={20} color="#203562" />
             </TouchableOpacity>
           </View>
 
@@ -274,7 +471,7 @@ const Profile = () => {
                 setTempData((prev) => ({ ...prev, [editingField]: text }))
               }
               placeholder={`Enter your ${editingField}`}
-              placeholderTextColor="#999"
+              placeholderTextColor="#94A3B8"
               autoCapitalize={editingField === "email" ? "none" : "words"}
               keyboardType={
                 editingField === "email"
@@ -303,7 +500,7 @@ const Profile = () => {
               <Text style={styles.modalSaveButtonText}>Save Changes</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -352,6 +549,121 @@ const Profile = () => {
     </Modal>
   );
 
+  const renderPasswordChangeModal = () => (
+    <Modal
+      transparent={true}
+      visible={passwordModalVisible}
+      animationType="fade"
+      statusBarTranslucent={true}
+    >
+      <View style={styles.modalContainer}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Change Password</Text>
+            <TouchableOpacity onPress={() => setPasswordModalVisible(false)}>
+              <Feather name="x" size={24} color="#203562" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalInputContainer}>
+            <Feather
+              name="lock"
+              size={20}
+              color="#203562"
+              style={styles.modalInputIcon}
+            />
+            <TextInput
+              style={styles.modalInput}
+              value={passwordData.currentPassword}
+              onChangeText={(text) =>
+                setPasswordData((prev) => ({ ...prev, currentPassword: text }))
+              }
+              placeholder="Current Password"
+              placeholderTextColor="#94A3B8"
+              secureTextEntry
+            />
+          </View>
+
+          <View style={styles.modalInputContainer}>
+            <Feather
+              name="lock"
+              size={20}
+              color="#203562"
+              style={styles.modalInputIcon}
+            />
+            <TextInput
+              style={styles.modalInput}
+              value={passwordData.newPassword}
+              onChangeText={(text) =>
+                setPasswordData((prev) => ({ ...prev, newPassword: text }))
+              }
+              placeholder="New Password"
+              placeholderTextColor="#94A3B8"
+              secureTextEntry
+            />
+          </View>
+
+          <View style={styles.modalInputContainer}>
+            <Feather
+              name="lock"
+              size={20}
+              color="#203562"
+              style={styles.modalInputIcon}
+            />
+            <TextInput
+              style={styles.modalInput}
+              value={passwordData.confirmPassword}
+              onChangeText={(text) => {
+                setPasswordData((prev) => ({ ...prev, confirmPassword: text }));
+                // Clear any existing timeout
+                if (confirmPasswordTimeout) {
+                  clearTimeout(confirmPasswordTimeout);
+                }
+                // Set new timeout for validation
+                const timeout = setTimeout(() => {
+                  if (text && text !== passwordData.newPassword) {
+                    Toast.show({
+                      type: "error",
+                      text1: "Passwords don't match",
+                      text2: "Please make sure your passwords match",
+                    });
+                  }
+                }, 1000);
+                setConfirmPasswordTimeout(timeout);
+              }}
+              placeholder="Confirm New Password"
+              placeholderTextColor="#94A3B8"
+              secureTextEntry
+            />
+          </View>
+
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setPasswordModalVisible(false)}
+            >
+              <Text style={styles.modalCancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.modalSaveButton,
+                isConfirmingPassword && styles.modalSaveButtonDisabled,
+              ]}
+              onPress={handlePasswordChange}
+              disabled={isConfirmingPassword}
+            >
+              {isConfirmingPassword ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text style={styles.modalSaveButtonText}>Update Password</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -369,8 +681,8 @@ const Profile = () => {
   return (
     <View style={styles.container}>
       <StatusBar
-        barStyle="light-content"
-        backgroundColor="#203562"
+        barStyle="dark-content"
+        backgroundColor="#ffffff"
         translucent={true}
       />
       <ScrollView
@@ -402,7 +714,11 @@ const Profile = () => {
               </TouchableOpacity>
             </View>
             <Text style={styles.username}>{userData?.username || "User"}</Text>
-            <Text style={styles.userRole}>ICT Student</Text>
+            <Text style={styles.userRole}>
+              {userData?.yearLevel
+                ? `Year ${userData.yearLevel}`
+                : "Year Level Not Set"}
+            </Text>
           </View>
         </LinearGradient>
 
@@ -418,10 +734,18 @@ const Profile = () => {
           <Text style={styles.sectionTitle}>Personal Information</Text>
 
           {[
-            { field: "username", icon: "user" },
-            { field: "email", icon: "mail" },
-            { field: "phone", icon: "phone" },
-          ].map(({ field, icon }) => (
+            {
+              field: "username",
+              icon: "user",
+              placeholder: "Add username",
+            },
+            { field: "email", icon: "mail", placeholder: "Add email" },
+            {
+              field: "phone",
+              icon: "phone",
+              placeholder: "Add phone number",
+            },
+          ].map(({ field, icon, placeholder }) => (
             <TouchableOpacity
               key={field}
               onPress={() => {
@@ -437,7 +761,14 @@ const Profile = () => {
                 <Text style={styles.label}>
                   {field.charAt(0).toUpperCase() + field.slice(1)}
                 </Text>
-                <Text style={styles.value}>{userData?.[field] || ""}</Text>
+                <Text
+                  style={[
+                    styles.value,
+                    !userData?.[field] && styles.placeholderText,
+                  ]}
+                >
+                  {userData?.[field] || placeholder}
+                </Text>
               </View>
               <TouchableOpacity
                 style={styles.editButton}
@@ -452,6 +783,19 @@ const Profile = () => {
           ))}
 
           <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={[styles.logoutButton, { marginBottom: 10 }]}
+            onPress={() => setPasswordModalVisible(true)}
+          >
+            <Feather
+              name="lock"
+              size={18}
+              color="white"
+              style={styles.logoutIcon}
+            />
+            <Text style={styles.logoutButtonText}>Change Password</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.logoutButton}
@@ -470,6 +814,7 @@ const Profile = () => {
 
       {renderFieldEditModal()}
       {renderLogoutConfirmModal()}
+      {renderPasswordChangeModal()}
       <Toast />
     </View>
   );
@@ -501,36 +846,34 @@ const styles = StyleSheet.create({
   // Header styles
   headerGradient: {
     paddingTop: Platform.OS === "ios" ? 60 : StatusBar.currentHeight + 20,
-    paddingBottom: 25, // Reduced padding for a more compact header
-    borderBottomLeftRadius: 25,
-    borderBottomRightRadius: 25,
+    paddingBottom: 32,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 5,
-    marginBottom: 15, // Add space between header and content
-    marginHorizontal: 10, // Add horizontal margin for better appearance
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    marginBottom: 16,
+    marginHorizontal: 12,
   },
   headerContent: {
     alignItems: "center",
   },
   avatarContainer: {
-    marginBottom: 15,
+    marginBottom: 16,
     alignItems: "center",
   },
   avatarWrapper: {
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
     shadowRadius: 6,
-    elevation: 8,
   },
   avatar: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: "#ffffff",
   },
   editIconContainer: {
@@ -538,53 +881,60 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: "#203562",
-    borderRadius: 18,
+    borderRadius: 16,
     width: 32,
     height: 32,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
     borderColor: "#ffffff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   username: {
     fontSize: 22,
-    fontWeight: "bold",
+    fontWeight: "600",
     color: "#ffffff",
-    marginTop: 5,
+    marginTop: 8,
+    letterSpacing: 0.3,
   },
   userRole: {
     fontSize: 14,
     color: "#e0e0e0",
-    marginTop: 3,
+    marginTop: 4,
+    fontWeight: "500",
+    letterSpacing: 0.2,
   },
 
   // Content styles
   scrollContainer: {
-    paddingBottom: 30,
+    paddingBottom: 24,
   },
   profileCard: {
     backgroundColor: "#ffffff",
-    borderRadius: 15,
+    borderRadius: 16,
     padding: 20,
-    marginHorizontal: 15, // Increased horizontal margin for better appearance
+    marginHorizontal: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
     shadowRadius: 8,
-    elevation: 5, // Increased elevation for better shadow on Android
-    marginBottom: 20, // Add space at the bottom
+    marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "600",
     color: "#203562",
     marginBottom: 20,
+    letterSpacing: 0.2,
   },
   fieldContainer: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 20,
-    paddingBottom: 15,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
   },
@@ -595,20 +945,23 @@ const styles = StyleSheet.create({
     backgroundColor: "#f0f4ff",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 15,
+    marginRight: 16,
   },
   fieldContent: {
     flex: 1,
   },
   label: {
     fontSize: 13,
-    color: "#888",
+    color: "#64748B",
     marginBottom: 4,
+    fontWeight: "500",
+    letterSpacing: 0.2,
   },
   value: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "500",
-    color: "#333",
+    color: "#1E293B",
+    letterSpacing: 0.2,
   },
   editButton: {
     width: 36,
@@ -624,28 +977,28 @@ const styles = StyleSheet.create({
     marginVertical: 20,
   },
 
-  // Logout button
+  // Button styles
   logoutButton: {
     flexDirection: "row",
     backgroundColor: "#203562",
-    padding: 15,
+    padding: 12,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 10,
+    marginTop: 8,
     shadowColor: "#203562",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   logoutIcon: {
     marginRight: 10,
   },
   logoutButtonText: {
     color: "white",
-    fontWeight: "bold",
-    fontSize: 16,
+    fontWeight: "500",
+    fontSize: 15,
+    letterSpacing: 0.2,
   },
 
   // Modal styles
@@ -653,24 +1006,23 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.7)", // Darker overlay for better contrast
-    position: "absolute", // Position absolute to cover the entire screen
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: 999, // High z-index to ensure it's above everything
+    zIndex: 999,
   },
   modalContent: {
-    width: "85%",
+    width: "88%",
     backgroundColor: "#fff",
     padding: 20,
-    borderRadius: 15,
+    borderRadius: 16,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 8,
   },
   modalHeader: {
     flexDirection: "row",
@@ -680,59 +1032,64 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: "bold",
+    fontWeight: "600",
     color: "#203562",
+    letterSpacing: 0.2,
   },
   modalText: {
-    fontSize: 16,
-    color: "#666",
-    marginTop: 10,
-    marginBottom: 25,
+    fontSize: 15,
+    color: "#64748B",
+    marginTop: 12,
+    marginBottom: 24,
     textAlign: "center",
     lineHeight: 22,
-    paddingHorizontal: 10, // Add horizontal padding for better text layout
+    paddingHorizontal: 12,
+    letterSpacing: 0.2,
   },
   modalInputContainer: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#e0e0e0",
+    borderColor: "#E2E8F0",
     borderRadius: 10,
-    paddingHorizontal: 15,
-    marginBottom: 25,
-    backgroundColor: "#f9f9f9",
+    paddingHorizontal: 14,
+    marginBottom: 16,
+    backgroundColor: "#F8FAFC",
+    height: 44,
   },
   modalInputIcon: {
     marginRight: 10,
   },
   modalInput: {
     flex: 1,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: "#333",
+    fontSize: 15,
+    color: "#1E293B",
+    letterSpacing: 0.2,
   },
   modalActions: {
     flexDirection: "row",
     justifyContent: "space-between",
+    marginTop: 8,
   },
   modalCancelButton: {
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#e0e0e0",
-    backgroundColor: "#f5f5f5",
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
     flex: 1,
     marginRight: 10,
     alignItems: "center",
   },
   modalCancelButtonText: {
-    fontSize: 16,
-    color: "#666",
+    fontSize: 15,
+    color: "#64748B",
     fontWeight: "500",
+    letterSpacing: 0.2,
   },
   modalSaveButton: {
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 10,
     backgroundColor: "#203562",
@@ -741,56 +1098,68 @@ const styles = StyleSheet.create({
     alignItems: "center",
     shadowColor: "#203562",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   modalSaveButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     color: "white",
-    fontWeight: "bold",
+    fontWeight: "500",
+    letterSpacing: 0.2,
   },
 
   // Logout modal specific styles
   logoutModalIconContainer: {
     alignItems: "center",
-    marginBottom: 15,
-    marginTop: 10,
+    marginBottom: 16,
+    marginTop: 12,
   },
   logoutModalIcon: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: "#f0f4ff",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 16,
     shadowColor: "#203562",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 3,
   },
   logoutModalActions: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 15,
-    paddingHorizontal: 5,
+    marginTop: 16,
+    paddingHorizontal: 8,
   },
   logoutConfirmButton: {
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 10,
-    backgroundColor: "#ff3b30",
+    backgroundColor: "#EF4444",
     flex: 1,
     marginLeft: 10,
     alignItems: "center",
+    shadowColor: "#EF4444",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   logoutConfirmButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     color: "white",
-    fontWeight: "bold",
+    fontWeight: "500",
+    letterSpacing: 0.2,
+  },
+
+  placeholderText: {
+    color: "#94A3B8",
+    fontWeight: "400",
+  },
+  modalSaveButtonDisabled: {
+    opacity: 0.7,
   },
 });
 
-export default Profile;
+export default React.memo(Profile);

@@ -3,13 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
+  TouchableOpacity,
   FlatList,
   ActivityIndicator,
-  TouchableOpacity,
   Dimensions,
   Platform,
-  StatusBar,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { auth, db } from "../../../../config/firebaseconfig";
 import {
   collection,
@@ -23,11 +23,11 @@ import Icon from "react-native-vector-icons/Ionicons";
 
 const { width, height } = Dimensions.get("window");
 
-const Fines = () => {
-  const [fines, setFines] = useState([]);
-  const [loading, setLoading] = useState(true);
+const Fines = ({ initialData = [] }) => {
+  const [fines, setFines] = useState(initialData);
+  const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
-  const [filteredFines, setFilteredFines] = useState([]);
+  const [filteredFines, setFilteredFines] = useState(initialData);
 
   useEffect(() => {
     let unsubscribe;
@@ -54,8 +54,10 @@ const Fines = () => {
           return;
         }
 
-        const userDocId = userSnapshot.docs[0].id;
+        const userDoc = userSnapshot.docs[0];
+        const userDocId = userDoc.id;
 
+        // Query fines collection with userId
         const finesRef = collection(db, "fines");
         const finesQuery = query(
           finesRef,
@@ -63,19 +65,27 @@ const Fines = () => {
           orderBy("createdAt", "desc")
         );
 
-        unsubscribe = onSnapshot(finesQuery, (snapshot) => {
-          const userFines = snapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              ...data,
-              createdAt: data.createdAt?.toDate(),
-              paidAt: data.paidAt?.toDate(),
-            };
-          });
-          setFines(userFines);
-          setLoading(false);
-        });
+        // Set up real-time listener for fines
+        unsubscribe = onSnapshot(
+          finesQuery,
+          (snapshot) => {
+            const userFines = snapshot.docs.map((doc) => {
+              const data = doc.data();
+              return {
+                id: doc.id,
+                ...data,
+                createdAt: data.createdAt?.toDate(),
+                paidAt: data.paidAt?.toDate(),
+              };
+            });
+            setFines(userFines);
+            setLoading(false);
+          },
+          (error) => {
+            console.error("Error in fines listener:", error);
+            setLoading(false);
+          }
+        );
       } catch (error) {
         console.error("Error fetching fines:", error);
         setLoading(false);
@@ -218,6 +228,11 @@ const Fines = () => {
 
   return (
     <View style={styles.container}>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="#FFFFFF"
+        translucent={true}
+      />
       <View style={styles.headerContainer}>
         <View style={styles.headerContent}>
           <Icon
@@ -257,6 +272,7 @@ const Fines = () => {
     </View>
   );
 };
+
 const styles = StyleSheet.create({
   fineHeaderRow: {
     flexDirection: "row",

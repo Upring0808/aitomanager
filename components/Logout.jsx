@@ -15,15 +15,12 @@ const Logout = ({
   const handleLogout = async () => {
     try {
       await auth.signOut();
-      // First navigate to Index
-      navigation.navigate("Index");
-      // Then reset the navigation stack to prevent going back
-      setTimeout(() => {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: "Index" }],
-        });
-      }, 100);
+
+      // Reset the navigation stack to Index
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "Index" }],
+      });
 
       Toast.show({
         type: "success",

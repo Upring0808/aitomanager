@@ -24,7 +24,6 @@ if (Platform.OS !== "web") {
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import * as SplashScreen from "expo-splash-screen";
-// Remove BackHandler import as it's not needed and causes errors on web
 
 // Direct import for firebase/auth to avoid the modular instance error
 import {
@@ -35,6 +34,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Import Firebase services with newer approach
 import { getAuth, getDatabase, getDb, getStorage } from "./firebase";
+import { collection, query, where, getDocs } from "firebase/firestore";
 
 // Import services
 import userPresenceService from "./services/UserPresenceService";
@@ -42,6 +42,7 @@ import FontLoader from "./FontLoader";
 
 // Import context providers
 import { OnlineStatusProvider } from "./contexts/OnlineStatusContext";
+import { AuthProvider } from "./context/AuthContext";
 
 // Import font patches
 try {
@@ -73,6 +74,9 @@ import AdminFines from "./screens/Auth/Dashboard/Admin/AdminFines";
 import AdminPeople from "./screens/Auth/Dashboard/Admin/AdminPeople";
 import AdminProfile from "./screens/Auth/Dashboard/Admin/AdminProfile";
 import AdminEvents from "./screens/Auth/Dashboard/Admin/AdminEvents";
+import ActivityHistory from "./screens/Auth/Dashboard/Admin/ActivityHistory";
+import AdminReports from "./screens/Auth/Dashboard/Admin/AdminReports";
+import StudentOverview from "./screens/Auth/Dashboard/Admin/StudentOverview";
 
 // Override default Text component to use system fonts
 Text.defaultProps = Text.defaultProps || {};
@@ -112,6 +116,15 @@ const AdminDashboardNavigator = () => {
         component={AdminProfile}
       />
       <AdminDashboardStack.Screen name="AdminEvents" component={AdminEvents} />
+      <AdminDashboardStack.Screen
+        name="ActivityHistory"
+        component={ActivityHistory}
+      />
+      <AdminDashboardStack.Screen name="Reports" component={AdminReports} />
+      <AdminDashboardStack.Screen
+        name="StudentOverview"
+        component={StudentOverview}
+      />
     </AdminDashboardStack.Navigator>
   );
 };
@@ -137,16 +150,41 @@ const clearFirebaseStorage = async () => {
   }
 };
 
+// Create LoadingScreen component
+const LoadingScreen = () => {
+  return (
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="transparent"
+        translucent={true}
+      />
+      <ActivityIndicator size="large" color="#0000ff" />
+      <Text style={{ marginTop: 20 }}>Initializing application...</Text>
+    </View>
+  );
+};
+
 const App = () => {
   const [userLoggedIn, setUserLoggedIn] = useState(false);
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState(null);
+  const [isNavigationReady, setIsNavigationReady] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const appState = useRef(AppState.currentState);
   const navigationRef = useRef(null);
+  const authInitialized = useRef(false);
+  const navigationInitialized = useRef(false);
 
-  // Auth state management functions
+  // Handle navigation ready
+  const handleNavigationReady = () => {
+    console.log("[App] Navigation container is ready");
+    setIsNavigationReady(true);
+    navigationInitialized.current = true;
+  };
 
   // Handle user state changes using Firebase web SDK
   useEffect(() => {
@@ -157,6 +195,7 @@ const App = () => {
         "[App] Auth is not initialized yet, cannot subscribe to auth changes"
       );
       setInitializing(false);
+      setFirebaseReady(true);
       return () => {};
     }
 
@@ -171,11 +210,28 @@ const App = () => {
             "[App] Auth state changed, user:",
             currentUser ? currentUser.uid : null
           );
+
+          // If we're in the middle of a reset, don't process auth changes
+          if (isResetting) {
+            console.log("[App] Skipping auth change during navigation reset");
+            return;
+          }
+
           setUser(currentUser);
           setUserLoggedIn(!!currentUser);
 
           if (currentUser) {
             try {
+              // Check if user is an admin
+              const db = getDb();
+              const adminQuery = query(
+                collection(db, "admin"),
+                where("uid", "==", currentUser.uid)
+              );
+              const adminSnapshot = await getDocs(adminQuery);
+              const isAdminUser = !adminSnapshot.empty;
+              setIsAdmin(isAdminUser);
+
               // Initialize presence service for logged-in user
               console.log("[App] Initializing presence service for new login");
               await userPresenceService.initialize();
@@ -194,29 +250,13 @@ const App = () => {
               "[App] Cleaning up presence service for logged out user"
             );
             await userPresenceService.cleanup();
-
-            // Ensure navigation is reset to Index when user logs out
-            if (navigationRef.current && !initializing) {
-              try {
-                console.log("[App] Resetting navigation to Index after logout");
-                // Use the correct route name that exists in the navigator
-                navigationRef.current.navigate("Index");
-                // Reset the navigation stack to have only Index
-                setTimeout(() => {
-                  navigationRef.current.reset({
-                    index: 0,
-                    routes: [{ name: "Index" }],
-                  });
-                }, 100);
-              } catch (error) {
-                console.error("[App] Navigation reset error:", error);
-              }
-            }
+            setIsAdmin(false);
           }
 
           if (initializing) {
             setInitializing(false);
             setFirebaseReady(true);
+            authInitialized.current = true;
           }
         }
       );
@@ -225,9 +265,10 @@ const App = () => {
     } catch (error) {
       console.error("[App] Error setting up auth listener:", error);
       setInitializing(false);
+      setFirebaseReady(true);
       return () => {};
     }
-  }, [initializing]);
+  }, [initializing, isResetting]);
 
   // Handle app state changes (background, active, inactive)
   useEffect(() => {
@@ -283,89 +324,101 @@ const App = () => {
     return () => clearInterval(interval);
   }, [userLoggedIn]);
 
+  // Main navigation structure with better conditional rendering
+  const renderNavigationContent = () => {
+    // Show loading screen while Firebase initializes
+    if (initializing || !firebaseReady) {
+      return (
+        <Stack.Screen
+          name="Loading"
+          component={LoadingScreen}
+          options={{ gestureEnabled: false }}
+        />
+      );
+    }
+
+    return (
+      <>
+        <Stack.Screen
+          name="Index"
+          component={Index}
+          options={{ gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="Login"
+          component={Login}
+          options={{ gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="Register"
+          component={Register}
+          options={{ gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="AdminLogin"
+          component={AdminLogin}
+          options={{ gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="RegisterAdmin"
+          component={RegisterAdmin}
+          options={{ gestureEnabled: false }}
+        />
+        {userLoggedIn && user && (
+          <>
+            {isAdmin ? (
+              <Stack.Screen
+                name="AdminDashboard"
+                component={AdminDashboardNavigator}
+                options={{ gestureEnabled: false }}
+              />
+            ) : (
+              <Stack.Screen
+                name="Dashboard"
+                component={DashboardNavigator}
+                options={{ gestureEnabled: false }}
+              />
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
   // Show loading screen while Firebase initializes auth state
   if (initializing || !firebaseReady) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color="#0000ff" />
-        <Text style={{ marginTop: 20 }}>Initializing application...</Text>
-      </View>
-    );
+    return <LoadingScreen />;
   }
 
   // Wrap the app content with FontLoader
   return (
-    <OnlineStatusProvider>
-      <FontLoader>
-        <StatusBar
-          backgroundColor="transparent"
-          translucent
-          barStyle="dark-content"
-        />
-
-        {/* App content */}
-
+    <AuthProvider>
+      <OnlineStatusProvider>
         <NavigationContainer
           ref={navigationRef}
-          onStateChange={() => {
-            // Update status whenever navigation changes (tab switches etc)
-            if (userLoggedIn) {
-              console.log("[App] Navigation changed, updating status");
-              userPresenceService.forceOnlineUpdate();
-            }
-          }}
-          onReady={() => {
-            // Set up navigation reference when ready
-            console.log("[App] Navigation container is ready");
-          }}
+          onReady={handleNavigationReady}
+          fallback={<LoadingScreen />}
         >
-          <Stack.Navigator
-            initialRouteName="Index"
-            screenOptions={{
-              headerShown: false,
-              cardStyleInterpolator: ({ current, layouts }) => {
-                return {
-                  cardStyle: {
-                    transform: [
-                      {
-                        translateX: current.progress.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [layouts.screen.width, 0],
-                        }),
-                      },
-                    ],
-                  },
-                };
-              },
-            }}
-          >
-            {/* Always include Index and auth screens */}
-            <Stack.Screen name="Index" component={Index} />
-            <Stack.Screen name="Register" component={Register} />
-            <Stack.Screen name="Login" component={Login} />
-            <Stack.Screen name="AdminLogin" component={AdminLogin} />
-            <Stack.Screen name="RegisterAdmin" component={RegisterAdmin} />
-
-            {/* Only render Dashboard screens if user is logged in */}
-            {user && (
-              <>
-                <Stack.Screen
-                  name="Dashboard"
-                  component={DashboardNavigator}
-                  options={{ gestureEnabled: false }}
-                />
-                <Stack.Screen
-                  name="AdminDashboard"
-                  component={AdminDashboardNavigator}
-                  options={{ gestureEnabled: false }}
-                />
-              </>
-            )}
-          </Stack.Navigator>
+          <StatusBar
+            barStyle="dark-content"
+            backgroundColor="transparent"
+            translucent={true}
+          />
+          <FontLoader>
+            <Stack.Navigator
+              screenOptions={{
+                headerShown: false,
+                gestureEnabled: false,
+              }}
+              initialRouteName="Index"
+            >
+              {renderNavigationContent()}
+            </Stack.Navigator>
+          </FontLoader>
           <Toast />
         </NavigationContainer>
-      </FontLoader>
-    </OnlineStatusProvider>
+      </OnlineStatusProvider>
+    </AuthProvider>
   );
 };
 

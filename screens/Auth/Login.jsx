@@ -103,51 +103,55 @@ const Login = ({ navigation }) => {
     setIsSubmitting(true);
 
     try {
-      // Secretly check if input is an email (for admin access)
-      if (isEmail(loginInput)) {
-        // Ensure auth has _getRecaptchaConfig method before using it
-        if (!auth._getRecaptchaConfig) {
-          console.log(
-            "[Login] Adding missing _getRecaptchaConfig method to auth"
+      let userCredential;
+      const isInputAnEmail = isEmail(loginInput);
+
+      if (isInputAnEmail) {
+        // Case 1: Input looks like an email - Attempt direct email login (primarily for admins)
+        try {
+          // Ensure auth has _getRecaptchaConfig method before using it
+          if (!auth._getRecaptchaConfig) {
+            console.log(
+              "[Login] Adding missing _getRecaptchaConfig method to auth"
+            );
+            auth._getRecaptchaConfig = () => null;
+          }
+          userCredential = await signInWithEmailAndPassword(
+            auth,
+            loginInput,
+            password
           );
-          auth._getRecaptchaConfig = () => null;
+          // If successful, proceed to role check below
+        } catch (error) {
+          // If direct email login fails, handle specific errors or assume it's not a valid email login
+          if (
+            error.code === "auth/user-not-found" ||
+            error.code === "auth/invalid-email" ||
+            error.code === "auth/wrong-password"
+          ) {
+            // These errors suggest it's not a valid email/password combo in Auth.
+            // Don't throw immediately, proceed to check as Student ID.
+            console.log(
+              "[Login] Email login failed, attempting Student ID lookup.",
+              error.code
+            );
+            // userCredential remains undefined, which is handled below
+          } else {
+            // Re-throw other unexpected authentication errors
+            console.error(
+              "[Login] Unexpected Firebase Auth error during email login attempt:",
+              error
+            );
+            throw error; // Re-throw to be caught by the main catch block
+          }
         }
+      }
 
-        // Direct email login (for admin)
-        const userCredential = await signInWithEmailAndPassword(
-          auth,
-          loginInput,
-          password
-        );
-        const user = userCredential.user;
+      // If userCredential is not set yet (either input wasn't email, or email login failed),
+      // attempt Student ID lookup and login.
+      if (!userCredential) {
+        // Case 2: Input is treated as Student ID - Lookup email and login
 
-        // Check if user is an admin
-        const adminRef = doc(db, "admin", user.uid);
-        const adminDoc = await getDoc(adminRef);
-
-        if (adminDoc.exists()) {
-          // Admin login successful but don't explicitly say it's an admin login
-          showToast("success", "Login successful!");
-          // Use the correct navigation pattern for nested navigators
-          // Add a small delay to ensure Firebase auth state is fully updated
-          setTimeout(() => {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: "AdminDashboard" }],
-            });
-          }, 300);
-        } else {
-          showToast("success", "Login successful!");
-          // Add a small delay to ensure Firebase auth state is fully updated
-          setTimeout(() => {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: "Dashboard" }],
-            });
-          }, 300);
-        }
-      } else {
-        // Student ID login flow
         const isValidStudentId = await validateStudentId(loginInput);
         if (!isValidStudentId) {
           showToast(
@@ -155,9 +159,10 @@ const Login = ({ navigation }) => {
             "This Student ID is not recognized as an ICT student."
           );
           setIsSubmitting(false);
-          return;
+          return; // Stop here if Student ID is invalid
         }
 
+        // Find the user's email using the Student ID
         const q = query(
           collection(db, "users"),
           where("studentId", "==", loginInput)
@@ -165,30 +170,74 @@ const Login = ({ navigation }) => {
         const querySnapshot = await getDocs(q);
 
         if (querySnapshot.size === 0) {
-          showToast("error", "Student ID not found.");
+          showToast("error", "No account found with this Student ID.");
           setIsSubmitting(false);
-          return;
+          return; // Stop if no user found with this Student ID
         }
 
         if (querySnapshot.size > 1) {
           showToast("error", "Multiple users found with this Student ID.");
           setIsSubmitting(false);
-          return;
+          return; // Stop if multiple users found
         }
 
         const userDoc = querySnapshot.docs[0];
         const email = userDoc.data().email;
 
-        const userCredential = await signInWithEmailAndPassword(
+        if (!email) {
+          showToast(
+            "error",
+            "User data incomplete: Email not found for Student ID."
+          );
+          setIsSubmitting(false);
+          return; // Stop if email is missing in Firestore
+        }
+
+        // Now use the fetched email to sign in
+        // Ensure auth has _getRecaptchaConfig method before using it
+        if (!auth._getRecaptchaConfig) {
+          console.log(
+            "[Login] Adding missing _getRecaptchaConfig method to auth"
+          );
+          auth._getRecaptchaConfig = () => null;
+        }
+        userCredential = await signInWithEmailAndPassword(
           auth,
           email,
           password
         );
-        const user = userCredential.user;
+        // If successful, proceed to role check below
+      }
 
+      // If we reached here and userCredential is still null, authentication failed in both flows.
+      if (!userCredential) {
+        // This case should ideally be caught by the specific error handling above,
+        // but as a fallback:
+        throw new Error(
+          "Authentication failed after both email and Student ID attempts."
+        );
+      }
+
+      // Authentication successful! Determine user role and navigate.
+      const user = userCredential.user;
+
+      const adminRef = doc(db, "admin", user.uid);
+      const adminDoc = await getDoc(adminRef);
+
+      if (adminDoc.exists()) {
+        // Admin login
         showToast("success", "Login successful!");
-        // Use the correct navigation pattern for nested navigators
-        // Add a small delay to ensure Firebase auth state is fully updated
+        setTimeout(() => {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: "AdminDashboard" }],
+          });
+        }, 300);
+      } else {
+        // Assume it's a regular user if not an admin (and they were found via Student ID or had a user doc)
+        // Further validation against the 'users' collection by UID could be added here if needed,
+        // but finding the email by student ID and successfully authenticating should be sufficient.
+        showToast("success", "Login successful!");
         setTimeout(() => {
           navigation.reset({
             index: 0,
@@ -201,7 +250,7 @@ const Login = ({ navigation }) => {
       let errorMessage = "An error occurred. Please try again.";
       switch (error.code) {
         case "auth/user-not-found":
-          errorMessage = "Student ID or password is incorrect.";
+          errorMessage = "Invalid Student ID or password.";
           break;
         case "auth/wrong-password":
           errorMessage = "Incorrect password.";
@@ -209,6 +258,11 @@ const Login = ({ navigation }) => {
         case "auth/user-disabled":
           errorMessage = "This account has been disabled.";
           break;
+        default:
+          // Catch any other errors not specifically handled
+          errorMessage =
+            error.message || "An error occurred. Please try again.";
+          console.error("Unhandled error during login:", error);
       }
       showToast("error", errorMessage);
     } finally {

@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import {
   View,
   Text,
@@ -14,6 +20,9 @@ import {
   TextInput,
   Alert,
   Switch,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from "react-native";
 import {
   collection,
@@ -28,6 +37,7 @@ import {
   updateDoc,
   doc,
   getDoc,
+  setDoc,
 } from "firebase/firestore";
 import { auth, db } from "../../../../config/firebaseconfig";
 import {
@@ -53,6 +63,10 @@ import {
 import { Picker } from "@react-native-picker/picker";
 import Icon from "react-native-vector-icons/Ionicons";
 import Toast from "react-native-toast-message";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { useNavigation } from "@react-navigation/native";
+import { createStackNavigator } from "@react-navigation/stack";
 
 const TIMELINE_HEIGHT = 660;
 const EVENT_COLORS = [
@@ -88,7 +102,1319 @@ const THEME_COLORS = {
 };
 const SPACING = 16;
 
+// Define styles before components
+const styles = StyleSheet.create({
+  mainContainer: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  loader: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    backgroundColor: "#0A2463",
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    elevation: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    marginBottom: 24,
+  },
+  headerContent: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  headerIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 14,
+  },
+  headerText: {
+    color: "#FFFFFF",
+  },
+  headerGreeting: {
+    fontSize: 15,
+    opacity: 0.9,
+    marginBottom: 3,
+    letterSpacing: 0.3,
+  },
+  headerUsername: {
+    fontSize: 22,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  headerActionButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 10,
+  },
+  statsContainer: {
+    marginBottom: 28,
+  },
+  statsCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.03)",
+  },
+  statsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  statsIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#0A2463",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 18,
+  },
+  statsTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "#1E293B",
+    letterSpacing: 0.2,
+  },
+  statsValue: {
+    fontSize: 34,
+    fontWeight: "700",
+    color: "#0A2463",
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  statsLabel: {
+    fontSize: 15,
+    color: "#64748B",
+    letterSpacing: 0.2,
+  },
+  quickActionsContainer: {
+    marginBottom: 28,
+  },
+  quickActionsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginHorizontal: -8,
+  },
+  quickActionCard: {
+    width: "50%",
+    padding: 8,
+  },
+  quickActionInner: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.03)",
+  },
+  quickActionIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#0A2463",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  quickActionTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "#1E293B",
+    marginBottom: 6,
+    letterSpacing: 0.2,
+  },
+  quickActionDescription: {
+    fontSize: 14,
+    color: "#64748B",
+    lineHeight: 20,
+    letterSpacing: 0.1,
+  },
+  recentActivityContainer: {
+    marginBottom: 20,
+  },
+  activityCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.03)",
+  },
+  activityHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  activityTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1E293B",
+    letterSpacing: 0.2,
+  },
+  seeHistoryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: "#F1F5F9",
+    borderRadius: 10,
+  },
+  seeHistoryText: {
+    fontSize: 14,
+    color: "#0A2463",
+    fontWeight: "600",
+    marginRight: 4,
+    letterSpacing: 0.2,
+  },
+  activityList: {
+    gap: 12,
+  },
+  activityItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.03)",
+  },
+  activityIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  activityContent: {
+    flex: 1,
+  },
+  activityText: {
+    fontSize: 14,
+    color: "#1E293B",
+    marginBottom: 3,
+    lineHeight: 20,
+    letterSpacing: 0.1,
+  },
+  activityTime: {
+    fontSize: 12,
+    color: "#64748B",
+    letterSpacing: 0.1,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingTop: 0,
+  },
+  fullScreenModalContent: {
+    flex: 1,
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    padding: 16,
+    maxHeight: "100%",
+  },
+  formSection: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  formSectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1E293B",
+    marginBottom: 12,
+    letterSpacing: 0.2,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1E293B",
+    marginBottom: 6,
+    letterSpacing: 0.2,
+  },
+  input: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: "#1E293B",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    letterSpacing: 0.2,
+  },
+  pickerContainer: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    overflow: "hidden",
+    marginBottom: 12,
+    height: 50,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  picker: {
+    height: 50,
+    color: "#1E293B",
+    fontSize: 16,
+    paddingVertical: Platform.OS === "ios" ? 0 : 2,
+    justifyContent: "center",
+    lineHeight: 50,
+  },
+  pickerItem: {
+    fontSize: 16,
+    color: "#1E293B",
+    height: 50,
+    textAlign: "left",
+    textAlignVertical: "center",
+    lineHeight: 50,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#1E293B",
+    letterSpacing: 0.3,
+  },
+  modalBody: {
+    flex: 1,
+  },
+  modalFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    paddingHorizontal: 4,
+  },
+  button: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    minWidth: 90,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelButton: {
+    backgroundColor: "#E2E8F0",
+  },
+  submitButton: {
+    backgroundColor: "#0A2463",
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1E293B",
+    letterSpacing: 0.2,
+  },
+  submitButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
+  },
+  formGroup: {
+    marginBottom: 20,
+  },
+  settingsGroup: {
+    marginBottom: 28,
+  },
+  settingsGroupTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1E293B",
+    marginBottom: 18,
+    letterSpacing: 0.2,
+  },
+  settingItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  settingInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  settingLabel: {
+    fontSize: 16,
+    color: "#1E293B",
+    marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  settingDescription: {
+    fontSize: 14,
+    color: "#64748B",
+    letterSpacing: 0.1,
+  },
+  notificationModalContent: {
+    width: "100%",
+    maxHeight: "95%",
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: "hidden",
+  },
+  notificationList: {
+    padding: 24,
+  },
+  notificationItem: {
+    flexDirection: "row",
+    padding: 16,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(0, 0, 0, 0.05)",
+  },
+  unreadNotification: {
+    backgroundColor: "#EBF2F8",
+    borderLeftWidth: 4,
+    borderLeftColor: "#0A2463",
+  },
+  notificationIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#E2E8F0",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  notificationContent: {
+    flex: 1,
+  },
+  notificationTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1E293B",
+    marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  notificationMessage: {
+    fontSize: 14,
+    color: "#4A5568",
+    marginBottom: 4,
+    letterSpacing: 0.1,
+  },
+  notificationTime: {
+    fontSize: 12,
+    color: "#718096",
+    letterSpacing: 0.1,
+  },
+  emptyNotifications: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+  },
+  emptyNotificationsText: {
+    fontSize: 16,
+    color: "#94A3B8",
+    marginTop: 16,
+    letterSpacing: 0.2,
+  },
+  notificationBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    backgroundColor: "#EF4444",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 5,
+    borderWidth: 1,
+    borderColor: "#FFFFFF",
+  },
+  notificationBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  loadingText: {
+    marginTop: 14,
+    fontSize: 16,
+    color: "#64748B",
+    letterSpacing: 0.2,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1E293B",
+    marginBottom: 18,
+    letterSpacing: 0.2,
+  },
+  inputError: {
+    borderColor: "#EF4444",
+    borderWidth: 1,
+  },
+  errorText: {
+    color: "#EF4444",
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
+  },
+  passwordInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    overflow: "hidden",
+  },
+  passwordInput: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: "#1E293B",
+    letterSpacing: 0.2,
+  },
+  passwordToggle: {
+    padding: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  passwordRequirements: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  requirementsTitle: {
+    fontSize: 12,
+    color: "#64748B",
+    marginBottom: 8,
+    fontWeight: "600",
+  },
+  requirementItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  requirementText: {
+    fontSize: 12,
+    color: "#64748B",
+    marginLeft: 8,
+  },
+  requirementMet: {
+    color: "#16a34a",
+  },
+});
+
+// Define AddUserModal component before AdminHome
+const AddUserModal = React.memo(
+  ({
+    visible,
+    onClose,
+    onSuccess,
+    isAddingUser: parentIsAddingUser,
+    setIsAddingUser: parentSetIsAddingUser,
+  }) => {
+    const [localUser, setLocalUser] = useState({
+      fullName: "",
+      studentId: "",
+      yearLevel: "1",
+      role: "student",
+      password: "",
+      email: "",
+    });
+    const [isAdding, setIsAdding] = useState(false);
+    const [formErrors, setFormErrors] = useState({});
+    const [showPassword, setShowPassword] = useState(false);
+    const [passwordStrength, setPasswordStrength] = useState({
+      length: false,
+      number: false,
+      letter: false,
+    });
+    const scrollRef = useRef(null);
+    const modalHasLoadedRef = useRef(false);
+    const formDataRef = useRef({
+      fullName: "",
+      studentId: "",
+      yearLevel: "1",
+      role: "student",
+      password: "",
+      email: "",
+    });
+
+    // Optimize modal initialization
+    useEffect(() => {
+      if (visible && !modalHasLoadedRef.current) {
+        setLocalUser(formDataRef.current);
+        modalHasLoadedRef.current = true;
+      } else if (!visible) {
+        modalHasLoadedRef.current = false;
+      }
+    }, [visible]);
+
+    // Memoize handlers
+    const handleClose = useCallback(() => {
+      formDataRef.current = { ...localUser };
+      onClose();
+      setFormErrors({});
+    }, [localUser, onClose]);
+
+    const checkPasswordStrength = useCallback((password) => {
+      setPasswordStrength({
+        length: password.length >= 6,
+        number: /\d/.test(password),
+        letter: /[a-zA-Z]/.test(password),
+      });
+    }, []);
+
+    const validateForm = useCallback(() => {
+      const errors = {};
+      if (!localUser.fullName.trim()) errors.fullName = "Full name is required";
+      if (!localUser.studentId.trim())
+        errors.studentId = "Student ID is required";
+      if (!localUser.email.trim()) errors.email = "Email is required";
+      if (!localUser.password) errors.password = "Password is required";
+      if (localUser.password && localUser.password.length < 6) {
+        errors.password = "Password must be at least 6 characters";
+      }
+      if (localUser.password && !/\d/.test(localUser.password)) {
+        errors.password = "Password must contain at least one number";
+      }
+      if (localUser.password && !/[a-zA-Z]/.test(localUser.password)) {
+        errors.password = "Password must contain at least one letter";
+      }
+      if (!localUser.email.includes("@")) {
+        errors.email = "Invalid email format";
+      }
+      setFormErrors(errors);
+      return Object.keys(errors).length === 0;
+    }, [localUser]);
+
+    const handleSubmit = useCallback(async () => {
+      if (!validateForm()) {
+        return;
+      }
+
+      setIsAdding(true);
+      parentSetIsAddingUser?.(true);
+
+      try {
+        const currentUser = auth.currentUser;
+
+        // Check if student ID already exists
+        const existingStudentId = await getDocs(
+          query(
+            collection(db, "ictStudentIds"),
+            where("studentId", "==", localUser.studentId)
+          )
+        );
+
+        if (!existingStudentId.empty) {
+          setFormErrors({ studentId: "Student ID already exists" });
+          setIsAdding(false);
+          parentSetIsAddingUser?.(false);
+          return;
+        }
+
+        // Create user in Firebase Auth
+        let userCredential;
+        try {
+          userCredential = await createUserWithEmailAndPassword(
+            auth,
+            localUser.email,
+            localUser.password
+          );
+        } catch (authError) {
+          let errorMessage = "Authentication failed";
+          switch (authError.code) {
+            case "auth/email-already-in-use":
+              errorMessage = "Email address is already in use";
+              setFormErrors({ email: errorMessage });
+              break;
+            case "auth/invalid-email":
+              errorMessage = "Invalid email address format";
+              setFormErrors({ email: errorMessage });
+              break;
+            case "auth/weak-password":
+              errorMessage = "Password should be at least 6 characters";
+              setFormErrors({ password: errorMessage });
+              break;
+            default:
+              console.error("Firebase Auth Error:", authError);
+          }
+          setIsAdding(false);
+          parentSetIsAddingUser?.(false);
+          return;
+        }
+
+        // Get admin details
+        const adminDoc = await getDocs(
+          query(collection(db, "admin"), where("uid", "==", currentUser.uid))
+        );
+        const adminData = adminDoc.docs[0]?.data() || { username: "System" };
+
+        // Add user to Firestore
+        const userData = {
+          username: localUser.fullName,
+          studentId: localUser.studentId,
+          yearLevel: localUser.yearLevel,
+          role: localUser.role,
+          email: localUser.email,
+          uid: userCredential.user.uid,
+          createdAt: Timestamp.now(),
+          addedBy: {
+            uid: currentUser.uid,
+            username: adminData.username,
+          },
+        };
+
+        await setDoc(doc(db, "users", userCredential.user.uid), userData);
+
+        // Add student ID to ictStudentIds collection
+        await addDoc(collection(db, "ictStudentIds"), {
+          studentId: localUser.studentId,
+          fullName: localUser.fullName,
+          yearLevel: localUser.yearLevel,
+          role: localUser.role,
+          createdAt: Timestamp.now(),
+          addedBy: {
+            uid: currentUser.uid,
+            username: adminData.username,
+          },
+        });
+
+        // Add activity log
+        await addDoc(collection(db, "activities"), {
+          type: "student_added",
+          description: "New student registered",
+          timestamp: Timestamp.now(),
+          details: {
+            studentName: localUser.fullName,
+            studentId: localUser.studentId,
+            yearLevel: localUser.yearLevel,
+            role: localUser.role,
+            issuedBy: adminData.username,
+            adminUid: currentUser.uid,
+            newlyCreatedUserUid: userCredential.user.uid,
+          },
+        });
+
+        // Clear form data on successful submission
+        formDataRef.current = {
+          fullName: "",
+          studentId: "",
+          yearLevel: "1",
+          role: "student",
+          password: "",
+          email: "",
+        };
+
+        Toast.show({
+          type: "success",
+          text1: "Success",
+          text2: "Student added successfully",
+          position: "bottom",
+        });
+
+        onSuccess?.();
+        onClose();
+      } catch (error) {
+        console.error("Error adding user:", error);
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Failed to add student. Please try again.",
+          position: "bottom",
+        });
+      } finally {
+        setIsAdding(false);
+        parentSetIsAddingUser?.(false);
+      }
+    }, [localUser, validateForm, onClose, onSuccess, parentSetIsAddingUser]);
+
+    return (
+      <Modal
+        visible={visible}
+        animationType="slide"
+        statusBarTranslucent={true}
+        onRequestClose={handleClose}
+      >
+        <View style={styles.modalContainer}>
+          <SafeAreaView
+            style={styles.fullScreenModalContent}
+            edges={["top", "bottom"]}
+          >
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={{ flex: 1 }}
+              keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
+            >
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.modalHeader}>
+                    <View
+                      style={{ flexDirection: "row", alignItems: "center" }}
+                    >
+                      <View
+                        style={[
+                          styles.headerIcon,
+                          { marginRight: 10, backgroundColor: "#0A246320" },
+                        ]}
+                      >
+                        <Icon
+                          name="person-add-outline"
+                          size={20}
+                          color="#0A2463"
+                        />
+                      </View>
+                      <Text style={[styles.modalTitle, { fontSize: 20 }]}>
+                        Add New Student
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={handleClose}
+                      style={[
+                        styles.headerActionButton,
+                        { backgroundColor: "#F1F5F9" },
+                      ]}
+                    >
+                      <Icon name="close" size={20} color="#64748B" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView
+                    ref={scrollRef}
+                    style={styles.modalBody}
+                    contentContainerStyle={{ paddingBottom: 10 }}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                    bounces={true}
+                  >
+                    {/* Form sections */}
+                    <View style={[styles.formSection, { marginBottom: 16 }]}>
+                      <Text style={styles.formSectionTitle}>
+                        Basic Information
+                      </Text>
+                      <View style={styles.formGroup}>
+                        <Text style={styles.label}>
+                          Student ID <Text style={{ color: "#EF4444" }}>*</Text>
+                        </Text>
+                        <TextInput
+                          style={[
+                            styles.input,
+                            formErrors.studentId && styles.inputError,
+                          ]}
+                          value={localUser.studentId}
+                          onChangeText={(text) =>
+                            setLocalUser((prev) => ({
+                              ...prev,
+                              studentId: text.toUpperCase(),
+                            }))
+                          }
+                          placeholder="Enter student ID"
+                          placeholderTextColor="#94A3B8"
+                          autoCapitalize="characters"
+                        />
+                        {formErrors.studentId && (
+                          <Text style={styles.errorText}>
+                            {formErrors.studentId}
+                          </Text>
+                        )}
+                      </View>
+
+                      <View style={styles.formGroup}>
+                        <Text style={styles.label}>
+                          Full Name <Text style={{ color: "#EF4444" }}>*</Text>
+                        </Text>
+                        <TextInput
+                          style={[
+                            styles.input,
+                            formErrors.fullName && styles.inputError,
+                          ]}
+                          value={localUser.fullName}
+                          onChangeText={(text) =>
+                            setLocalUser((prev) => ({
+                              ...prev,
+                              fullName: text,
+                            }))
+                          }
+                          placeholder="Enter full name"
+                          placeholderTextColor="#94A3B8"
+                        />
+                        {formErrors.fullName && (
+                          <Text style={styles.errorText}>
+                            {formErrors.fullName}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+
+                    <View style={[styles.formSection, { marginBottom: 16 }]}>
+                      <Text style={styles.formSectionTitle}>
+                        Account Details
+                      </Text>
+                      <View style={styles.formGroup}>
+                        <Text style={styles.label}>
+                          Email Address{" "}
+                          <Text style={{ color: "#EF4444" }}>*</Text>
+                        </Text>
+                        <TextInput
+                          style={[
+                            styles.input,
+                            formErrors.email && styles.inputError,
+                          ]}
+                          value={localUser.email}
+                          onChangeText={(text) =>
+                            setLocalUser((prev) => ({ ...prev, email: text }))
+                          }
+                          placeholder="Enter email address"
+                          placeholderTextColor="#94A3B8"
+                          keyboardType="email-address"
+                          autoCapitalize="none"
+                        />
+                        {formErrors.email && (
+                          <Text style={styles.errorText}>
+                            {formErrors.email}
+                          </Text>
+                        )}
+                      </View>
+
+                      <View style={styles.formGroup}>
+                        <Text style={styles.label}>
+                          Password <Text style={{ color: "#EF4444" }}>*</Text>
+                        </Text>
+                        <View style={styles.passwordInputContainer}>
+                          <TextInput
+                            style={[
+                              styles.passwordInput,
+                              formErrors.password && styles.inputError,
+                            ]}
+                            value={localUser.password}
+                            onChangeText={(text) => {
+                              setLocalUser((prev) => ({
+                                ...prev,
+                                password: text,
+                              }));
+                              checkPasswordStrength(text);
+                            }}
+                            placeholder="Enter password"
+                            placeholderTextColor="#94A3B8"
+                            secureTextEntry={!showPassword}
+                          />
+                          <TouchableOpacity
+                            style={styles.passwordToggle}
+                            onPress={() => setShowPassword(!showPassword)}
+                          >
+                            <Icon
+                              name={
+                                showPassword ? "eye-off-outline" : "eye-outline"
+                              }
+                              size={20}
+                              color="#64748B"
+                            />
+                          </TouchableOpacity>
+                        </View>
+                        <View style={styles.passwordRequirements}>
+                          <Text style={styles.requirementsTitle}>
+                            Password Requirements:
+                          </Text>
+                          <View style={styles.requirementItem}>
+                            <Icon
+                              name={
+                                passwordStrength.length
+                                  ? "checkmark-circle"
+                                  : "ellipse-outline"
+                              }
+                              size={16}
+                              color={
+                                passwordStrength.length ? "#16a34a" : "#64748B"
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.requirementText,
+                                passwordStrength.length &&
+                                  styles.requirementMet,
+                              ]}
+                            >
+                              At least 6 characters
+                            </Text>
+                          </View>
+                          <View style={styles.requirementItem}>
+                            <Icon
+                              name={
+                                passwordStrength.number
+                                  ? "checkmark-circle"
+                                  : "ellipse-outline"
+                              }
+                              size={16}
+                              color={
+                                passwordStrength.number ? "#16a34a" : "#64748B"
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.requirementText,
+                                passwordStrength.number &&
+                                  styles.requirementMet,
+                              ]}
+                            >
+                              At least one number
+                            </Text>
+                          </View>
+                          <View style={styles.requirementItem}>
+                            <Icon
+                              name={
+                                passwordStrength.letter
+                                  ? "checkmark-circle"
+                                  : "ellipse-outline"
+                              }
+                              size={16}
+                              color={
+                                passwordStrength.letter ? "#16a34a" : "#64748B"
+                              }
+                            />
+                            <Text
+                              style={[
+                                styles.requirementText,
+                                passwordStrength.letter &&
+                                  styles.requirementMet,
+                              ]}
+                            >
+                              At least one letter
+                            </Text>
+                          </View>
+                        </View>
+                        {formErrors.password && (
+                          <Text style={styles.errorText}>
+                            {formErrors.password}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+
+                    <View style={styles.formSection}>
+                      <Text style={styles.formSectionTitle}>
+                        Additional Information
+                      </Text>
+                      <View style={styles.formGroup}>
+                        <Text style={styles.label}>Year Level</Text>
+                        <View style={styles.pickerContainer}>
+                          <Picker
+                            selectedValue={localUser.yearLevel}
+                            onValueChange={(value) =>
+                              setLocalUser((prev) => ({
+                                ...prev,
+                                yearLevel: value,
+                              }))
+                            }
+                            style={styles.picker}
+                            itemStyle={styles.pickerItem}
+                            mode="dropdown"
+                            dropdownIconColor="#1E293B"
+                          >
+                            {[1, 2, 3, 4, 5].map((year) => (
+                              <Picker.Item
+                                key={year}
+                                label={`Year ${year}`}
+                                value={year.toString()}
+                                color="#1E293B"
+                              />
+                            ))}
+                          </Picker>
+                        </View>
+                      </View>
+
+                      <View style={styles.formGroup}>
+                        <Text style={styles.label}>Role</Text>
+                        <View style={styles.pickerContainer}>
+                          <Picker
+                            selectedValue={localUser.role}
+                            onValueChange={(value) =>
+                              setLocalUser((prev) => ({
+                                ...prev,
+                                role: value,
+                              }))
+                            }
+                            style={styles.picker}
+                            itemStyle={styles.pickerItem}
+                            mode="dropdown"
+                            dropdownIconColor="#1E293B"
+                          >
+                            <Picker.Item
+                              label="Student"
+                              value="student"
+                              color="#1E293B"
+                            />
+                            <Picker.Item
+                              label="Treasurer"
+                              value="treasurer"
+                              color="#1E293B"
+                            />
+                            <Picker.Item
+                              label="Secretary"
+                              value="secretary"
+                              color="#1E293B"
+                            />
+                          </Picker>
+                        </View>
+                      </View>
+                    </View>
+                  </ScrollView>
+
+                  <View style={styles.modalFooter}>
+                    <TouchableOpacity
+                      style={[styles.button, styles.cancelButton]}
+                      onPress={handleClose}
+                      disabled={isAdding}
+                    >
+                      <Text style={styles.buttonText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.button, styles.submitButton]}
+                      onPress={handleSubmit}
+                      disabled={isAdding}
+                    >
+                      {isAdding ? (
+                        <ActivityIndicator color="#FFFFFF" size="small" />
+                      ) : (
+                        <Text style={styles.submitButtonText}>Add Student</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
+          </SafeAreaView>
+        </View>
+      </Modal>
+    );
+  }
+);
+
+// Define NotificationCenter component
+const NotificationCenter = React.memo(() => {
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const notificationsRef = collection(db, "notifications");
+        const q = query(
+          notificationsRef,
+          orderBy("timestamp", "desc"),
+          limit(50)
+        );
+        const snapshot = await getDocs(q);
+        const notificationList = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setNotifications(notificationList);
+        setUnreadCount(notificationList.filter((n) => !n.read).length);
+      } catch (error) {
+        console.error("Error fetching notifications:", error);
+      }
+    };
+
+    fetchNotifications();
+  }, []);
+
+  const markAsRead = async (notificationId) => {
+    try {
+      const notificationRef = doc(db, "notifications", notificationId);
+      await updateDoc(notificationRef, { read: true });
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+    }
+  };
+
+  const formatNotificationTime = (timestamp) => {
+    if (!timestamp) return "";
+    const date = timestamp.toDate();
+    return formatTimeAgo(date);
+  };
+
+  return (
+    <Modal
+      visible={showNotifications}
+      animationType="slide"
+      transparent={true}
+      statusBarTranslucent={true}
+      onRequestClose={() => setShowNotifications(false)}
+    >
+      <View style={styles.modalContainer}>
+        <SafeAreaView
+          style={styles.notificationModalContent}
+          edges={["top", "bottom"]}
+        >
+          <View style={styles.modalHeader}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View
+                style={[
+                  styles.headerIcon,
+                  { marginRight: 10, backgroundColor: "#0A246320" },
+                ]}
+              >
+                <Icon name="notifications-outline" size={20} color="#0A2463" />
+              </View>
+              <Text style={[styles.modalTitle, { fontSize: 20 }]}>
+                Notifications
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setShowNotifications(false)}
+              style={[
+                styles.headerActionButton,
+                { backgroundColor: "#F1F5F9" },
+              ]}
+            >
+              <Icon name="close" size={20} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.notificationList}
+            showsVerticalScrollIndicator={false}
+          >
+            {notifications.length > 0 ? (
+              notifications.map((notification) => (
+                <TouchableOpacity
+                  key={notification.id}
+                  style={[
+                    styles.notificationItem,
+                    !notification.read && styles.unreadNotification,
+                  ]}
+                  onPress={() => markAsRead(notification.id)}
+                >
+                  <View
+                    style={[
+                      styles.notificationIcon,
+                      {
+                        backgroundColor: `${getActivityColor(
+                          notification.type
+                        )}20`,
+                      },
+                    ]}
+                  >
+                    <Icon
+                      name={getActivityIcon(notification.type)}
+                      size={20}
+                      color={getActivityColor(notification.type)}
+                    />
+                  </View>
+                  <View style={styles.notificationContent}>
+                    <Text style={styles.notificationTitle}>
+                      {notification.title}
+                    </Text>
+                    <Text style={styles.notificationMessage}>
+                      {notification.message}
+                    </Text>
+                    <Text style={styles.notificationTime}>
+                      {formatNotificationTime(notification.timestamp)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.emptyNotifications}>
+                <Icon
+                  name="notifications-off-outline"
+                  size={48}
+                  color="#94A3B8"
+                />
+                <Text style={styles.emptyNotificationsText}>
+                  No notifications yet
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </View>
+    </Modal>
+  );
+});
+
 const AdminHome = () => {
+  const navigation = useNavigation();
   const [username, setUsername] = useState("");
   const [events, setEvents] = useState([]);
   const [allEvents, setAllEvents] = useState([]);
@@ -112,6 +1438,7 @@ const AdminHome = () => {
     password: "",
   });
   const [addUserLoading, setAddUserLoading] = useState(false);
+  const [isAddingUser, setIsAddingUser] = useState(false);
   const [recentActivities, setRecentActivities] = useState([]);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settings, setSettings] = useState({
@@ -120,6 +1447,14 @@ const AdminHome = () => {
     fineReminderDays: 7,
     theme: "light",
   });
+  const [allUsers, setAllUsers] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+
+  // Add new state for animations
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [scaleAnim] = useState(new Animated.Value(0.95));
 
   const fetchData = async () => {
     setLoading(true);
@@ -137,6 +1472,23 @@ const AdminHome = () => {
   useEffect(() => {
     checkUserAndFetchData();
     setupRealtimeUpdates(); // Start real-time listener
+    fetchAllUsers(); // Fetch all users when component mounts
+  }, []);
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
 
   const setupRealtimeUpdates = useCallback(() => {
@@ -462,57 +1814,131 @@ const AdminHome = () => {
     fetchTotalFines();
   }, []);
 
-  useEffect(() => {
-    fetchRecentActivities();
-    // Set up real-time listener for activities
-    const activitiesRef = collection(db, "activities");
-    const q = query(activitiesRef, orderBy("timestamp", "desc"), limit(5));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const activities = snapshot.docs.map((doc) => ({
+  const fetchAllUsers = async () => {
+    try {
+      const usersCollection = collection(db, "users");
+      const usersSnapshot = await getDocs(usersCollection);
+      const usersList = usersSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
-        timestamp: doc.data().timestamp?.toDate(),
       }));
-      setRecentActivities(activities);
-    });
+      setAllUsers(usersList);
+    } catch (error) {
+      console.error("Error fetching all users:", error);
+    }
+  };
 
-    return () => unsubscribe();
-  }, []);
-
-  const fetchRecentActivities = async () => {
+  const fetchRecentActivities = useCallback(async () => {
     try {
       const activitiesRef = collection(db, "activities");
-      const q = query(activitiesRef, orderBy("timestamp", "desc"), limit(20));
+      const q = query(activitiesRef, orderBy("timestamp", "desc"), limit(50));
       const snapshot = await getDocs(q);
 
       const activities = await Promise.all(
         snapshot.docs.map(async (docSnapshot) => {
           const activityData = docSnapshot.data();
+          const details = activityData.details || {};
+
           const activity = {
             id: docSnapshot.id,
             type: activityData.type,
             timestamp: activityData.timestamp?.toDate(),
-            details: activityData.details || {},
+            details: details,
           };
 
-          // No need to fetch related data here if it's already stored in details
-          // We rely on the data being stored accurately when the activity is created
+          // --- Look up User Details from pre-fetched list ---
+          const studentRelatedTypes = [
+            "student_added",
+            "fine_added",
+            "fine_paid",
+            "role_changed",
+          ];
+          if (studentRelatedTypes.includes(activity.type)) {
+            let foundUser = null;
+
+            // Try finding user by userId first
+            if (details.userId) {
+              foundUser = allUsers.find((user) => user.id === details.userId);
+            }
+
+            // If not found by userId, try finding by studentId
+            if (
+              !foundUser &&
+              details.studentId &&
+              details.studentId !== "No ID"
+            ) {
+              foundUser = allUsers.find(
+                (user) => user.studentId === details.studentId
+              );
+            }
+
+            // Assign details using found user data or fallbacks
+            activity.details.studentName =
+              foundUser?.username || details.studentName || "Unknown User";
+            activity.details.studentId =
+              foundUser?.studentId || details.studentId || "No ID";
+            activity.details.studentRole =
+              foundUser?.role || details.studentRole || "student";
+          }
+          // --- End User Details Lookup ---
+
+          // Add similar explicit fetching/lookup for event details if needed (keeping previous logic structure but using allEvents)
+          if (details.eventId && !details.eventTitle) {
+            const foundEvent = allEvents.find(
+              (event) => event.id === details.eventId
+            );
+            if (foundEvent) {
+              activity.details.eventTitle =
+                foundEvent.title || details.eventTitle || "Unknown Event";
+              activity.details.eventTimeframe =
+                foundEvent.timeframe ||
+                details.eventTimeframe ||
+                "No timeframe";
+              activity.details.eventDueDate =
+                foundEvent.dueDate || details.eventDueDate || null;
+            } else {
+              activity.details.eventTitle =
+                details.eventTitle || "Unknown Event";
+              activity.details.eventTimeframe =
+                details.eventTimeframe || "No timeframe";
+              activity.details.eventDueDate = details.eventDueDate || null;
+            }
+          }
+
+          // Add similar explicit fetching/lookup for admin details if needed (might still need a fetch here unless admins are also in allUsers)
+          // For simplicity now, keeping the admin fetch as it is, but consider if admins should also be pre-fetched
+          if (details.adminUid && !details.issuedBy) {
+            try {
+              const adminQuery = query(
+                collection(db, "admin"),
+                where("uid", "==", details.adminUid)
+              );
+              const adminSnapshot = await getDocs(adminQuery);
+              if (!adminSnapshot.empty) {
+                const adminData = adminSnapshot.docs[0].data();
+                activity.details.issuedBy =
+                  adminData.username || details.issuedBy || "System";
+                activity.details.adminRole =
+                  adminData.role || details.adminRole || "Admin";
+              } else {
+                activity.details.issuedBy = details.issuedBy || "System";
+                activity.details.adminRole = details.adminRole || "Admin";
+              }
+            } catch (error) {
+              console.error(
+                `Error fetching admin details for activity ${activity.id}:`,
+                error
+              );
+              activity.details.issuedBy = details.issuedBy || "System";
+              activity.details.adminRole = details.adminRole || "Admin";
+            }
+          }
 
           return activity;
         })
       );
 
-      // Filter out activities that might not have the necessary details yet if needed, though ideally creation logs should be complete
-      const filteredActivities = activities.filter(
-        (activity) =>
-          activity.type !== "fine_paid" ||
-          (activity.details?.studentName &&
-            activity.details?.studentId &&
-            activity.details?.eventTitle)
-      );
-
-      setRecentActivities(filteredActivities);
+      setRecentActivities(activities);
     } catch (error) {
       console.error("Error fetching activities:", error);
       Toast.show({
@@ -522,7 +1948,14 @@ const AdminHome = () => {
         position: "bottom",
       });
     }
-  };
+  }, [allUsers]);
+
+  useEffect(() => {
+    // Only call fetchRecentActivities if allUsers has data
+    if (allUsers.length > 0) {
+      fetchRecentActivities();
+    }
+  }, [allUsers, fetchRecentActivities]);
 
   const formatTimeAgo = (timestamp) => {
     if (
@@ -553,36 +1986,29 @@ const AdminHome = () => {
       case "student_added":
         return `New ${details.studentRole || "student"} ${
           details.studentName || "Unknown"
-        } (${details.studentId || "No ID"}) added by ${
-          details.issuedBy || "System"
-        } (${details.adminRole || "Admin"})`;
+        } added by ${details.issuedBy || "System"} (${
+          details.adminRole || "Admin"
+        })`;
 
       case "fine_added":
         return `Fine of ₱${details.amount || "0"} added to ${
           details.studentName || "Unknown"
-        } (${details.studentId || "No ID"}) for ${
-          details.eventTitle || "Unknown Event"
-        } by ${details.issuedBy || "System"} (${details.adminRole || "Admin"})`;
+        } for ${details.eventTitle || "Unknown Event"} by ${
+          details.issuedBy || "System"
+        } (${details.adminRole || "Admin"})`;
 
       case "fine_paid": {
         const paidDate = details.paidAt?.toDate();
+        const studentName = details.studentName || "Unknown";
+        const eventTitle = details.eventTitle || "Unknown Event";
         const displayDate =
           paidDate && !isNaN(paidDate.getTime())
             ? format(paidDate, "MMM d, yyyy")
             : "Unknown Date";
-        return `Fine of ₱${details.amount || "0"} paid by ${
-          details.studentName || "Unknown"
-        } (${details.studentId || "No ID"}) for ${
-          details.eventTitle || "Unknown Event"
-        } on ${displayDate}`;
+        return `Fine of ₱${
+          details.amount || "0"
+        } paid by ${studentName} for ${eventTitle} on ${displayDate}`;
       }
-
-      case "event_added":
-        return `New event "${details.eventTitle || "Untitled Event"}" (${
-          details.eventTimeframe || "No timeframe"
-        }) created by ${details.issuedBy || "System"} (${
-          details.adminRole || "Admin"
-        })`;
 
       case "role_changed":
         return `Role changed for ${details.studentName || "Unknown"} from ${
@@ -591,6 +2017,13 @@ const AdminHome = () => {
           details.issuedBy || "System"
         } (${details.adminRole || "Admin"})`;
 
+      case "event_added":
+        return `New event "${details.eventTitle || "Untitled Event"}" (${
+          details.eventTimeframe || "No timeframe"
+        }) created by ${details.issuedBy || "System"} (${
+          details.adminRole || "Admin"
+        })`;
+
       case "settings_updated":
         return `Settings updated by ${details.issuedBy || "System"} (${
           details.adminRole || "Admin"
@@ -598,789 +2031,6 @@ const AdminHome = () => {
 
       default:
         return activity.description || "No description available";
-    }
-  };
-
-  const styles = StyleSheet.create({
-    sectionHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "flex-start",
-      marginBottom: 10,
-      marginLeft: 20,
-    },
-    mainContainer: {
-      flex: 1,
-      backgroundColor: "#fff",
-    },
-    container: {
-      flex: 1,
-      padding: 20,
-    },
-    loader: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    header: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: 16,
-      paddingVertical: 20,
-      backgroundColor: "#003161",
-      borderBottomLeftRadius: 30,
-      borderBottomRightRadius: 30,
-      elevation: 8,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 6,
-      marginBottom: 16,
-    },
-    leftContent: {
-      flexDirection: "row",
-      alignItems: "center",
-      flex: 1,
-      marginRight: 8,
-    },
-    rightContent: {
-      flex: 1,
-      alignItems: "flex-end",
-    },
-    icon: {
-      marginRight: 12,
-    },
-    greeting: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: "#FFFFFF",
-      flexShrink: 1,
-      fontFamily: "Lato-Regular",
-    },
-    username: {
-      fontSize: 20,
-      fontFamily: "Lato-Regular",
-      fontWeight: "600",
-      color: "#FFFFFF",
-      marginRight: 20,
-      textTransform: "capitalize",
-    },
-    calendarControls: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginHorizontal: 20,
-      marginBottom: 10,
-    },
-    controlButton: {
-      padding: 6,
-      borderRadius: 8,
-      backgroundColor: "#f0f4f8",
-    },
-    weekRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingVertical: 15,
-      backgroundColor: "#fff",
-      marginHorizontal: 20,
-      marginBottom: 20,
-      borderRadius: 20,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 3,
-      borderWidth: 1,
-      borderColor: "#e2e8f0",
-    },
-    dayColumn: {
-      alignItems: "center",
-      width: 40,
-      paddingVertical: 10,
-      borderRadius: 12,
-      position: "relative",
-    },
-    selectedColumn: {
-      backgroundColor: "#E6F2FF",
-      borderWidth: 1,
-      borderColor: "#b1d4fe",
-    },
-    todayColumn: {
-      borderWidth: 1,
-      borderColor: "#f0f0f0",
-    },
-    dayText: {
-      fontSize: 13,
-      color: "#777",
-      marginBottom: 4,
-      fontWeight: "500",
-    },
-    dateText: {
-      fontSize: 18,
-      fontWeight: "600",
-      color: "#444",
-      marginTop: 8,
-    },
-    selectedText: {
-      color: "#024CAA",
-      fontWeight: "700",
-    },
-    todayText: {
-      color: "#024CAA",
-    },
-    eventDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: "#FF4545",
-      position: "absolute",
-      top: 4,
-      left: "50%",
-      marginLeft: -3,
-    },
-    timelineContainer: {
-      marginHorizontal: 20,
-      marginBottom: 24,
-      borderRadius: 20,
-      borderWidth: 0,
-      backgroundColor: "#FFFFFF",
-      shadowColor: Platform.OS === "ios" ? "#1a1a1a" : "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.08,
-      shadowRadius: 8,
-      elevation: Platform.OS === "android" ? 3 : 0,
-      overflow: "hidden",
-    },
-    timelineDateBanner: {
-      paddingHorizontal: 20,
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: "#EAEAEA",
-      backgroundColor: "#FCFCFC",
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    timelineDateText: {
-      fontSize: 15,
-      fontWeight: "600",
-      color: "#424242",
-      letterSpacing: 0.3,
-      marginLeft: 8,
-    },
-    eventsContainer: {
-      flexDirection: "column",
-      padding: 16,
-      paddingBottom: 8,
-    },
-    eventCard: {
-      borderRadius: 16,
-      marginBottom: 16,
-      backgroundColor: "#fff",
-      shadowColor: "#000",
-      shadowOffset: {
-        width: 0,
-        height: Platform.OS === "ios" ? 2 : 1,
-      },
-      shadowOpacity: Platform.OS === "ios" ? 0.1 : 0.08,
-      shadowRadius: Platform.OS === "ios" ? 9 : 6,
-      elevation: Platform.OS === "android" ? 4 : 0,
-      overflow: "hidden",
-    },
-    eventCardInner: {
-      borderRadius: 16,
-      position: "relative",
-      overflow: "hidden",
-    },
-    eventCardContent: {
-      padding: 16,
-      backgroundColor: "transparent",
-      position: "relative",
-      zIndex: 2,
-    },
-    eventCardAccent: {
-      position: "absolute",
-      left: 0,
-      top: 0,
-      bottom: 0,
-      width: 6,
-      zIndex: 3,
-    },
-    gradientOverlay: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      zIndex: 1,
-    },
-    patternOverlay: {
-      position: "absolute",
-      top: 0,
-      right: 0,
-      width: 100,
-      height: 100,
-      opacity: 0.05,
-      zIndex: 1,
-    },
-    eventRow: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      width: "100%",
-    },
-    eventTimeContainer: {
-      paddingVertical: 6,
-      paddingHorizontal: 10,
-      backgroundColor: "rgba(255,255,255,0.20)",
-      borderRadius: 8,
-      alignSelf: "flex-start",
-      marginTop: 8,
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    eventTime: {
-      fontSize: 13,
-      color: "rgba(255,255,255,0.95)",
-      fontWeight: "500",
-      marginLeft: 4,
-    },
-    eventIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: 14,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: "rgba(255,255,255,0.25)",
-      marginRight: 14,
-    },
-    eventContent: {
-      flex: 1,
-    },
-    eventTitle: {
-      fontSize: 17,
-      fontWeight: "700",
-      color: "#fff",
-      marginBottom: 6,
-      letterSpacing: 0.2,
-    },
-    eventBadge: {
-      position: "absolute",
-      top: 10,
-      right: 10,
-      backgroundColor: "rgba(255,255,255,0.25)",
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 12,
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    eventBadgeText: {
-      color: "#fff",
-      fontSize: 11,
-      fontWeight: "600",
-      marginLeft: 3,
-    },
-    noEventsContainer: {
-      padding: 30,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    noEventsImage: {
-      width: 100,
-      height: 100,
-      marginBottom: 16,
-      opacity: 0.7,
-    },
-    noEventsText: {
-      textAlign: "center",
-      color: "#94A3B8",
-      fontSize: 16,
-      fontStyle: "italic",
-    },
-    sectionTitle: {
-      fontSize: 18,
-      fontWeight: "700",
-      fontFamily: "Lato-Bold",
-      color: "#333",
-      marginRight: 8,
-    },
-    sectionDescription: {
-      fontSize: 14,
-      color: "#666",
-      marginLeft: 20,
-      marginTop: -5,
-      marginBottom: 16,
-    },
-    ReminderContainer: {
-      marginBottom: 30,
-    },
-    ReminderCardContainer: {
-      marginHorizontal: 20,
-      marginBottom: 12,
-    },
-    ReminderCard: {
-      backgroundColor: "#FFFFFF",
-      borderRadius: 16,
-      padding: 16,
-      shadowColor: "#000",
-      shadowOpacity: 0.1,
-      shadowRadius: 6,
-      shadowOffset: { width: 0, height: 2 },
-      elevation: 2,
-      borderWidth: 1,
-      borderColor: "#e2e8f0",
-    },
-    ReminderCardContent: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    ReminderDateTimeContainer: {
-      width: 60,
-      height: 60,
-      borderRadius: 12,
-      backgroundColor: "#f1f5f9",
-      justifyContent: "center",
-      alignItems: "center",
-      marginRight: 16,
-      borderWidth: 1,
-      borderColor: "#e2e8f0",
-    },
-    ReminderDateText: {
-      fontSize: 18,
-      fontWeight: "700",
-      color: "#024CAA",
-    },
-    ReminderDayText: {
-      textTransform: "uppercase",
-      fontSize: 12,
-      color: "#666",
-      fontWeight: "600",
-      marginTop: 2,
-    },
-    ReminderEventDetails: {
-      flex: 1,
-    },
-    ReminderEventTitle: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: "#333",
-      marginBottom: 4,
-    },
-    ReminderEventTimeframe: {
-      fontSize: 14,
-      color: "#666",
-      fontWeight: "500",
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    ReminderEventTimeIcon: {
-      marginRight: 6,
-    },
-    ReminderNoEvent: {
-      textAlign: "center",
-      marginTop: 40,
-      marginBottom: 40,
-      color: "#94A3B8",
-      fontSize: 16,
-    },
-    dateHeader: {
-      paddingVertical: 6,
-      marginBottom: 10,
-      marginHorizontal: 20,
-      alignItems: "center",
-      justifyContent: "center",
-      flexDirection: "row",
-      backgroundColor: "#f1f5f9",
-      borderRadius: 30,
-    },
-    currentDate: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: "#333",
-    },
-    loadingText: {
-      marginTop: 10,
-      fontSize: 16,
-      color: "#666",
-    },
-    calendarIcon: {
-      marginRight: 8,
-    },
-    statsContainer: {
-      flexDirection: "row",
-      justifyContent: "center",
-      alignItems: "center",
-      paddingHorizontal: 0,
-      marginBottom: SPACING * 1.5,
-      marginTop: 8,
-    },
-    landscapeFineStatCard: {
-      flexDirection: "row",
-      alignItems: "center",
-      width: "92%",
-      alignSelf: "center",
-      backgroundColor: "linear-gradient(90deg, #0A2463 60%, #3E92CC 100%)", // fallback for web, will override below
-      backgroundColor: "#0A2463", // fallback for native
-      borderRadius: 20,
-      paddingVertical: SPACING * 1.1,
-      paddingHorizontal: SPACING * 1.2,
-      marginVertical: 8,
-      shadowColor: "#0A2463",
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.18,
-      shadowRadius: 12,
-      elevation: 6,
-      minHeight: 80,
-      // Remove white space
-    },
-    landscapeFineStatIconWrap: {
-      backgroundColor: "#3E92CC",
-      borderRadius: 16,
-      padding: 16,
-      marginRight: 18,
-      justifyContent: "center",
-      alignItems: "center",
-      shadowColor: "#3E92CC",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.15,
-      shadowRadius: 6,
-      elevation: 3,
-    },
-    landscapeFineStatTextWrap: {
-      flex: 1,
-      justifyContent: "center",
-    },
-    landscapeFineStatValue: {
-      fontSize: 28,
-      fontWeight: "bold",
-      color: "#fff",
-      letterSpacing: 0.5,
-      marginBottom: 2,
-      fontFamily: Platform.OS === "ios" ? "System" : "sans-serif-medium",
-    },
-    landscapeFineStatLabel: {
-      fontSize: 14,
-      color: "#E0E7EF",
-      fontWeight: "500",
-      letterSpacing: 0.3,
-      fontFamily: Platform.OS === "ios" ? "System" : "sans-serif",
-      opacity: 0.92,
-    },
-    modalContainer: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: "rgba(0, 0, 0, 0.5)",
-    },
-    modalContent: {
-      width: "90%",
-      maxHeight: "80%",
-      backgroundColor: "#FFFFFF",
-      borderRadius: 16,
-      overflow: "hidden",
-    },
-    modalHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      padding: SPACING,
-      borderBottomWidth: 1,
-      borderBottomColor: "#E2E8F0",
-    },
-    modalTitle: {
-      fontSize: 20,
-      fontWeight: "700",
-      color: THEME_COLORS.primary,
-    },
-    modalBody: {
-      padding: SPACING,
-    },
-    modalFooter: {
-      flexDirection: "row",
-      justifyContent: "flex-end",
-      padding: SPACING,
-      borderTopWidth: 1,
-      borderTopColor: "#E2E8F0",
-    },
-    formGroup: {
-      marginBottom: SPACING,
-    },
-    label: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: "#475569",
-      marginBottom: 8,
-    },
-    input: {
-      backgroundColor: "#F1F5F9",
-      borderRadius: 8,
-      padding: 12,
-      fontSize: 16,
-      color: "#1E293B",
-    },
-    pickerContainer: {
-      backgroundColor: "#F1F5F9",
-      borderRadius: 8,
-      overflow: "hidden",
-    },
-    picker: {
-      height: 50,
-      color: "#1E293B",
-    },
-    button: {
-      paddingVertical: 12,
-      paddingHorizontal: 24,
-      borderRadius: 8,
-      marginLeft: SPACING,
-    },
-    cancelButton: {
-      backgroundColor: "#E2E8F0",
-    },
-    submitButton: {
-      backgroundColor: THEME_COLORS.primary,
-    },
-    buttonText: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: "#FFFFFF",
-    },
-    addButton: {
-      backgroundColor: THEME_COLORS.primary,
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      justifyContent: "center",
-      alignItems: "center",
-      marginLeft: 10,
-    },
-    quickActionsContainer: {
-      padding: 16,
-      marginBottom: 24,
-    },
-    quickActionsGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      justifyContent: "space-between",
-      gap: 16,
-    },
-    quickActionCard: {
-      width: "47%",
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 16,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 3,
-    },
-    quickActionContent: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    quickActionIconContainer: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: "rgba(255, 255, 255, 0.2)",
-      justifyContent: "center",
-      alignItems: "center",
-      marginRight: 12,
-    },
-    quickActionTextContainer: {
-      flex: 1,
-    },
-    quickActionTitle: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: "#FFFFFF",
-      marginBottom: 4,
-    },
-    quickActionDescription: {
-      fontSize: 12,
-      color: "rgba(255, 255, 255, 0.8)",
-    },
-    recentActivityContainer: {
-      padding: 16,
-      marginBottom: 24,
-    },
-    activityCard: {
-      backgroundColor: "#FFFFFF",
-      borderRadius: 16,
-      padding: 16,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 3,
-    },
-    activityHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginBottom: 16,
-    },
-    activityTitle: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: "#1E293B",
-      marginLeft: 8,
-    },
-    activityList: {
-      gap: 16,
-    },
-    activityItem: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    activityIcon: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: "#F1F5F9",
-      justifyContent: "center",
-      alignItems: "center",
-      marginRight: 12,
-    },
-    activityContent: {
-      flex: 1,
-    },
-    activityText: {
-      fontSize: 14,
-      color: "#1E293B",
-      marginBottom: 2,
-    },
-    activityTime: {
-      fontSize: 12,
-      color: "#64748B",
-    },
-    fullScreenModalContainer: {
-      flex: 1,
-      backgroundColor: "#FFFFFF",
-    },
-    fullScreenModalContent: {
-      flex: 1,
-      paddingTop: Platform.OS === "ios" ? 50 : 20,
-    },
-    settingsGroup: {
-      marginBottom: 24,
-    },
-    settingsGroupTitle: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: "#1E293B",
-      marginBottom: 16,
-    },
-    settingItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingVertical: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: "#E2E8F0",
-    },
-    settingInfo: {
-      flex: 1,
-      marginRight: 16,
-    },
-    settingLabel: {
-      fontSize: 16,
-      color: "#1E293B",
-      marginBottom: 4,
-    },
-    settingDescription: {
-      fontSize: 14,
-      color: "#64748B",
-    },
-  });
-
-  const generateStudentId = () => {
-    const year = new Date().getFullYear();
-    const randomNum = Math.floor(Math.random() * 10000)
-      .toString()
-      .padStart(4, "0");
-    const randomLetters = Math.random()
-      .toString(36)
-      .substring(2, 4)
-      .toUpperCase();
-    return `${year}-${randomNum}-${randomLetters}`;
-  };
-
-  const handleAddUser = async () => {
-    if (!newUser.fullName || !newUser.password) {
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "Please fill in all required fields",
-        position: "bottom",
-      });
-      return;
-    }
-
-    setAddUserLoading(true);
-    try {
-      const studentId = generateStudentId();
-      const currentUser = auth.currentUser;
-
-      // Get admin details
-      const adminDoc = await getDocs(
-        query(collection(db, "admin"), where("uid", "==", currentUser.uid))
-      );
-      const adminData = adminDoc.docs[0]?.data() || { username: "System" };
-
-      // Add user to Firestore
-      await addDoc(collection(db, "users"), {
-        fullName: newUser.fullName,
-        studentId,
-        yearLevel: newUser.yearLevel,
-        role: newUser.role,
-        password: newUser.password,
-        createdAt: Timestamp.now(),
-        addedBy: {
-          uid: currentUser.uid,
-          username: adminData.username,
-        },
-      });
-
-      // Add detailed activity log
-      await addDoc(collection(db, "activities"), {
-        type: "student_added",
-        description: "New student registered",
-        timestamp: Timestamp.now(),
-        details: {
-          studentName: newUser.fullName,
-          studentId,
-          yearLevel: newUser.yearLevel,
-          role: newUser.role,
-          issuedBy: adminData.username,
-          adminUid: currentUser.uid,
-        },
-      });
-
-      Toast.show({
-        type: "success",
-        text1: "Success",
-        text2: "Student added successfully",
-        position: "bottom",
-      });
-
-      setShowAddUserModal(false);
-      setNewUser({
-        fullName: "",
-        studentId: "",
-        yearLevel: "1",
-        role: "student",
-        password: "",
-      });
-    } catch (error) {
-      console.error("Error adding user:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "Failed to add student",
-        position: "bottom",
-      });
-    } finally {
-      setAddUserLoading(false);
     }
   };
 
@@ -1427,266 +2077,122 @@ const AdminHome = () => {
       visible={showSettingsModal}
       animationType="slide"
       transparent={true}
+      statusBarTranslucent={true}
       onRequestClose={() => setShowSettingsModal(false)}
     >
       <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Admin Settings</Text>
-            <TouchableOpacity onPress={() => setShowSettingsModal(false)}>
-              <Icon name="close" size={24} color="#64748B" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalBody}>
-            <View style={styles.settingsGroup}>
-              <Text style={styles.settingsGroupTitle}>Notifications</Text>
-              <View style={styles.settingItem}>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Enable Notifications</Text>
-                  <Text style={styles.settingDescription}>
-                    Receive alerts for new activities
-                  </Text>
-                </View>
-                <Switch
-                  value={settings.notifications}
-                  onValueChange={(value) =>
-                    setSettings({ ...settings, notifications: value })
-                  }
-                />
-              </View>
+        <SafeAreaView
+          style={styles.fullScreenModalContent}
+          edges={["top", "bottom"]}
+        >
+          <View style={{ flex: 1 }}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Admin Settings</Text>
+              <TouchableOpacity onPress={() => setShowSettingsModal(false)}>
+                <Icon name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
             </View>
 
-            <View style={styles.settingsGroup}>
-              <Text style={styles.settingsGroupTitle}>Reports</Text>
-              <View style={styles.settingItem}>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Auto-generate Reports</Text>
-                  <Text style={styles.settingDescription}>
-                    Generate weekly reports automatically
-                  </Text>
-                </View>
-                <Switch
-                  value={settings.autoGenerateReports}
-                  onValueChange={(value) =>
-                    setSettings({ ...settings, autoGenerateReports: value })
-                  }
-                />
-              </View>
-            </View>
-
-            <View style={styles.settingsGroup}>
-              <Text style={styles.settingsGroupTitle}>Fine Management</Text>
-              <View style={styles.settingItem}>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Fine Reminder Days</Text>
-                  <Text style={styles.settingDescription}>
-                    Days before sending fine reminders
-                  </Text>
-                </View>
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={settings.fineReminderDays.toString()}
+            <ScrollView
+              style={styles.modalBody}
+              contentContainerStyle={{ paddingHorizontal: 0 }}
+            >
+              <View style={styles.settingsGroup}>
+                <Text style={styles.settingsGroupTitle}>Notifications</Text>
+                <View style={styles.settingItem}>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingLabel}>
+                      Enable Notifications
+                    </Text>
+                    <Text style={styles.settingDescription}>
+                      Receive alerts for new activities
+                    </Text>
+                  </View>
+                  <Switch
+                    value={settings.notifications}
                     onValueChange={(value) =>
-                      setSettings({
-                        ...settings,
-                        fineReminderDays: parseInt(value),
-                      })
+                      setSettings({ ...settings, notifications: value })
                     }
-                    style={styles.picker}
-                  >
-                    {[3, 5, 7, 10, 14].map((days) => (
-                      <Picker.Item
-                        key={days}
-                        label={`${days} days`}
-                        value={days.toString()}
-                      />
-                    ))}
-                  </Picker>
+                  />
                 </View>
               </View>
-            </View>
-          </ScrollView>
 
-          <View style={styles.modalFooter}>
-            <TouchableOpacity
-              style={[styles.button, styles.cancelButton]}
-              onPress={() => setShowSettingsModal(false)}
-            >
-              <Text style={styles.buttonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.button, styles.submitButton]}
-              onPress={() => {
-                // Save settings to Firestore
-                setShowSettingsModal(false);
-              }}
-            >
-              <Text style={styles.buttonText}>Save Changes</Text>
-            </TouchableOpacity>
+              <View style={styles.settingsGroup}>
+                <Text style={styles.settingsGroupTitle}>Reports</Text>
+                <View style={styles.settingItem}>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingLabel}>
+                      Auto-generate Reports
+                    </Text>
+                    <Text style={styles.settingDescription}>
+                      Generate weekly reports automatically
+                    </Text>
+                  </View>
+                  <Switch
+                    value={settings.autoGenerateReports}
+                    onValueChange={(value) =>
+                      setSettings({ ...settings, autoGenerateReports: value })
+                    }
+                  />
+                </View>
+              </View>
+
+              <View style={styles.settingsGroup}>
+                <Text style={styles.settingsGroupTitle}>Fine Management</Text>
+                <View style={styles.settingItem}>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingLabel}>Fine Reminder Days</Text>
+                    <Text style={styles.settingDescription}>
+                      Days before sending fine reminders
+                    </Text>
+                  </View>
+                  <View style={styles.pickerContainer}>
+                    <Picker
+                      selectedValue={settings.fineReminderDays.toString()}
+                      onValueChange={(value) =>
+                        setSettings({
+                          ...settings,
+                          fineReminderDays: parseInt(value),
+                        })
+                      }
+                      style={styles.picker}
+                      mode="dropdown"
+                    >
+                      {[3, 5, 7, 10, 14].map((days) => (
+                        <Picker.Item
+                          key={days}
+                          label={`${days} days`}
+                          value={days.toString()}
+                        />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => setShowSettingsModal(false)}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.submitButton]}
+                onPress={() => {
+                  // Save settings to Firestore
+                  setShowSettingsModal(false);
+                }}
+              >
+                <Text style={styles.submitButtonText}>Save Changes</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        </SafeAreaView>
       </View>
     </Modal>
   );
-
-  const AddUserModal = () => (
-    <Modal
-      visible={showAddUserModal}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={() => setShowAddUserModal(false)}
-    >
-      <View style={styles.fullScreenModalContainer}>
-        <View style={styles.fullScreenModalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Add New Student</Text>
-            <TouchableOpacity onPress={() => setShowAddUserModal(false)}>
-              <Icon name="close" size={24} color="#64748B" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalBody}>
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Full Name</Text>
-              <TextInput
-                style={styles.input}
-                value={newUser.fullName}
-                onChangeText={(text) =>
-                  setNewUser({ ...newUser, fullName: text })
-                }
-                placeholder="Enter full name"
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput
-                style={styles.input}
-                value={newUser.password}
-                onChangeText={(text) =>
-                  setNewUser({ ...newUser, password: text })
-                }
-                placeholder="Enter password"
-                secureTextEntry
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Year Level</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={newUser.yearLevel}
-                  onValueChange={(value) =>
-                    setNewUser({ ...newUser, yearLevel: value })
-                  }
-                  style={styles.picker}
-                >
-                  {[1, 2, 3, 4, 5].map((year) => (
-                    <Picker.Item
-                      key={year}
-                      label={`Year ${year}`}
-                      value={year.toString()}
-                    />
-                  ))}
-                </Picker>
-              </View>
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Role</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={newUser.role}
-                  onValueChange={(value) =>
-                    setNewUser({ ...newUser, role: value })
-                  }
-                  style={styles.picker}
-                >
-                  <Picker.Item label="Student" value="student" />
-                  <Picker.Item label="Treasurer" value="treasurer" />
-                  <Picker.Item label="Secretary" value="secretary" />
-                </Picker>
-              </View>
-            </View>
-          </ScrollView>
-
-          <View style={styles.modalFooter}>
-            <TouchableOpacity
-              style={[styles.button, styles.cancelButton]}
-              onPress={() => setShowAddUserModal(false)}
-              disabled={addUserLoading}
-            >
-              <Text style={styles.buttonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.button, styles.submitButton]}
-              onPress={handleAddUser}
-              disabled={addUserLoading}
-            >
-              {addUserLoading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.buttonText}>Add Student</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  const QuickActionCard = ({ title, description, icon, onPress, color }) => (
-    <TouchableOpacity
-      style={[styles.quickActionCard, { backgroundColor: color }]}
-      onPress={onPress}
-    >
-      <View style={styles.quickActionContent}>
-        <View style={styles.quickActionIconContainer}>
-          <Icon name={icon} size={24} color="#FFFFFF" />
-        </View>
-        <View style={styles.quickActionTextContainer}>
-          <Text style={styles.quickActionTitle}>{title}</Text>
-          <Text style={styles.quickActionDescription}>{description}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const handleMarkAsPaid = async (fineId) => {
-    try {
-      const now = Timestamp.now();
-      await updateDoc(doc(db, "fines", fineId), {
-        status: "paid",
-        paidAt: now,
-      });
-
-      // Add activity log
-      await addDoc(collection(db, "activities"), {
-        type: "fine_paid",
-        description: "Fine payment received",
-        timestamp: now,
-        details: {
-          fineId,
-        },
-      });
-
-      Toast.show({
-        type: "success",
-        text1: "Success",
-        text2: "Fine marked as paid",
-        position: "bottom",
-      });
-    } catch (error) {
-      console.error("Error marking fine as paid:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "Failed to mark fine as paid",
-        position: "bottom",
-      });
-    }
-  };
 
   const RecentActivitySection = () => (
     <View style={styles.recentActivityContainer}>
@@ -1764,104 +2270,256 @@ const AdminHome = () => {
     </View>
   );
 
-  if (loading) {
-    return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.loadingText}>Loading...</Text>
-      </View>
-    );
-  }
+  const QuickActionCard = React.memo(
+    ({ title, description, icon, onPress, color, disabled }) => (
+      <TouchableOpacity
+        style={[
+          styles.quickActionCard,
+          { backgroundColor: color, opacity: disabled ? 0.5 : 1 },
+        ]}
+        onPress={onPress}
+        disabled={disabled}
+      >
+        <View style={styles.quickActionContent}>
+          <View style={styles.quickActionIconContainer}>
+            <Icon name={icon} size={24} color="#FFFFFF" />
+          </View>
+          <View style={styles.quickActionTextContainer}>
+            <Text style={styles.quickActionTitle}>{title}</Text>
+            <Text style={styles.quickActionDescription}>{description}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    )
+  );
+
+  const handleAddUserSuccess = useCallback(() => {
+    fetchAllUsers();
+  }, []);
 
   return (
-    <ScrollView style={styles.mainContainer}>
-      <View style={styles.header}>
-        <View style={styles.leftContent}>
-          <Icon
-            name="shield-checkmark-outline"
-            size={24}
-            color="#FFD700"
-            style={styles.icon}
-          />
-          <Text style={styles.greeting}>Welcome,</Text>
-        </View>
-        <View style={styles.rightContent}>
-          <Text style={styles.username}>{username.split(" ")[0]}</Text>
-        </View>
-      </View>
-
-      {/* Total Fines Card */}
-      <View style={styles.statsContainer}>
-        <View style={styles.landscapeFineStatCard}>
-          <View style={styles.landscapeFineStatIconWrap}>
-            <Icon
-              name="wallet-outline"
-              size={36}
-              color="#fff"
-              style={{ opacity: 0.95 }}
-            />
+    <View style={styles.mainContainer}>
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        <Animated.View
+          style={[
+            styles.header,
+            {
+              opacity: fadeAnim,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
+          <View style={styles.headerContent}>
+            <View style={styles.headerLeft}>
+              <View style={styles.headerIcon}>
+                <Icon
+                  name="shield-checkmark-outline"
+                  size={24}
+                  color="#FFD700"
+                />
+              </View>
+              <View>
+                <Text style={[styles.headerText, styles.headerGreeting]}>
+                  {getGreeting()}
+                </Text>
+                <Text style={[styles.headerText, styles.headerUsername]}>
+                  {username.split(" ")[0]}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.headerActionButton}
+                onPress={() => setShowSettingsModal(true)}
+              >
+                <Icon name="settings-outline" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.headerActionButton}
+                onPress={() => setShowNotifications(true)}
+              >
+                <Icon name="notifications-outline" size={20} color="#FFFFFF" />
+                {unreadNotifications > 0 && (
+                  <View style={styles.notificationBadge}>
+                    <Text style={styles.notificationBadgeText}>
+                      {unreadNotifications}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-          <View style={styles.landscapeFineStatTextWrap}>
-            <Text style={styles.landscapeFineStatValue}>
-              ₱
-              {typeof totalStudentFines === "number"
-                ? totalStudentFines.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
+        </Animated.View>
+
+        <View style={styles.statsContainer}>
+          <View style={styles.statsCard}>
+            <View style={styles.statsHeader}>
+              <View style={styles.statsIcon}>
+                <Icon name="wallet-outline" size={24} color="#FFFFFF" />
+              </View>
+              <View>
+                <Text style={styles.statsTitle}>Total Student Fines</Text>
+                <Text style={styles.statsValue}>
+                  ₱
+                  {typeof totalStudentFines === "number"
+                    ? totalStudentFines.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                      })
+                    : "0.00"}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.quickActionsContainer}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <View style={styles.quickActionsGrid}>
+            <View style={styles.quickActionCard}>
+              <TouchableOpacity
+                style={styles.quickActionInner}
+                onPress={() => setShowAddUserModal(true)}
+                disabled={isAddingUser}
+              >
+                <View
+                  style={[
+                    styles.quickActionIcon,
+                    { backgroundColor: "#0A2463" },
+                  ]}
+                >
+                  <Icon name="person-add-outline" size={24} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionTitle}>Add Student</Text>
+                <Text style={styles.quickActionDescription}>
+                  Register new student account
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.quickActionCard}>
+              <TouchableOpacity
+                style={styles.quickActionInner}
+                onPress={() =>
+                  navigation.navigate("ActivityHistory", {
+                    activities: recentActivities,
                   })
-                : "0.00"}
-            </Text>
-            <Text style={styles.landscapeFineStatLabel}>
-              Total Student Fines
-            </Text>
+                }
+                disabled={isAddingUser}
+              >
+                <View
+                  style={[
+                    styles.quickActionIcon,
+                    { backgroundColor: "#2E7D32" },
+                  ]}
+                >
+                  <Icon name="time-outline" size={24} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionTitle}>Activity History</Text>
+                <Text style={styles.quickActionDescription}>
+                  View recent system activities
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.quickActionCard}>
+              <TouchableOpacity
+                style={styles.quickActionInner}
+                onPress={() => navigation.navigate("Reports")}
+                disabled={isAddingUser}
+              >
+                <View
+                  style={[
+                    styles.quickActionIcon,
+                    { backgroundColor: "#2E7D32" },
+                  ]}
+                >
+                  <Icon name="bar-chart-outline" size={24} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionTitle}>View Reports</Text>
+                <Text style={styles.quickActionDescription}>
+                  Generate and view reports
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.quickActionCard}>
+              <TouchableOpacity
+                style={styles.quickActionInner}
+                onPress={() => navigation.navigate("StudentOverview")}
+                disabled={isAddingUser}
+              >
+                <View
+                  style={[
+                    styles.quickActionIcon,
+                    { backgroundColor: "#6D28D9" },
+                  ]}
+                >
+                  <Icon name="people-outline" size={24} color="#FFFFFF" />
+                </View>
+                <Text style={styles.quickActionTitle}>Student Overview</Text>
+                <Text style={styles.quickActionDescription}>
+                  View student statistics
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
 
-      {/* Quick Actions Section */}
-      <View style={styles.quickActionsContainer}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.quickActionsGrid}>
-          <QuickActionCard
-            title="Add Student"
-            description="Register new student account"
-            icon="person-add-outline"
-            onPress={() => setShowAddUserModal(true)}
-            color="#0A2463"
-          />
-          <QuickActionCard
-            title="Manage Fines"
-            description="View and update student fines"
-            icon="cash-outline"
-            onPress={() => {
-              /* TODO: Navigate to fines management */
-            }}
-            color="#3E92CC"
-          />
-          <QuickActionCard
-            title="View Reports"
-            description="Generate and view reports"
-            icon="bar-chart-outline"
-            onPress={() => {
-              /* TODO: Navigate to reports */
-            }}
-            color="#2E7D32"
-          />
-          <QuickActionCard
-            title="Settings"
-            description="Configure system settings"
-            icon="settings-outline"
-            onPress={() => setShowSettingsModal(true)}
-            color="#6D28D9"
-          />
+        <View style={styles.recentActivityContainer}>
+          <View style={styles.activityCard}>
+            <View style={styles.activityHeader}>
+              <Text style={styles.activityTitle}>Recent Activities</Text>
+              <TouchableOpacity
+                style={styles.seeHistoryButton}
+                onPress={() =>
+                  navigation.navigate("ActivityHistory", {
+                    activities: recentActivities,
+                  })
+                }
+              >
+                <Text style={styles.seeHistoryText}>See History</Text>
+                <Icon name="chevron-forward" size={16} color="#0A2463" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.activityList}>
+              {recentActivities.slice(0, 3).map((activity) => (
+                <View key={activity.id} style={styles.activityItem}>
+                  <View
+                    style={[
+                      styles.activityIcon,
+                      {
+                        backgroundColor: `${getActivityColor(activity.type)}20`,
+                      },
+                    ]}
+                  >
+                    <Icon
+                      name={getActivityIcon(activity.type)}
+                      size={16}
+                      color={getActivityColor(activity.type)}
+                    />
+                  </View>
+                  <View style={styles.activityContent}>
+                    <Text style={styles.activityText}>
+                      {formatActivityDescription(activity)}
+                    </Text>
+                    <Text style={styles.activityTime}>
+                      {formatTimeAgo(activity.timestamp)}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
         </View>
-      </View>
+      </ScrollView>
 
-      <RecentActivitySection />
-      <ActivityHistorySection />
-
-      <AddUserModal />
+      <AddUserModal
+        visible={showAddUserModal}
+        onClose={() => setShowAddUserModal(false)}
+        onSuccess={handleAddUserSuccess}
+        isAddingUser={isAddingUser}
+        setIsAddingUser={setIsAddingUser}
+      />
       <SettingsModal />
-    </ScrollView>
+      <NotificationCenter />
+    </View>
   );
 };
 

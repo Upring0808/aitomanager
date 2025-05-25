@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useState, useMemo } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+  useMemo,
+  useRef,
+} from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -9,8 +15,12 @@ import {
   ScrollView,
   RefreshControl,
   Platform,
+  StyleSheet,
+  Dimensions,
+  StatusBar,
 } from "react-native";
 import { createStackNavigator } from "@react-navigation/stack";
+import Ionicons from "react-native-vector-icons/Ionicons";
 
 // Conditionally import BackHandler to prevent errors on web
 let BackHandler;
@@ -50,84 +60,143 @@ import {
   updateDoc,
   doc,
   getDoc,
+  orderBy,
 } from "firebase/firestore";
+import { useAuth } from "../context/AuthContext";
 
 // Create a stack navigator for nested screens
-// Note: This stack navigator is not used directly in this component
-// It's used by the DashboardNavigator in App.js
 const DashboardStack = createStackNavigator();
 
-// Helper function to check if user is authenticated
-const isAuthenticated = () => {
-  return !!auth.currentUser;
-};
+// Add styles object before the Dashboard component
+const styles = StyleSheet.create({
+  loadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(248, 249, 250, 0.95)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
+  },
+  loadingOverlayDark: {
+    backgroundColor: "rgba(18, 18, 18, 0.95)",
+  },
+  loadingContent: {
+    alignItems: "center",
+    padding: 20,
+  },
+  loadingTextNeutral: {
+    marginTop: 15,
+    fontSize: 16,
+    color: "#203562",
+    fontWeight: "500",
+    letterSpacing: 0.5,
+  },
+  loadingTextDark: {
+    color: "#FFFFFF",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  errorText: {
+    color: "#EF4444",
+    fontSize: 16,
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  retryButton: {
+    backgroundColor: "#203562",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "500",
+  },
+  sessionExpiredContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f8f9fa",
+  },
+  sessionExpiredText: {
+    fontSize: 16,
+    color: "#203562",
+    marginBottom: 20,
+  },
+  loginButton: {
+    backgroundColor: "#3652AD",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 5,
+  },
+  loginButtonText: {
+    color: "white",
+    fontSize: 16,
+  },
+  container: {
+    flex: 1,
+  },
+  tabBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+  },
+  tabIndicator: {
+    height: 2,
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  tab: {
+    flex: 1,
+    alignItems: "center",
+    padding: 10,
+  },
+  notificationBadge: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    backgroundColor: "#EF4444",
+    borderRadius: 10,
+    padding: 2,
+  },
+  notificationText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  statusBarBackground: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: Platform.OS === "ios" ? 44 : StatusBar.currentHeight,
+    zIndex: 1,
+  },
+});
 
 // Main Dashboard component that contains the nested navigator
 const Dashboard = ({ navigation, route }) => {
-  // Extract initial screen from route params if available
-  const initialScreen = route?.params?.screen || "Home";
-
-  // Handle nested navigation - this is important for proper navigation from other screens
-  React.useEffect(() => {
-    if (route.params?.screen) {
-      // If we receive a screen parameter, navigate to that screen
-      // Use a slight delay to ensure the component is fully mounted
-      const timer = setTimeout(() => {
-        // Check if the component is still mounted and auth is still valid
-        if (auth.currentUser) {
-          navigation.navigate(route.params.screen);
-        }
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [route.params?.screen, navigation]);
-
-  // Find the initial tab index based on the screen name
-  const findTabIndex = (tabName) => {
-    return ADMIN_TABS.findIndex((tab) => tab.name === tabName);
-  };
-
-  const [activeTab, setActiveTab] = useState(initialScreen);
-  const [activeTabIndex, setActiveTabIndex] = useState(
-    findTabIndex(initialScreen)
-  );
-  const [translateX] = useState(
-    new Animated.Value(
-      findTabIndex(initialScreen) * constants.tabWidth +
-        (constants.tabWidth - constants.underlineWidth) / 2
-    )
-  );
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState("Home");
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
+  const [translateX] = useState(new Animated.Value(0));
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [loadingAvatar, setLoadingAvatar] = useState(true);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const insets = useSafeAreaInsets();
-  // No longer need fadeAnim for tab transitions
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-
-  // Navigate to the correct screen when receiving screen parameter
-  useEffect(() => {
-    if (route.params?.screen && auth.currentUser) {
-      const tabName = route.params.screen;
-      const tabIndex = findTabIndex(tabName);
-
-      if (tabIndex !== -1) {
-        setActiveTab(tabName);
-        setActiveTabIndex(tabIndex);
-
-        // Animate the underline to the new position
-        Animated.spring(translateX, {
-          toValue:
-            tabIndex * constants.tabWidth +
-            (constants.tabWidth - constants.underlineWidth) / 2,
-          useNativeDriver: true,
-          friction: 8,
-        }).start();
-      }
-    }
-  }, [route.params?.screen, translateX]);
-
-  // Replace the hardcoded notifications with dynamic state
+  const [isNavigationReady, setIsNavigationReady] = useState(false);
   const [notifications, setNotifications] = useState({
     Home: 0,
     Fines: 0,
@@ -135,89 +204,238 @@ const Dashboard = ({ navigation, route }) => {
     Events: 0,
     Profile: 0,
   });
-
-  // Add state to track last viewed timestamps
   const [lastViewed, setLastViewed] = useState({
     Fines: new Date(0),
     Events: new Date(0),
   });
 
-  // Load last viewed timestamps from Firestore on component mount
+  // Single loading state for the entire dashboard
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [initError, setInitError] = useState(null);
+
+  // Data storage - using refs to prevent rerenders
+  const dashboardData = useRef({
+    user: null,
+    events: [],
+    fines: [],
+    people: {
+      officers: [],
+      students: [],
+    },
+  });
+
+  // Control refs
+  const initialLoadComplete = useRef(false);
+  const lastNavigationScreen = useRef(null);
+  const unsubscribersRef = useRef({
+    fines: null,
+    events: null,
+    avatar: null,
+  });
+
+  // Memoize the theme to prevent re-renders
+  const theme = useMemo(
+    () => ({
+      background: isDarkMode ? "#121212" : "#FFFFFF",
+      text: isDarkMode ? "#FFFFFF" : "#000000",
+      tabBackground: isDarkMode ? "#1E1E1E" : "#F8F8F8",
+      tabActiveColor: "#3652AD",
+      tabInactiveColor: isDarkMode ? "#888888" : "#AAAAAA",
+    }),
+    [isDarkMode]
+  );
+
+  // Get screen width and calculate tab dimensions
+  const screenWidth = Dimensions.get("window").width;
+  const tabWidth = screenWidth / 5;
+  const underlineWidth = tabWidth * 0.8; // Make underline 80% of tab width
+  const underlineOffset = (tabWidth - underlineWidth) / 2; // Center the underline
+
+  // Check if navigation is ready
   useEffect(() => {
-    const loadLastViewed = async () => {
-      const user = auth.currentUser;
-      if (!user) return;
+    if (navigation) {
+      setIsNavigationReady(true);
+    }
+  }, [navigation]);
 
+  // Single initialization effect - load everything at once
+  useEffect(() => {
+    if (!user || initialLoadComplete.current) return;
+
+    let isMounted = true;
+
+    const initializeDashboard = async () => {
       try {
-        const userDocRef = doc(db, "users", user.uid);
-        const userDoc = await getDoc(userDocRef);
+        console.log("[Dashboard] Initializing dashboard for user:", user.uid);
 
-        if (userDoc.exists() && userDoc.data().lastViewed) {
-          const data = userDoc.data().lastViewed;
+        // Load all data concurrently
+        const [
+          userSnapshot,
+          eventsSnapshot,
+          finesSnapshot,
+          peopleSnapshot,
+          avatarData,
+          lastViewedData,
+        ] = await Promise.all([
+          // User data
+          getDocs(query(collection(db, "users"), where("uid", "==", user.uid))),
+          // Events data
+          getDocs(query(collection(db, "events"), orderBy("dueDate", "asc"))),
+          // Fines data
+          getDocs(query(collection(db, "fines"), orderBy("dueDate", "asc"))),
+          // People data - Remove any filters to get all users
+          getDocs(query(collection(db, "users"))),
+          // Avatar data
+          avatarRealtime
+            .fetchAvatar(user)
+            .catch((err) => ({ avatarUrl: null, error: err })),
+          // Last viewed data
+          getDoc(doc(db, "users", user.uid)).catch((err) => ({
+            exists: () => false,
+            error: err,
+          })),
+        ]);
+
+        if (!isMounted) return;
+
+        // Process user data
+        let userData = null;
+        if (!userSnapshot.empty) {
+          const userDoc = userSnapshot.docs[0];
+          userData = {
+            id: userDoc.id,
+            uid: user.uid,
+            username: user.displayName,
+            email: user.email,
+            ...userDoc.data(),
+          };
+        }
+
+        // Process events data
+        const eventsData = eventsSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          dueDate: doc.data().dueDate?.toDate(),
+        }));
+
+        // Process fines data
+        const finesData = finesSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          dueDate: doc.data().dueDate?.toDate(),
+        }));
+
+        // Process people data - Improved data processing
+        const peopleData = peopleSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          username: doc.data().username || doc.data().displayName || "Unknown",
+          yearLevel: doc.data().yearLevel || "N/A",
+          bio: doc.data().bio || null,
+          role: doc.data().role || "student",
+          email: doc.data().email || null,
+          avatarUrl: doc.data().avatarUrl || null,
+        }));
+
+        // Split people into officers and students - Improved filtering
+        const officersData = [];
+        const studentsData = [];
+        peopleData.forEach((user) => {
+          if (user.role === "treasurer" || user.role === "secretary") {
+            officersData.push(user);
+          } else {
+            // Include all other users as students
+            studentsData.push(user);
+          }
+        });
+
+        // Sort students by username
+        studentsData.sort((a, b) =>
+          (a.username || "").localeCompare(b.username || "")
+        );
+
+        // Sort officers by role and then username
+        officersData.sort((a, b) => {
+          if (a.role !== b.role) {
+            return a.role === "treasurer" ? -1 : 1;
+          }
+          return (a.username || "").localeCompare(b.username || "");
+        });
+
+        // Process avatar data
+        if (!avatarData.error) {
+          setAvatarUrl(avatarData.avatarUrl);
+        }
+        setLoadingAvatar(false);
+
+        // Process last viewed data
+        if (
+          lastViewedData.exists &&
+          lastViewedData.exists() &&
+          lastViewedData.data().lastViewed
+        ) {
+          const data = lastViewedData.data().lastViewed;
           setLastViewed({
             Fines: data.Fines ? new Date(data.Fines) : new Date(0),
             Events: data.Events ? new Date(data.Events) : new Date(0),
           });
-        } else {
-          // Initialize lastViewed if it doesn't exist
-          setLastViewed({
-            Fines: new Date(0),
-            Events: new Date(0),
-          });
         }
+
+        // Store all data in ref
+        dashboardData.current = {
+          user: userData,
+          events: eventsData,
+          fines: finesData,
+          people: {
+            officers: officersData,
+            students: studentsData,
+          },
+        };
+
+        // Set up real-time listeners after initial load
+        await setupRealtimeListeners(userData?.id);
+
+        // Set up avatar subscription
+        setupAvatarSubscription();
+
+        initialLoadComplete.current = true;
+        setIsInitializing(false);
+        setInitError(null);
+
+        console.log("[Dashboard] Dashboard initialization completed");
+        console.log("[Dashboard] Total students loaded:", studentsData.length);
+        console.log("[Dashboard] Total officers loaded:", officersData.length);
       } catch (error) {
-        console.error(
-          "[Dashboard] Error loading last viewed timestamps:",
-          error
-        );
-        // Set default values on error
-        setLastViewed({
-          Fines: new Date(0),
-          Events: new Date(0),
-        });
+        console.error("[Dashboard] Error initializing dashboard:", error);
+        if (isMounted) {
+          setInitError(error.message || "Failed to initialize dashboard");
+          setIsInitializing(false);
+        }
       }
     };
 
-    loadLastViewed();
-  }, []);
-
-  // Set up listeners for new fines and events
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    // Get user document ID
-    const getUserDocId = async () => {
-      try {
-        const userQuery = query(
-          collection(db, "users"),
-          where("uid", "==", user.uid)
-        );
-        const userSnapshot = await getDocs(userQuery);
-
-        if (userSnapshot.empty) return null;
-        return userSnapshot.docs[0].id;
-      } catch (error) {
-        console.error("[Dashboard] Error getting user doc ID:", error);
-        return null;
-      }
-    };
-
-    // Set up listeners once we have the user doc ID
-    let finesUnsubscribe = () => {};
-    let eventsUnsubscribe = () => {};
-
-    getUserDocId().then((userDocId) => {
+    // Setup realtime listeners
+    const setupRealtimeListeners = async (userDocId) => {
       if (!userDocId) return;
 
       try {
-        // Listen for fines
+        // Clean up existing listeners
+        Object.values(unsubscribersRef.current).forEach((unsub) => {
+          if (unsub && typeof unsub === "function") {
+            try {
+              unsub();
+            } catch (error) {
+              console.error("[Dashboard] Error cleaning up listener:", error);
+            }
+          }
+        });
+
+        // Set up fines listener
         const finesQuery = query(
           collection(db, "fines"),
           where("userId", "==", userDocId)
         );
-
-        finesUnsubscribe = onSnapshot(
+        unsubscribersRef.current.fines = onSnapshot(
           finesQuery,
           (snapshot) => {
             const newFines = snapshot.docs
@@ -238,8 +456,8 @@ const Dashboard = ({ navigation, route }) => {
           }
         );
 
-        // Listen for events
-        eventsUnsubscribe = onSnapshot(
+        // Set up events listener
+        unsubscribersRef.current.events = onSnapshot(
           collection(db, "events"),
           (snapshot) => {
             const newEvents = snapshot.docs
@@ -260,29 +478,95 @@ const Dashboard = ({ navigation, route }) => {
           }
         );
       } catch (error) {
-        console.error("[Dashboard] Error setting up listeners:", error);
-      }
-    });
-
-    return () => {
-      try {
-        finesUnsubscribe();
-        eventsUnsubscribe();
-      } catch (error) {
-        console.error("[Dashboard] Error unsubscribing listeners:", error);
+        console.error(
+          "[Dashboard] Error setting up realtime listeners:",
+          error
+        );
       }
     };
-  }, [lastViewed]);
 
-  // Update last viewed timestamp when tab is selected
+    // Setup avatar subscription
+    const setupAvatarSubscription = () => {
+      try {
+        unsubscribersRef.current.avatar =
+          avatarRealtime.subscribeToAvatarUpdates(user, (newAvatarUrl) => {
+            setAvatarUrl(newAvatarUrl);
+            // Update the stored user data
+            if (dashboardData.current.user) {
+              dashboardData.current.user.avatarUrl = newAvatarUrl;
+            }
+          });
+      } catch (error) {
+        console.error("[Dashboard] Avatar subscription error:", error);
+      }
+    };
+
+    initializeDashboard();
+
+    return () => {
+      isMounted = false;
+      // Clean up all listeners
+      Object.values(unsubscribersRef.current).forEach((unsub) => {
+        if (unsub && typeof unsub === "function") {
+          try {
+            unsub();
+          } catch (error) {
+            console.error(
+              "[Dashboard] Error cleaning up listener on unmount:",
+              error
+            );
+          }
+        }
+      });
+    };
+  }, [user]);
+
+  // Handle navigation parameters - only after initialization
+  useEffect(() => {
+    if (!route.params?.screen || isInitializing) return;
+
+    const screenName = route.params.screen;
+    if (screenName === lastNavigationScreen.current) return;
+
+    lastNavigationScreen.current = screenName;
+    const tabIndex = ADMIN_TABS.findIndex((tab) => tab.name === screenName);
+
+    if (tabIndex !== -1) {
+      setActiveTab(screenName);
+      setActiveTabIndex(tabIndex);
+
+      // Animate the underline with proper offset
+      Animated.spring(translateX, {
+        toValue: tabIndex * tabWidth + underlineOffset,
+        useNativeDriver: true,
+        tension: 50,
+        friction: 7,
+      }).start();
+    }
+  }, [
+    route.params?.screen,
+    isInitializing,
+    translateX,
+    tabWidth,
+    underlineOffset,
+  ]);
+
+  // Tab press handler
   const handleTabPress = useCallback(
     (name, index) => {
-      // Change tab without animation
       setActiveTab(name);
       setActiveTabIndex(index);
 
-      // Update last viewed timestamp for the tab
-      if ((name === "Fines" || name === "Events") && auth.currentUser) {
+      // Animate the underline with proper offset
+      Animated.spring(translateX, {
+        toValue: index * tabWidth + underlineOffset,
+        useNativeDriver: true,
+        tension: 50,
+        friction: 7,
+      }).start();
+
+      // Update last viewed timestamp for Fines and Events tabs
+      if ((name === "Fines" || name === "Events") && user) {
         const now = new Date();
         setLastViewed((prev) => ({
           ...prev,
@@ -295,20 +579,17 @@ const Dashboard = ({ navigation, route }) => {
           [name]: 0,
         }));
 
-        // Save last viewed timestamp to Firestore
+        // Save to Firestore
         try {
-          const user = auth.currentUser;
-          if (user) {
-            const userDocRef = doc(db, "users", user.uid);
-            updateDoc(userDocRef, {
-              [`lastViewed.${name}`]: now,
-            }).catch((error) => {
-              console.error(
-                `[Dashboard] Error updating last viewed for ${name}:`,
-                error
-              );
-            });
-          }
+          const userDocRef = doc(db, "users", user.uid);
+          updateDoc(userDocRef, {
+            [`lastViewed.${name}`]: now,
+          }).catch((error) => {
+            console.error(
+              `[Dashboard] Error updating last viewed for ${name}:`,
+              error
+            );
+          });
         } catch (error) {
           console.error(
             `[Dashboard] Error in handleTabPress for ${name}:`,
@@ -317,222 +598,96 @@ const Dashboard = ({ navigation, route }) => {
         }
       }
     },
-    [lastViewed]
+    [user, translateX, tabWidth, underlineOffset]
   );
 
-  // Create a theme object based on the dark mode state
-  const theme = useMemo(
-    () => ({
-      background: isDarkMode ? "#121212" : "#FFFFFF",
-      text: isDarkMode ? "#FFFFFF" : "#000000",
-      tabBackground: isDarkMode ? "#1E1E1E" : "#F8F8F8",
-      tabActiveColor: "#3652AD",
-      tabInactiveColor: isDarkMode ? "#888888" : "#AAAAAA",
-    }),
-    [isDarkMode]
-  );
-
-  // Handle back button press
-  useFocusEffect(
-    useCallback(() => {
-      // Skip BackHandler setup on web where it's not supported
-      if (Platform.OS !== "web") {
-        const onBackPress = () => {
-          // Only show logout modal if we're still logged in
-          if (auth.currentUser) {
-            setShowLogoutModal(true);
-            return true; // Prevents default back action
-          }
-          return false; // Allow default back action if not logged in
-        };
-
-        const subscription = BackHandler.addEventListener(
-          "hardwareBackPress",
-          onBackPress
-        );
-
-        return () => {
-          try {
-            subscription.remove();
-          } catch (error) {
-            console.error("[Dashboard] Error removing back handler:", error);
-          }
-        };
-      }
-      return () => {}; // Return empty cleanup for web
-    }, [])
-  );
-
-  // Handle logout function
+  // Logout handler
   const handleLogout = useCallback(async () => {
     try {
-      // First clean up presence service
+      // Clean up listeners first
+      Object.values(unsubscribersRef.current).forEach((unsub) => {
+        if (unsub && typeof unsub === "function") {
+          try {
+            unsub();
+          } catch (error) {
+            console.error(
+              "[Dashboard] Error cleaning up listener during logout:",
+              error
+            );
+          }
+        }
+      });
+
+      // Clean up presence service
       await userPresenceService.cleanup();
 
-      // Then sign out from Firebase
+      // Sign out from Firebase
       await auth.signOut();
 
-      // Navigate to Index and reset navigation stack
-      // Use a more reliable approach with a single reset call
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "Index" }],
-      });
+      // Navigate to login with a small delay to ensure cleanup is complete
+      if (isNavigationReady && navigation) {
+        setTimeout(() => {
+          navigation.replace("Index");
+        }, 100);
+      }
     } catch (error) {
       console.error("[Dashboard] Error during logout:", error);
-      // Attempt to navigate anyway with a single reset call
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "Index" }],
-      });
-    }
-  }, [navigation]);
-
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (user) {
-      let unsubscribe = () => {};
-      try {
-        unsubscribe = avatarRealtime.subscribeToAvatarUpdates(
-          user,
-          (newAvatarUrl) => {
-            setAvatarUrl(newAvatarUrl);
-            setLoadingAvatar(false);
-          }
-        );
-
-        avatarRealtime
-          .fetchAvatar(user)
-          .then(({ avatarUrl, error }) => {
-            if (!error) {
-              setAvatarUrl(avatarUrl);
-              setLoadingAvatar(false);
-            } else {
-              console.error("[Dashboard] Error fetching avatar:", error);
-              setLoadingAvatar(false);
-            }
-          })
-          .catch((error) => {
-            console.error("[Dashboard] Avatar fetch exception:", error);
-            setLoadingAvatar(false);
-          });
-      } catch (error) {
-        console.error("[Dashboard] Avatar subscription error:", error);
-        setLoadingAvatar(false);
+      if (isNavigationReady && navigation) {
+        navigation.replace("Index");
       }
-
-      return () => {
-        try {
-          unsubscribe();
-        } catch (error) {
-          console.error("[Dashboard] Error unsubscribing avatar:", error);
-        }
-      };
-    } else {
-      setLoadingAvatar(false);
     }
-  }, []);
+  }, [navigation, isNavigationReady]);
 
-  // Update the translateX value when activeTabIndex changes (except when changed by route params)
-  useEffect(() => {
-    // Skip animation if the change was triggered by route.params (handled in the other useEffect)
-    // Also ensure we have a valid auth state
-    if (!route.params?.screen && auth.currentUser) {
-      Animated.spring(translateX, {
-        toValue:
-          activeTabIndex * constants.tabWidth +
-          (constants.tabWidth - constants.underlineWidth) / 2,
-        useNativeDriver: true,
-        friction: 8,
-      }).start();
-    }
-  }, [activeTabIndex, translateX, route.params?.screen]);
-
-  // Add refresh functionality
-  const onRefresh = useCallback(() => {
-    if (!auth.currentUser) {
-      setRefreshing(false);
-      return;
-    }
-
-    setRefreshing(true);
-    // Fetch fresh data here based on the active tab
-    try {
-      // Reload avatar
-      if (auth.currentUser) {
-        avatarRealtime
-          .fetchAvatar(auth.currentUser)
-          .then(({ avatarUrl, error }) => {
-            if (!error) {
-              setAvatarUrl(avatarUrl);
-            }
-          })
-          .catch((error) => {
-            console.error("[Dashboard] Error refreshing avatar:", error);
-          });
-      }
-
-      // Complete refresh after a delay
-      setTimeout(() => {
-        setRefreshing(false);
-      }, 1500);
-    } catch (error) {
-      console.error("[Dashboard] Error during refresh:", error);
-      setRefreshing(false);
-    }
-  }, []);
-
-  // This function is already defined above, so we're removing this duplicate
-
-  const handleAvatarError = useCallback(() => {
-    console.log("[Dashboard] Avatar loading error, using fallback");
-    setAvatarUrl(null);
-    setLoadingAvatar(false);
-  }, []);
-
-  // Render content without animation
+  // Render content - always render the full dashboard structure
   const renderContent = useCallback(() => {
-    // If user is not logged in, don't render content
-    if (!auth.currentUser) {
-      return (
-        <View
-          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-        >
-          <Text>Please log in to view this content</Text>
-        </View>
-      );
-    }
-
-    let content;
     switch (activeTab) {
       case "Home":
-        content = <Home />;
-        break;
-      case "Fines":
-        content = <Fines />;
-        break;
-      case "People":
-        content = <People />;
-        break;
-      case "Profile":
-        content = <Profile onAvatarUpdate={avatarRealtime.fetchAvatar} />;
-        break;
+        return (
+          <Home
+            initialData={dashboardData.current.user}
+            isDataPreloaded={!isInitializing}
+          />
+        );
       case "Events":
-        content = <Events />;
-        break;
+        return (
+          <Events
+            initialData={dashboardData.current.events}
+            isDataPreloaded={!isInitializing}
+          />
+        );
+      case "Fines":
+        return (
+          <Fines
+            initialData={dashboardData.current.fines}
+            isDataPreloaded={!isInitializing}
+          />
+        );
+      case "People":
+        return (
+          <People
+            initialData={dashboardData.current.people}
+            isDataPreloaded={!isInitializing}
+          />
+        );
+      case "Profile":
+        return (
+          <Profile
+            initialData={dashboardData.current.user}
+            isDataPreloaded={!isInitializing}
+            onAvatarUpdate={(newAvatarUrl) => {
+              setAvatarUrl(newAvatarUrl);
+              if (dashboardData.current.user) {
+                dashboardData.current.user.avatarUrl = newAvatarUrl;
+              }
+            }}
+          />
+        );
       default:
-        content = <Home />;
+        return <View style={{ flex: 1 }} />;
     }
+  }, [activeTab, isInitializing]);
 
-    return (
-      <View style={{ flex: 1 }}>
-        {content}
-        {/* Render any children passed from navigation if available */}
-        {route.children}
-      </View>
-    );
-  }, [activeTab, route.children]);
-
+  // Render avatar
   const renderAvatar = useCallback(() => {
     if (loadingAvatar) {
       return <ActivityIndicator size="small" color="#aaa" />;
@@ -540,11 +695,7 @@ const Dashboard = ({ navigation, route }) => {
 
     if (avatarUrl) {
       return (
-        <Image
-          source={{ uri: avatarUrl }}
-          style={dashboardStyles.avatar}
-          onError={handleAvatarError}
-        />
+        <Image source={{ uri: avatarUrl }} style={dashboardStyles.avatar} />
       );
     }
 
@@ -562,9 +713,9 @@ const Dashboard = ({ navigation, route }) => {
         }
       />
     );
-  }, [avatarUrl, loadingAvatar, activeTab, handleAvatarError, theme]);
+  }, [avatarUrl, loadingAvatar, activeTab, theme]);
 
-  // Updated renderTab function with notification badges and underline indicator
+  // Render tab
   const renderTab = useCallback(
     ({ name, icon, component: IconComponent }, index) => (
       <TouchableOpacity
@@ -589,7 +740,6 @@ const Dashboard = ({ navigation, route }) => {
           )}
         </View>
 
-        {/* Show notification badge if count > 0 */}
         {notifications[name] > 0 && (
           <View style={dashboardStyles.notificationBadge}>
             <Text style={dashboardStyles.notificationText}>
@@ -612,67 +762,47 @@ const Dashboard = ({ navigation, route }) => {
     [activeTab, renderAvatar, handleTabPress, notifications, theme]
   );
 
-  // Create a custom LogoutWrapper component that shows the modal only when needed
-  const LogoutWrapper = useCallback(() => {
-    // Only show logout modal if we're logged in and modal is visible
-    if (!showLogoutModal || !auth.currentUser) return null;
-
+  // Handle session expiry
+  if (!user) {
     return (
-      <Logout
-        visible={showLogoutModal}
-        onCancel={() => setShowLogoutModal(false)}
-        onConfirm={() => handleLogout()}
-      />
-    );
-  }, [showLogoutModal, handleLogout]);
-
-  // Check if user is logged in before rendering the dashboard
-  if (!auth.currentUser) {
-    // If not logged in, render a loading state or redirect
-    return (
-      <SafeAreaView
-        style={[
-          dashboardStyles.safeArea,
-          { backgroundColor: theme.background },
-        ]}
-        edges={["right", "left"]}
-      >
-        <View
-          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-        >
-          <Text>Session expired. Please log in again.</Text>
-          <TouchableOpacity
-            style={{
-              marginTop: 20,
-              backgroundColor: "#3652AD",
-              paddingVertical: 10,
-              paddingHorizontal: 20,
-              borderRadius: 5,
-            }}
-            onPress={() =>
-              navigation.reset({ index: 0, routes: [{ name: "Index" }] })
+      <View style={styles.sessionExpiredContainer}>
+        <Text style={styles.sessionExpiredText}>
+          Session expired. Please log in again.
+        </Text>
+        <TouchableOpacity
+          style={styles.loginButton}
+          onPress={() => {
+            if (isNavigationReady && navigation) {
+              navigation.replace("Index");
             }
-          >
-            <Text style={{ color: "white" }}>Return to Login</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+          }}
+        >
+          <Text style={styles.loginButtonText}>Return to Login</Text>
+        </TouchableOpacity>
+      </View>
     );
   }
 
-  // Normal dashboard rendering when user is logged in
+  // Always render the full dashboard structure
   return (
     <SafeAreaView
       style={[dashboardStyles.safeArea, { backgroundColor: theme.background }]}
       edges={["right", "left"]}
     >
+      <View
+        style={[
+          styles.statusBarBackground,
+          { backgroundColor: theme.background },
+        ]}
+      />
       <Header
         onLogout={() => setShowLogoutModal(true)}
-        userName={auth.currentUser?.displayName || "User"}
+        userName={user?.displayName || "User"}
         avatarUrl={avatarUrl}
         isDarkMode={isDarkMode}
         toggleDarkMode={() => setIsDarkMode(!isDarkMode)}
       />
+
       <View
         style={[
           dashboardStyles.container,
@@ -680,6 +810,7 @@ const Dashboard = ({ navigation, route }) => {
         ]}
       >
         {renderContent()}
+
         <View
           style={[
             dashboardStyles.footer,
@@ -694,16 +825,70 @@ const Dashboard = ({ navigation, route }) => {
               dashboardStyles.underline,
               {
                 transform: [{ translateX }],
-                width: constants.underlineWidth,
+                width: underlineWidth,
+                backgroundColor: theme.tabActiveColor,
               },
             ]}
           />
           {ADMIN_TABS.map(renderTab)}
         </View>
       </View>
-      <LogoutWrapper />
+
+      {/* Loading overlay - shows on top of dashboard during initialization */}
+      {isInitializing && (
+        <View
+          style={[
+            styles.loadingOverlay,
+            isDarkMode && styles.loadingOverlayDark,
+          ]}
+        >
+          <View style={styles.loadingContent}>
+            <ActivityIndicator size="large" color="#203562" />
+            <Text
+              style={[
+                styles.loadingTextNeutral,
+                isDarkMode && styles.loadingTextDark,
+              ]}
+            >
+              Loading Dashboard...
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Error overlay */}
+      {initError && (
+        <View
+          style={[
+            styles.loadingOverlay,
+            isDarkMode && styles.loadingOverlayDark,
+          ]}
+        >
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>Error: {initError}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => {
+                initialLoadComplete.current = false;
+                setIsInitializing(true);
+                setInitError(null);
+              }}
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {showLogoutModal && (
+        <Logout
+          visible={showLogoutModal}
+          onCancel={() => setShowLogoutModal(false)}
+          onConfirm={handleLogout}
+        />
+      )}
     </SafeAreaView>
   );
 };
 
-export default Dashboard;
+export default React.memo(Dashboard);
