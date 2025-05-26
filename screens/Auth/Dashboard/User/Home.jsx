@@ -77,7 +77,7 @@ const THEME_COLORS = {
 };
 const SPACING = 16;
 
-const Home = () => {
+const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
   const [username, setUsername] = useState("User");
   const [events, setEvents] = useState([]); // Events for the selected date
   const [allEvents, setAllEvents] = useState([]); // All events for the week
@@ -847,9 +847,9 @@ const Home = () => {
   return (
     <ScrollView style={styles.mainContainer}>
       <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#FFFFFF"
-        translucent={true}
+        barStyle={showLogoutModal ? "light-content" : "dark-content"}
+        backgroundColor={showLogoutModal ? "transparent" : "#ffffff"}
+        translucent={!!showLogoutModal}
       />
       <View style={styles.header}>
         <View style={styles.leftContent}>

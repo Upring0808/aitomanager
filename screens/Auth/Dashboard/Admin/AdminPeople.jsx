@@ -598,7 +598,8 @@ const AdminPeople = () => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={THEME_COLOR} />
+        <ActivityIndicator size="large" color="#007BFF" />
+        <Text style={styles.loadingText}>Loading people...</Text>
       </View>
     );
   }
@@ -1146,6 +1147,12 @@ const styles = StyleSheet.create({
   },
   modalScrollView: {
     flex: 1,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#475569",
   },
 });
 

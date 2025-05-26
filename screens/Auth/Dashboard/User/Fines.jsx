@@ -23,7 +23,11 @@ import Icon from "react-native-vector-icons/Ionicons";
 
 const { width, height } = Dimensions.get("window");
 
-const Fines = ({ initialData = [] }) => {
+const Fines = ({
+  initialData = [],
+  isDataPreloaded = false,
+  showLogoutModal,
+}) => {
   const [fines, setFines] = useState(initialData);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
@@ -229,9 +233,9 @@ const Fines = ({ initialData = [] }) => {
   return (
     <View style={styles.container}>
       <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#FFFFFF"
-        translucent={true}
+        barStyle={showLogoutModal ? "light-content" : "dark-content"}
+        backgroundColor={showLogoutModal ? "transparent" : "#ffffff"}
+        translucent={!!showLogoutModal}
       />
       <View style={styles.headerContainer}>
         <View style={styles.headerContent}>

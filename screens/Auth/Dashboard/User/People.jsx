@@ -861,6 +861,7 @@ const checkDirectNetworkStatus = async () => {
 const People = ({
   initialData = { officers: [], students: [] },
   isDataPreloaded = false,
+  showLogoutModal,
 }) => {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
@@ -1243,7 +1244,11 @@ const People = ({
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <StatusBar
+        barStyle={showLogoutModal ? "light-content" : "dark-content"}
+        backgroundColor={showLogoutModal ? "transparent" : "#ffffff"}
+        translucent={!!showLogoutModal}
+      />
 
       <FlatList
         ref={scrollViewRef}

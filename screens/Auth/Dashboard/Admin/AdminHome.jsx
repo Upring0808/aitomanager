@@ -437,6 +437,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 4,
     marginBottom: 20,
+    paddingHorizontal: 16,
   },
   modalTitle: {
     fontSize: 20,
@@ -446,6 +447,7 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     flex: 1,
+    paddingHorizontal: 24,
   },
   modalFooter: {
     flexDirection: "row",
@@ -676,7 +678,128 @@ const styles = StyleSheet.create({
   requirementMet: {
     color: "#16a34a",
   },
+  roleCard: {
+    width: 120,
+    height: 60,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
+  },
+  selectedRoleCard: {
+    borderWidth: 2,
+    backgroundColor: "#0A2463",
+    borderColor: "#0A2463",
+  },
 });
+
+// Add this before AddUserModal
+const roleDetails = {
+  student: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "Student",
+  },
+  governor: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "Governor",
+  },
+  vice_governor: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "Vice Governor",
+  },
+  secretary: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "Secretary",
+  },
+  assistant_secretary: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "Assistant Secretary",
+  },
+  treasurer: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "Treasurer",
+  },
+  assistant_treasurer: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "Assistant Treasurer",
+  },
+  auditor: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "Auditor",
+  },
+  business_manager: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "Business Manager",
+  },
+  food_committee_chairperson: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "Chairperson, Food Committee",
+  },
+  public_information_officer: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "Public Information Officer",
+  },
+  gentleman_officer: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "Gentleman Officer",
+  },
+  lady_officer: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "Lady Officer",
+  },
+  first_year_mayor: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "1st Year Mayor",
+  },
+  second_year_mayor: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "2nd Year Mayor",
+  },
+  third_year_mayor: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "3rd Year Mayor",
+  },
+  fourth_year_mayor: {
+    color: "#F8FAFC",
+    borderColor: "#E2E8F0",
+    selectedColor: "#0A2463",
+    label: "4th Year Mayor",
+  },
+};
 
 // Define AddUserModal component before AdminHome
 const AddUserModal = React.memo(
@@ -911,354 +1034,356 @@ const AddUserModal = React.memo(
         statusBarTranslucent={true}
         onRequestClose={handleClose}
       >
-        <View style={styles.modalContainer}>
-          <SafeAreaView
-            style={styles.fullScreenModalContent}
-            edges={["top", "bottom"]}
+        <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ flex: 1 }}
+            keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
           >
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : "height"}
+            <ScrollView
+              ref={scrollRef}
               style={{ flex: 1 }}
-              keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
+              contentContainerStyle={{ flexGrow: 1, paddingBottom: 10 }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+              bounces={true}
             >
-              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.modalHeader}>
-                    <View
-                      style={{ flexDirection: "row", alignItems: "center" }}
-                    >
-                      <View
-                        style={[
-                          styles.headerIcon,
-                          { marginRight: 10, backgroundColor: "#0A246320" },
-                        ]}
-                      >
-                        <Icon
-                          name="person-add-outline"
-                          size={20}
-                          color="#0A2463"
-                        />
-                      </View>
-                      <Text style={[styles.modalTitle, { fontSize: 20 }]}>
-                        Add New Student
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={handleClose}
+              <View style={styles.modalHeader}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <View
+                    style={[
+                      styles.headerIcon,
+                      { marginRight: 10, backgroundColor: "#0A246320" },
+                    ]}
+                  >
+                    <Icon name="person-add-outline" size={20} color="#0A2463" />
+                  </View>
+                  <Text style={[styles.modalTitle, { fontSize: 20 }]}>
+                    Add New Student
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleClose}
+                  style={[
+                    styles.headerActionButton,
+                    { backgroundColor: "#F1F5F9" },
+                  ]}
+                >
+                  <Icon name="close" size={20} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                ref={scrollRef}
+                style={[styles.modalBody, { flex: 1 }]}
+                contentContainerStyle={{ paddingBottom: 10, flexGrow: 1 }}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                showsVerticalScrollIndicator={false}
+                bounces={true}
+              >
+                {/* Form sections */}
+                <View style={[styles.formSection, { marginBottom: 16 }]}>
+                  <Text style={styles.formSectionTitle}>Basic Information</Text>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>
+                      Student ID <Text style={{ color: "#EF4444" }}>*</Text>
+                    </Text>
+                    <TextInput
                       style={[
-                        styles.headerActionButton,
-                        { backgroundColor: "#F1F5F9" },
+                        styles.input,
+                        formErrors.studentId && styles.inputError,
                       ]}
-                    >
-                      <Icon name="close" size={20} color="#64748B" />
-                    </TouchableOpacity>
+                      value={localUser.studentId}
+                      onChangeText={(text) =>
+                        setLocalUser((prev) => ({
+                          ...prev,
+                          studentId: text.toUpperCase(),
+                        }))
+                      }
+                      placeholder="Enter student ID"
+                      placeholderTextColor="#94A3B8"
+                      autoCapitalize="characters"
+                    />
+                    {formErrors.studentId && (
+                      <Text style={styles.errorText}>
+                        {formErrors.studentId}
+                      </Text>
+                    )}
                   </View>
 
-                  <ScrollView
-                    ref={scrollRef}
-                    style={styles.modalBody}
-                    contentContainerStyle={{ paddingBottom: 10 }}
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
-                    bounces={true}
-                  >
-                    {/* Form sections */}
-                    <View style={[styles.formSection, { marginBottom: 16 }]}>
-                      <Text style={styles.formSectionTitle}>
-                        Basic Information
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>
+                      Full Name <Text style={{ color: "#EF4444" }}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        formErrors.fullName && styles.inputError,
+                      ]}
+                      value={localUser.fullName}
+                      onChangeText={(text) =>
+                        setLocalUser((prev) => ({
+                          ...prev,
+                          fullName: text,
+                        }))
+                      }
+                      placeholder="Enter full name"
+                      placeholderTextColor="#94A3B8"
+                    />
+                    {formErrors.fullName && (
+                      <Text style={styles.errorText}>
+                        {formErrors.fullName}
                       </Text>
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>
-                          Student ID <Text style={{ color: "#EF4444" }}>*</Text>
-                        </Text>
-                        <TextInput
-                          style={[
-                            styles.input,
-                            formErrors.studentId && styles.inputError,
-                          ]}
-                          value={localUser.studentId}
-                          onChangeText={(text) =>
-                            setLocalUser((prev) => ({
-                              ...prev,
-                              studentId: text.toUpperCase(),
-                            }))
-                          }
-                          placeholder="Enter student ID"
-                          placeholderTextColor="#94A3B8"
-                          autoCapitalize="characters"
-                        />
-                        {formErrors.studentId && (
-                          <Text style={styles.errorText}>
-                            {formErrors.studentId}
-                          </Text>
-                        )}
-                      </View>
-
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>
-                          Full Name <Text style={{ color: "#EF4444" }}>*</Text>
-                        </Text>
-                        <TextInput
-                          style={[
-                            styles.input,
-                            formErrors.fullName && styles.inputError,
-                          ]}
-                          value={localUser.fullName}
-                          onChangeText={(text) =>
-                            setLocalUser((prev) => ({
-                              ...prev,
-                              fullName: text,
-                            }))
-                          }
-                          placeholder="Enter full name"
-                          placeholderTextColor="#94A3B8"
-                        />
-                        {formErrors.fullName && (
-                          <Text style={styles.errorText}>
-                            {formErrors.fullName}
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-
-                    <View style={[styles.formSection, { marginBottom: 16 }]}>
-                      <Text style={styles.formSectionTitle}>
-                        Account Details
-                      </Text>
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>
-                          Email Address{" "}
-                          <Text style={{ color: "#EF4444" }}>*</Text>
-                        </Text>
-                        <TextInput
-                          style={[
-                            styles.input,
-                            formErrors.email && styles.inputError,
-                          ]}
-                          value={localUser.email}
-                          onChangeText={(text) =>
-                            setLocalUser((prev) => ({ ...prev, email: text }))
-                          }
-                          placeholder="Enter email address"
-                          placeholderTextColor="#94A3B8"
-                          keyboardType="email-address"
-                          autoCapitalize="none"
-                        />
-                        {formErrors.email && (
-                          <Text style={styles.errorText}>
-                            {formErrors.email}
-                          </Text>
-                        )}
-                      </View>
-
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>
-                          Password <Text style={{ color: "#EF4444" }}>*</Text>
-                        </Text>
-                        <View style={styles.passwordInputContainer}>
-                          <TextInput
-                            style={[
-                              styles.passwordInput,
-                              formErrors.password && styles.inputError,
-                            ]}
-                            value={localUser.password}
-                            onChangeText={(text) => {
-                              setLocalUser((prev) => ({
-                                ...prev,
-                                password: text,
-                              }));
-                              checkPasswordStrength(text);
-                            }}
-                            placeholder="Enter password"
-                            placeholderTextColor="#94A3B8"
-                            secureTextEntry={!showPassword}
-                          />
-                          <TouchableOpacity
-                            style={styles.passwordToggle}
-                            onPress={() => setShowPassword(!showPassword)}
-                          >
-                            <Icon
-                              name={
-                                showPassword ? "eye-off-outline" : "eye-outline"
-                              }
-                              size={20}
-                              color="#64748B"
-                            />
-                          </TouchableOpacity>
-                        </View>
-                        <View style={styles.passwordRequirements}>
-                          <Text style={styles.requirementsTitle}>
-                            Password Requirements:
-                          </Text>
-                          <View style={styles.requirementItem}>
-                            <Icon
-                              name={
-                                passwordStrength.length
-                                  ? "checkmark-circle"
-                                  : "ellipse-outline"
-                              }
-                              size={16}
-                              color={
-                                passwordStrength.length ? "#16a34a" : "#64748B"
-                              }
-                            />
-                            <Text
-                              style={[
-                                styles.requirementText,
-                                passwordStrength.length &&
-                                  styles.requirementMet,
-                              ]}
-                            >
-                              At least 6 characters
-                            </Text>
-                          </View>
-                          <View style={styles.requirementItem}>
-                            <Icon
-                              name={
-                                passwordStrength.number
-                                  ? "checkmark-circle"
-                                  : "ellipse-outline"
-                              }
-                              size={16}
-                              color={
-                                passwordStrength.number ? "#16a34a" : "#64748B"
-                              }
-                            />
-                            <Text
-                              style={[
-                                styles.requirementText,
-                                passwordStrength.number &&
-                                  styles.requirementMet,
-                              ]}
-                            >
-                              At least one number
-                            </Text>
-                          </View>
-                          <View style={styles.requirementItem}>
-                            <Icon
-                              name={
-                                passwordStrength.letter
-                                  ? "checkmark-circle"
-                                  : "ellipse-outline"
-                              }
-                              size={16}
-                              color={
-                                passwordStrength.letter ? "#16a34a" : "#64748B"
-                              }
-                            />
-                            <Text
-                              style={[
-                                styles.requirementText,
-                                passwordStrength.letter &&
-                                  styles.requirementMet,
-                              ]}
-                            >
-                              At least one letter
-                            </Text>
-                          </View>
-                        </View>
-                        {formErrors.password && (
-                          <Text style={styles.errorText}>
-                            {formErrors.password}
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-
-                    <View style={styles.formSection}>
-                      <Text style={styles.formSectionTitle}>
-                        Additional Information
-                      </Text>
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>Year Level</Text>
-                        <View style={styles.pickerContainer}>
-                          <Picker
-                            selectedValue={localUser.yearLevel}
-                            onValueChange={(value) =>
-                              setLocalUser((prev) => ({
-                                ...prev,
-                                yearLevel: value,
-                              }))
-                            }
-                            style={styles.picker}
-                            itemStyle={styles.pickerItem}
-                            mode="dropdown"
-                            dropdownIconColor="#1E293B"
-                          >
-                            {[1, 2, 3, 4, 5].map((year) => (
-                              <Picker.Item
-                                key={year}
-                                label={`Year ${year}`}
-                                value={year.toString()}
-                                color="#1E293B"
-                              />
-                            ))}
-                          </Picker>
-                        </View>
-                      </View>
-
-                      <View style={styles.formGroup}>
-                        <Text style={styles.label}>Role</Text>
-                        <View style={styles.pickerContainer}>
-                          <Picker
-                            selectedValue={localUser.role}
-                            onValueChange={(value) =>
-                              setLocalUser((prev) => ({
-                                ...prev,
-                                role: value,
-                              }))
-                            }
-                            style={styles.picker}
-                            itemStyle={styles.pickerItem}
-                            mode="dropdown"
-                            dropdownIconColor="#1E293B"
-                          >
-                            <Picker.Item
-                              label="Student"
-                              value="student"
-                              color="#1E293B"
-                            />
-                            <Picker.Item
-                              label="Treasurer"
-                              value="treasurer"
-                              color="#1E293B"
-                            />
-                            <Picker.Item
-                              label="Secretary"
-                              value="secretary"
-                              color="#1E293B"
-                            />
-                          </Picker>
-                        </View>
-                      </View>
-                    </View>
-                  </ScrollView>
-
-                  <View style={styles.modalFooter}>
-                    <TouchableOpacity
-                      style={[styles.button, styles.cancelButton]}
-                      onPress={handleClose}
-                      disabled={isAdding}
-                    >
-                      <Text style={styles.buttonText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.button, styles.submitButton]}
-                      onPress={handleSubmit}
-                      disabled={isAdding}
-                    >
-                      {isAdding ? (
-                        <ActivityIndicator color="#FFFFFF" size="small" />
-                      ) : (
-                        <Text style={styles.submitButtonText}>Add Student</Text>
-                      )}
-                    </TouchableOpacity>
+                    )}
                   </View>
                 </View>
-              </TouchableWithoutFeedback>
-            </KeyboardAvoidingView>
-          </SafeAreaView>
-        </View>
+
+                <View style={[styles.formSection, { marginBottom: 16 }]}>
+                  <Text style={styles.formSectionTitle}>Account Details</Text>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>
+                      Email Address <Text style={{ color: "#EF4444" }}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        formErrors.email && styles.inputError,
+                      ]}
+                      value={localUser.email}
+                      onChangeText={(text) =>
+                        setLocalUser((prev) => ({ ...prev, email: text }))
+                      }
+                      placeholder="Enter email address"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
+                    {formErrors.email && (
+                      <Text style={styles.errorText}>{formErrors.email}</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>
+                      Password <Text style={{ color: "#EF4444" }}>*</Text>
+                    </Text>
+                    <View style={styles.passwordInputContainer}>
+                      <TextInput
+                        style={[
+                          styles.passwordInput,
+                          formErrors.password && styles.inputError,
+                        ]}
+                        value={localUser.password}
+                        onChangeText={(text) => {
+                          setLocalUser((prev) => ({
+                            ...prev,
+                            password: text,
+                          }));
+                          checkPasswordStrength(text);
+                        }}
+                        placeholder="Enter password"
+                        placeholderTextColor="#94A3B8"
+                        secureTextEntry={!showPassword}
+                      />
+                      <TouchableOpacity
+                        style={styles.passwordToggle}
+                        onPress={() => setShowPassword(!showPassword)}
+                      >
+                        <Icon
+                          name={
+                            showPassword ? "eye-off-outline" : "eye-outline"
+                          }
+                          size={20}
+                          color="#64748B"
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.passwordRequirements}>
+                      <Text style={styles.requirementsTitle}>
+                        Password Requirements:
+                      </Text>
+                      <View style={styles.requirementItem}>
+                        <Icon
+                          name={
+                            passwordStrength.length
+                              ? "checkmark-circle"
+                              : "ellipse-outline"
+                          }
+                          size={16}
+                          color={
+                            passwordStrength.length ? "#16a34a" : "#64748B"
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.requirementText,
+                            passwordStrength.length && styles.requirementMet,
+                          ]}
+                        >
+                          At least 6 characters
+                        </Text>
+                      </View>
+                      <View style={styles.requirementItem}>
+                        <Icon
+                          name={
+                            passwordStrength.number
+                              ? "checkmark-circle"
+                              : "ellipse-outline"
+                          }
+                          size={16}
+                          color={
+                            passwordStrength.number ? "#16a34a" : "#64748B"
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.requirementText,
+                            passwordStrength.number && styles.requirementMet,
+                          ]}
+                        >
+                          At least one number
+                        </Text>
+                      </View>
+                      <View style={styles.requirementItem}>
+                        <Icon
+                          name={
+                            passwordStrength.letter
+                              ? "checkmark-circle"
+                              : "ellipse-outline"
+                          }
+                          size={16}
+                          color={
+                            passwordStrength.letter ? "#16a34a" : "#64748B"
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.requirementText,
+                            passwordStrength.letter && styles.requirementMet,
+                          ]}
+                        >
+                          At least one letter
+                        </Text>
+                      </View>
+                    </View>
+                    {formErrors.password && (
+                      <Text style={styles.errorText}>
+                        {formErrors.password}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+
+                <View style={styles.formSection}>
+                  <Text style={styles.formSectionTitle}>
+                    Additional Information
+                  </Text>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Year Level</Text>
+                    <View style={styles.pickerContainer}>
+                      <Picker
+                        selectedValue={localUser.yearLevel}
+                        onValueChange={(value) =>
+                          setLocalUser((prev) => ({
+                            ...prev,
+                            yearLevel: value,
+                          }))
+                        }
+                        style={styles.picker}
+                        itemStyle={styles.pickerItem}
+                        mode="dropdown"
+                        dropdownIconColor="#1E293B"
+                      >
+                        {[1, 2, 3, 4].map((year) => (
+                          <Picker.Item
+                            key={year}
+                            label={`Year ${year}`}
+                            value={year.toString()}
+                            color="#1E293B"
+                          />
+                        ))}
+                      </Picker>
+                    </View>
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Role</Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={{ marginBottom: 8 }}
+                      contentContainerStyle={{ paddingRight: 16 }}
+                    >
+                      <View style={{ flexDirection: "row", gap: 8 }}>
+                        {Object.entries(roleDetails).map(([role, details]) => (
+                          <TouchableOpacity
+                            key={role}
+                            style={[
+                              styles.roleCard,
+                              {
+                                backgroundColor:
+                                  localUser.role === role
+                                    ? details.selectedColor
+                                    : details.color,
+                                borderColor:
+                                  localUser.role === role
+                                    ? details.selectedColor
+                                    : details.borderColor,
+                              },
+                              localUser.role === role &&
+                                styles.selectedRoleCard,
+                            ]}
+                            onPress={() =>
+                              setLocalUser((prev) => ({ ...prev, role }))
+                            }
+                          >
+                            <Text
+                              style={{
+                                color:
+                                  localUser.role === role
+                                    ? "#FFFFFF"
+                                    : "#475569",
+                                fontWeight:
+                                  localUser.role === role ? "700" : "600",
+                                fontSize: 15,
+                                textAlign: "center",
+                              }}
+                            >
+                              {details.label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+                  </View>
+                </View>
+              </ScrollView>
+
+              <View style={styles.modalFooter}>
+                <TouchableOpacity
+                  style={[styles.button, styles.cancelButton]}
+                  onPress={handleClose}
+                  disabled={isAdding}
+                >
+                  <Text style={styles.buttonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.submitButton]}
+                  onPress={handleSubmit}
+                  disabled={isAdding}
+                >
+                  {isAdding ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <Text style={styles.submitButtonText}>Add Student</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
     );
   }

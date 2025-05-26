@@ -638,6 +638,23 @@ const Dashboard = ({ navigation, route }) => {
     }
   }, [navigation, isNavigationReady]);
 
+  // Handle Android hardware back button to show logout modal globally
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const onBackPress = () => {
+      if (!showLogoutModal) {
+        setShowLogoutModal(true);
+        return true; // Prevent default back action
+      }
+      return false; // Allow default if modal already visible
+    };
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onBackPress
+    );
+    return () => subscription.remove();
+  }, [showLogoutModal]);
+
   // Render content - always render the full dashboard structure
   const renderContent = useCallback(() => {
     switch (activeTab) {
@@ -646,6 +663,7 @@ const Dashboard = ({ navigation, route }) => {
           <Home
             initialData={dashboardData.current.user}
             isDataPreloaded={!isInitializing}
+            showLogoutModal={() => setShowLogoutModal(true)}
           />
         );
       case "Events":
@@ -653,6 +671,7 @@ const Dashboard = ({ navigation, route }) => {
           <Events
             initialData={dashboardData.current.events}
             isDataPreloaded={!isInitializing}
+            showLogoutModal={() => setShowLogoutModal(true)}
           />
         );
       case "Fines":
@@ -660,6 +679,7 @@ const Dashboard = ({ navigation, route }) => {
           <Fines
             initialData={dashboardData.current.fines}
             isDataPreloaded={!isInitializing}
+            showLogoutModal={() => setShowLogoutModal(true)}
           />
         );
       case "People":
@@ -667,6 +687,7 @@ const Dashboard = ({ navigation, route }) => {
           <People
             initialData={dashboardData.current.people}
             isDataPreloaded={!isInitializing}
+            showLogoutModal={() => setShowLogoutModal(true)}
           />
         );
       case "Profile":
@@ -680,6 +701,7 @@ const Dashboard = ({ navigation, route }) => {
                 dashboardData.current.user.avatarUrl = newAvatarUrl;
               }
             }}
+            showLogoutModal={() => setShowLogoutModal(true)}
           />
         );
       default:
@@ -789,6 +811,17 @@ const Dashboard = ({ navigation, route }) => {
       style={[dashboardStyles.safeArea, { backgroundColor: theme.background }]}
       edges={["right", "left"]}
     >
+      <StatusBar
+        barStyle={
+          showLogoutModal
+            ? "light-content"
+            : isDarkMode
+            ? "light-content"
+            : "dark-content"
+        }
+        backgroundColor={showLogoutModal ? "transparent" : theme.background}
+        translucent={showLogoutModal ? true : false}
+      />
       <View
         style={[
           styles.statusBarBackground,

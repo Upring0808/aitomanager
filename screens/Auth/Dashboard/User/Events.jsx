@@ -22,7 +22,11 @@ import EventDetailsCard from "../../../../components/EventDetailsCard";
 import DropdownPicker from "../../../../components/DropdownPicker";
 import { Styles } from "../../../../styles/Styles";
 
-const Events = ({ initialData = [] }) => {
+const Events = ({
+  initialData = [],
+  isDataPreloaded = false,
+  showLogoutModal,
+}) => {
   const [events, setEvents] = useState(initialData);
   const [filter, setFilter] = useState("All");
   const [loading, setLoading] = useState(false);
@@ -151,9 +155,9 @@ const Events = ({ initialData = [] }) => {
   return (
     <SafeAreaView style={Styles.safeArea}>
       <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#FFFFFF"
-        translucent={true}
+        barStyle={showLogoutModal ? "light-content" : "dark-content"}
+        backgroundColor={showLogoutModal ? "transparent" : "#ffffff"}
+        translucent={!!showLogoutModal}
       />
       <View style={Styles.mainContainer}>
         <ScrollView

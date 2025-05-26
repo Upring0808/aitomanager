@@ -206,7 +206,12 @@ const AdminDashboard = ({ navigation, route }) => {
       case "People":
         return <AdminPeople />;
       case "Profile":
-        return <AdminProfile onAvatarUpdate={dashboardServices.fetchAvatar} />;
+        return (
+          <AdminProfile
+            onAvatarUpdate={dashboardServices.fetchAvatar}
+            showLogoutModal={setShowLogoutModal}
+          />
+        );
       case "Events":
         return <AdminEvents />;
       default:

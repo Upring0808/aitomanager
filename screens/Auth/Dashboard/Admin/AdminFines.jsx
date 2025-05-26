@@ -694,7 +694,7 @@ const AdminFines = () => {
                   }
                 >
                   {operationLoading ? (
-                    <ActivityIndicator size="small" color="#fff" />
+                    <ActivityIndicator size="large" color="#007BFF" />
                   ) : (
                     <Text style={styles.buttonText}>Assign</Text>
                   )}
@@ -899,7 +899,7 @@ const AdminFines = () => {
                         disabled={operationLoading}
                       >
                         {operationLoading ? (
-                          <ActivityIndicator size="small" color="#fff" />
+                          <ActivityIndicator size="large" color="#007BFF" />
                         ) : (
                           <>
                             <MaterialIcons
@@ -1149,11 +1149,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8f9fa",
     paddingHorizontal: 16,
     paddingTop: 6,
-    paddingBottom: 0, // Removed bottom padding to maximize space
+    paddingBottom: 0,
+    height: SCREEN_HEIGHT,
   },
   tabContainer: {
     flexDirection: "row",
-    marginBottom: 12, // Reduced from 20 to 12
+    marginBottom: 8,
     backgroundColor: "#fff",
     borderRadius: 15,
     padding: 8,
@@ -1187,7 +1188,7 @@ const styles = StyleSheet.create({
   searchAndFilterContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 6,
     gap: 12,
   },
   searchContainer: {
@@ -1220,7 +1221,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#fff",
     borderRadius: 15,
-    marginBottom: 12,
+    marginBottom: 8,
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -1228,7 +1229,7 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    overflow: "hidden", // Ensure content doesn't overflow rounded corners
+    overflow: "hidden",
   },
   selectedCard: {
     borderColor: "#007BFF",
@@ -1776,10 +1777,10 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     flex: 1,
-    marginBottom: 80, // Reduced to give more space for the list
+    marginBottom: 0,
   },
   listContent: {
-    paddingBottom: 100, // Adjusted to account for the floating button
+    paddingBottom: 0,
     paddingTop: 4,
   },
 });

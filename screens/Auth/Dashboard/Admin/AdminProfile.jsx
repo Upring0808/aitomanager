@@ -12,6 +12,7 @@ import {
   Platform,
   StatusBar,
   SafeAreaView,
+  BackHandler,
 } from "react-native";
 import { auth, db, storage } from "../../../../config/firebaseconfig";
 import {
@@ -30,21 +31,25 @@ import { useNavigation, CommonActions } from "@react-navigation/native";
 import { dashboardServices } from "../../../../services/dashboardServices";
 import { LinearGradient } from "expo-linear-gradient";
 import { userPresenceService } from "../../../../services/UserPresenceService";
+import Logout from "../../../../components/Logout";
 
-const AdminProfile = () => {
+const AdminProfile = ({
+  initialData,
+  onAvatarUpdate,
+  isDataPreloaded = false,
+  showLogoutModal,
+}) => {
   const navigation = useNavigation();
-  const [adminData, setAdminData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [docId, setDocId] = useState(null);
-  const [avatarUrl, setAvatarUrl] = useState(null);
+  const [adminData, setAdminData] = useState(initialData || null);
+  const [loading, setLoading] = useState(!isDataPreloaded && !initialData);
+  const [docId, setDocId] = useState(initialData?.id || null);
+  const [avatarUrl, setAvatarUrl] = useState(initialData?.avatarUrl || null);
   const [editingField, setEditingField] = useState(null);
   const [tempData, setTempData] = useState({
-    username: "",
-    email: "",
-    phone: "",
+    username: initialData?.username || "",
+    email: initialData?.email || "",
+    phone: initialData?.phone || "",
   });
-  const [modalVisible, setModalVisible] = useState(false);
-  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   const [unsubscribeAvatar, setUnsubscribeAvatar] = useState(null);
 
   useEffect(() => {
@@ -211,7 +216,6 @@ const AdminProfile = () => {
         text1: "Logged out",
         text2: "You have been logged out.",
       });
-      // DO NOT navigate here! Let App.js handle the stack change.
     } catch (error) {
       Toast.show({
         type: "error",
@@ -221,8 +225,26 @@ const AdminProfile = () => {
     }
   };
 
+  // Add back button handler
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const onBackPress = () => {
+      showLogoutModal();
+      return true;
+    };
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onBackPress
+    );
+    return () => subscription.remove();
+  }, [showLogoutModal]);
+
   const renderFieldEditModal = () => (
-    <Modal transparent={true} visible={modalVisible} animationType="fade">
+    <Modal
+      transparent={true}
+      visible={editingField !== null}
+      animationType="fade"
+    >
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Edit {editingField}</Text>
@@ -236,7 +258,7 @@ const AdminProfile = () => {
           <View style={styles.modalActions}>
             <TouchableOpacity
               style={styles.modalButton}
-              onPress={() => setModalVisible(false)}
+              onPress={() => setEditingField(null)}
             >
               <Text style={styles.modalButtonText}>Cancel</Text>
             </TouchableOpacity>
@@ -244,7 +266,7 @@ const AdminProfile = () => {
               style={[styles.modalButton, { backgroundColor: "#003161" }]}
               onPress={() => {
                 handleSave(editingField);
-                setModalVisible(false);
+                setEditingField(null);
               }}
             >
               <Text style={[styles.modalButtonText, { color: "white" }]}>
@@ -257,163 +279,130 @@ const AdminProfile = () => {
     </Modal>
   );
 
-  const renderLogoutConfirmModal = () => (
-    <Modal transparent={true} visible={logoutModalVisible} animationType="fade">
-      <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Confirm Logout</Text>
-          <Text style={styles.modalText}>
-            Are you sure you want to log out?
-          </Text>
-          <View style={styles.modalActions}>
-            <TouchableOpacity
-              style={styles.modalButton}
-              onPress={() => setLogoutModalVisible(false)}
-            >
-              <Text style={styles.modalButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modalButton, { backgroundColor: "#003161" }]}
-              onPress={() => {
-                setLogoutModalVisible(false);
-                handleLogout();
-              }}
-            >
-              <Text style={[styles.modalButtonText, { color: "white" }]}>
-                Logout
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <StatusBar
-          barStyle="dark-content"
-          backgroundColor="#f8f9fa"
-          translucent={true}
+          barStyle={showLogoutModal ? "light-content" : "dark-content"}
+          backgroundColor={showLogoutModal ? "transparent" : "#f8f9fa"}
+          translucent={!!showLogoutModal}
         />
-        <ActivityIndicator size="large" color="#203562" />
+        <ActivityIndicator size="large" color="#007BFF" />
         <Text style={styles.loadingTextNeutral}>Loading Profile...</Text>
       </SafeAreaView>
     );
   }
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#f8f9fa"
-        translucent={true}
-      />
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        showsVerticalScrollIndicator={false}
-        bounces={true}
-      >
-        <LinearGradient
-          colors={["#203562", "#16325B"]}
-          style={styles.headerGradient}
+    <View style={{ flex: 1 }}>
+      <SafeAreaView style={styles.container}>
+        <StatusBar
+          barStyle={showLogoutModal ? "light-content" : "dark-content"}
+          backgroundColor={showLogoutModal ? "transparent" : "#ffffff"}
+          translucent={!!showLogoutModal}
+        />
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+          bounces={true}
         >
-          <View style={styles.headerContent}>
-            <View style={styles.avatarContainer}>
-              <TouchableOpacity
-                onPress={pickImage}
-                style={styles.avatarWrapper}
-              >
-                <Image
-                  source={
-                    avatarUrl
-                      ? { uri: avatarUrl }
-                      : require("../../../../assets/aito.png")
-                  }
-                  style={styles.avatar}
-                />
-                <View style={styles.editIconContainer}>
-                  <Feather name="camera" size={18} color="white" />
-                </View>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.username}>
-              {adminData?.username || "Admin"}
-            </Text>
-            <Text style={styles.userRole}>Admin</Text>
-          </View>
-        </LinearGradient>
-
-        <View style={styles.profileCard}>
-          <Text style={styles.sectionTitle}>Admin Information</Text>
-          {["username", "email", "phone"].map((field) => (
-            <TouchableOpacity
-              key={field}
-              onPress={() => {
-                setEditingField(field);
-                setModalVisible(true);
-              }}
-              style={styles.fieldContainer}
-            >
-              <View style={styles.fieldIconContainer}>
-                <Feather
-                  name={
-                    field === "username"
-                      ? "user"
-                      : field === "email"
-                      ? "mail"
-                      : "phone"
-                  }
-                  size={20}
-                  color="#203562"
-                />
-              </View>
-              <View style={styles.fieldContent}>
-                <Text style={styles.label}>
-                  {field.charAt(0).toUpperCase() + field.slice(1)}
-                </Text>
-                <Text
-                  style={[
-                    styles.value,
-                    !adminData?.[field] && styles.placeholderText,
-                  ]}
+          <LinearGradient
+            colors={["#203562", "#16325B"]}
+            style={styles.headerGradient}
+          >
+            <View style={styles.headerContent}>
+              <View style={styles.avatarContainer}>
+                <TouchableOpacity
+                  onPress={pickImage}
+                  style={styles.avatarWrapper}
                 >
-                  {adminData?.[field] || `Add ${field}`}
-                </Text>
+                  <Image
+                    source={
+                      avatarUrl
+                        ? { uri: avatarUrl }
+                        : require("../../../../assets/aito.png")
+                    }
+                    style={styles.avatar}
+                  />
+                  <View style={styles.editIconContainer}>
+                    <Feather name="camera" size={18} color="white" />
+                  </View>
+                </TouchableOpacity>
               </View>
+              <Text style={styles.username}>
+                {adminData?.username || "Admin"}
+              </Text>
+              <Text style={styles.userRole}>Admin</Text>
+            </View>
+          </LinearGradient>
+
+          <View style={styles.profileCard}>
+            <Text style={styles.sectionTitle}>Admin Information</Text>
+            {["username", "email", "phone"].map((field) => (
               <TouchableOpacity
-                style={styles.editButton}
+                key={field}
                 onPress={() => {
                   setEditingField(field);
-                  setModalVisible(true);
                 }}
+                style={styles.fieldContainer}
               >
-                <Feather name="edit-2" size={16} color="#203562" />
+                <View style={styles.fieldIconContainer}>
+                  <Feather
+                    name={
+                      field === "username"
+                        ? "user"
+                        : field === "email"
+                        ? "mail"
+                        : "phone"
+                    }
+                    size={20}
+                    color="#203562"
+                  />
+                </View>
+                <View style={styles.fieldContent}>
+                  <Text style={styles.label}>
+                    {field.charAt(0).toUpperCase() + field.slice(1)}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.value,
+                      !adminData?.[field] && styles.placeholderText,
+                    ]}
+                  >
+                    {adminData?.[field] || `Add ${field}`}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => {
+                    setEditingField(field);
+                  }}
+                >
+                  <Feather name="edit-2" size={16} color="#203562" />
+                </TouchableOpacity>
               </TouchableOpacity>
+            ))}
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity
+              style={styles.logoutButton}
+              onPress={showLogoutModal}
+              activeOpacity={0.7}
+            >
+              <Feather
+                name="log-out"
+                size={18}
+                color="white"
+                style={styles.logoutIcon}
+              />
+              <Text style={styles.logoutButtonText}>Logout</Text>
             </TouchableOpacity>
-          ))}
-
-          <View style={styles.divider} />
-
-          <TouchableOpacity
-            style={styles.logoutButton}
-            onPress={() => setLogoutModalVisible(true)}
-          >
-            <Feather
-              name="log-out"
-              size={18}
-              color="white"
-              style={styles.logoutIcon}
-            />
-            <Text style={styles.logoutButtonText}>Logout</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-
-      {renderFieldEditModal()}
-      {renderLogoutConfirmModal()}
-      <Toast />
-    </SafeAreaView>
+          </View>
+        </ScrollView>
+        {renderFieldEditModal()}
+        <Toast />
+      </SafeAreaView>
+    </View>
   );
 };
 
@@ -614,11 +603,6 @@ const styles = StyleSheet.create({
   modalButtonText: {
     fontSize: 16,
     color: "#000",
-  },
-  modalText: {
-    fontSize: 16,
-    marginBottom: 20,
-    textAlign: "center",
   },
   placeholderText: {
     color: "#94A3B8",

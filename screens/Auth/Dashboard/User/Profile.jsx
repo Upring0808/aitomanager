@@ -13,6 +13,7 @@ import {
   Animated,
   Dimensions,
   StatusBar,
+  BackHandler,
 } from "react-native";
 import { auth, db, storage } from "../../../../config/firebaseconfig";
 import {
@@ -37,8 +38,14 @@ import {
   reauthenticateWithCredential,
   updatePassword,
 } from "firebase/auth";
+import Logout from "../../../../components/Logout";
 
-const Profile = ({ initialData, onAvatarUpdate, isDataPreloaded = false }) => {
+const Profile = ({
+  initialData,
+  onAvatarUpdate,
+  isDataPreloaded = false,
+  showLogoutModal,
+}) => {
   const navigation = useNavigation();
   const [userData, setUserData] = useState(initialData || null);
   const [loading, setLoading] = useState(!isDataPreloaded && !initialData);
@@ -51,7 +58,6 @@ const Profile = ({ initialData, onAvatarUpdate, isDataPreloaded = false }) => {
     phone: initialData?.phone || "",
   });
   const [modalVisible, setModalVisible] = useState(false);
-  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [passwordData, setPasswordData] = useState({
     currentPassword: "",
@@ -505,50 +511,6 @@ const Profile = ({ initialData, onAvatarUpdate, isDataPreloaded = false }) => {
     </Modal>
   );
 
-  const renderLogoutConfirmModal = () => (
-    <Modal
-      transparent={true}
-      visible={logoutModalVisible}
-      animationType="fade"
-      statusBarTranslucent={true}
-    >
-      <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
-          <View style={styles.logoutModalIconContainer}>
-            <View style={styles.logoutModalIcon}>
-              <Feather name="log-out" size={30} color="#203562" />
-            </View>
-          </View>
-
-          <Text style={[styles.modalTitle, { textAlign: "center" }]}>
-            Confirm Logout
-          </Text>
-          <Text style={styles.modalText}>
-            Are you sure you want to log out of your account?
-          </Text>
-
-          <View style={styles.logoutModalActions}>
-            <TouchableOpacity
-              style={styles.modalCancelButton}
-              onPress={() => setLogoutModalVisible(false)}
-            >
-              <Text style={styles.modalCancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.logoutConfirmButton}
-              onPress={() => {
-                setLogoutModalVisible(false);
-                handleLogout();
-              }}
-            >
-              <Text style={styles.logoutConfirmButtonText}>Logout</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
   const renderPasswordChangeModal = () => (
     <Modal
       transparent={true}
@@ -664,6 +626,20 @@ const Profile = ({ initialData, onAvatarUpdate, isDataPreloaded = false }) => {
     </Modal>
   );
 
+  // Remove local logoutModalVisible and use showLogoutModal for back button
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const onBackPress = () => {
+      showLogoutModal();
+      return true;
+    };
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onBackPress
+    );
+    return () => subscription.remove();
+  }, [showLogoutModal]);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -681,9 +657,9 @@ const Profile = ({ initialData, onAvatarUpdate, isDataPreloaded = false }) => {
   return (
     <View style={styles.container}>
       <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#ffffff"
-        translucent={true}
+        barStyle={showLogoutModal ? "dark-content" : "light-content"}
+        backgroundColor={showLogoutModal ? "transparent" : "#ffffff"}
+        translucent={!!showLogoutModal}
       />
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
@@ -799,7 +775,8 @@ const Profile = ({ initialData, onAvatarUpdate, isDataPreloaded = false }) => {
 
           <TouchableOpacity
             style={styles.logoutButton}
-            onPress={() => setLogoutModalVisible(true)}
+            onPress={showLogoutModal}
+            activeOpacity={0.7}
           >
             <Feather
               name="log-out"
@@ -813,7 +790,6 @@ const Profile = ({ initialData, onAvatarUpdate, isDataPreloaded = false }) => {
       </ScrollView>
 
       {renderFieldEditModal()}
-      {renderLogoutConfirmModal()}
       {renderPasswordChangeModal()}
       <Toast />
     </View>
@@ -1102,51 +1078,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   modalSaveButtonText: {
-    fontSize: 15,
-    color: "white",
-    fontWeight: "500",
-    letterSpacing: 0.2,
-  },
-
-  // Logout modal specific styles
-  logoutModalIconContainer: {
-    alignItems: "center",
-    marginBottom: 16,
-    marginTop: 12,
-  },
-  logoutModalIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#f0f4ff",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
-    shadowColor: "#203562",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  logoutModalActions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 16,
-    paddingHorizontal: 8,
-  },
-  logoutConfirmButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    backgroundColor: "#EF4444",
-    flex: 1,
-    marginLeft: 10,
-    alignItems: "center",
-    shadowColor: "#EF4444",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  logoutConfirmButtonText: {
     fontSize: 15,
     color: "white",
     fontWeight: "500",

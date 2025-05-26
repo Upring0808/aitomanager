@@ -42,14 +42,35 @@ const StudentOverview = ({ navigation }) => {
           getDocs(query(finesCollectionRef, where("status", "!=", "paid"))), // Fetch only unpaid fines
         ]);
 
-        const users = usersSnapshot.docs.map((doc) => doc.data());
+        const users = usersSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
         const unpaidFines = finesSnapshot.docs.map((doc) => doc.data());
 
+        // All users with a valid username are counted as students (including officers)
+        const students = users.filter((user) => user.username);
+        // Officers are those with a username and a non-student role
+        const officers = users.filter(
+          (user) => user.role && user.role !== "student" && user.username
+        );
+        console.log("DEBUG: Total users:", users.length);
+        console.log(
+          "DEBUG: Students (all with username):",
+          students.length,
+          students.map((u) => u.username)
+        );
+        console.log(
+          "DEBUG: Officers:",
+          officers.length,
+          officers.map((u) => u.username)
+        );
+
         // Calculate statistics
-        const total = users.length;
+        const total = students.length;
         const yearLevels = {};
 
-        users.forEach((user) => {
+        students.forEach((user) => {
           // Count by Year Level
           const year = user.yearLevel || "N/A"; // Handle missing yearLevel
           yearLevels[year] = (yearLevels[year] || 0) + 1;
@@ -57,7 +78,11 @@ const StudentOverview = ({ navigation }) => {
 
         // Count students with outstanding fines
         // Get unique user IDs from unpaid fines
-        const usersWithFines = new Set(unpaidFines.map((fine) => fine.userId));
+        const usersWithFines = new Set(
+          unpaidFines
+            .filter((fine) => students.some((s) => s.id === fine.userId))
+            .map((fine) => fine.userId)
+        );
         setStudentsWithOutstandingFines(usersWithFines.size);
 
         setTotalStudents(total);
@@ -130,7 +155,7 @@ const StudentOverview = ({ navigation }) => {
           <View style={styles.headerRight} />
         </View>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#0A2463" />
+          <ActivityIndicator size="large" color="#007BFF" />
           <Text style={styles.loadingText}>Loading student data...</Text>
         </View>
       </SafeAreaView>
