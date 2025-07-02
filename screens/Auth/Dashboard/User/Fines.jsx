@@ -171,11 +171,38 @@ const Fines = ({
             </View>
           </View>
 
-          <Text style={styles.fineDescription} numberOfLines={2}>
-            {item.description || "No description available"}
-          </Text>
+          <View style={styles.fineInfoContainer}>
+            <Text style={styles.fineDescription} numberOfLines={2}>
+              {item.description || "No description available"}
+            </Text>
 
-          <Text style={styles.fineSubtitle}>{item.timeframe}</Text>
+            <View style={styles.fineMetaContainer}>
+              <View style={styles.fineMetaRow}>
+                <Icon name="time-outline" size={14} color="#666" />
+                <Text style={styles.fineMetaText}>
+                  {formatDate(item.createdAt).split(",")[1].trim()}
+                </Text>
+              </View>
+              <View style={styles.fineMetaRow}>
+                <Icon name="calendar-outline" size={14} color="#666" />
+                <Text style={styles.fineMetaText}>
+                  Fined on: {formatDate(item.createdAt).split(",")[0]}
+                </Text>
+              </View>
+              {item.status?.toLowerCase() === "paid" && item.paidAt && (
+                <View style={styles.fineMetaRow}>
+                  <Icon
+                    name="checkmark-circle-outline"
+                    size={14}
+                    color="#4CAF50"
+                  />
+                  <Text style={[styles.fineMetaText, { color: "#4CAF50" }]}>
+                    Paid on: {formatDate(item.paidAt)}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
 
           <View style={styles.fineBottomRow}>
             <Text
@@ -191,11 +218,6 @@ const Fines = ({
             >
               ₱{item.amount?.toFixed(2)}
             </Text>
-            {item.status?.toLowerCase() === "paid" && item.paidAt && (
-              <Text style={styles.paidAtText}>
-                Paid on: {formatDate(item.paidAt)}
-              </Text>
-            )}
           </View>
         </View>
       </View>
@@ -281,30 +303,28 @@ const styles = StyleSheet.create({
   fineHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "left",
-    marginBottom: 5,
-    borderWidth: 0.1,
-    borderColor: "black",
+    alignItems: "center",
+    marginBottom: 4,
   },
   fineDescription: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#666",
-    marginBottom: 10,
+    lineHeight: 18,
   },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 15,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 12,
   },
   statusText: {
     color: "white",
-    fontSize: 12,
-    marginLeft: 5,
+    fontSize: 11,
+    marginLeft: 4,
   },
   paidAtText: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#666",
   },
   container: {
@@ -381,53 +401,63 @@ const styles = StyleSheet.create({
   fineCardContent: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 15,
+    padding: 12,
     borderRadius: 15,
   },
   fineIconContainer: {
     backgroundColor: "#E6F2FF",
     borderRadius: 10,
-    padding: 10,
-    marginRight: 15,
+    padding: 8,
+    marginRight: 12,
   },
   fineDetails: {
     flex: 1,
   },
   fineTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
     color: "#333",
-    marginBottom: 5,
+    marginBottom: 2,
   },
   fineSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#666",
-    marginBottom: 10,
+    marginBottom: 2,
+  },
+  fineDate: {
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 4,
   },
   fineBottomRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     alignItems: "center",
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
   },
   fineAmount: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
   },
-  statusBadge: {
+  fineInfoContainer: {
+    marginTop: 4,
+  },
+  fineMetaContainer: {
+    marginTop: 6,
+    gap: 4,
+  },
+  fineMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 15,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
+    gap: 6,
   },
-
+  fineMetaText: {
+    fontSize: 12,
+    color: "#666",
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",

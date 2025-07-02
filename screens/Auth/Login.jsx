@@ -30,12 +30,14 @@ import {
   getDocs,
   doc,
   getDoc,
+  orderBy,
 } from "firebase/firestore";
 import Toast from "react-native-toast-message";
 
 import BackgroundImage from "../../components/ImageBackground";
 import { auth, db } from "../../config/firebaseconfig";
 import aito from "../../assets/aito.png";
+import avatarRealtime from "../../services/avatarRealtime";
 
 // Get screen dimensions
 const { width, height } = Dimensions.get("window");
@@ -234,16 +236,139 @@ const Login = ({ navigation }) => {
           });
         }, 300);
       } else {
-        // Assume it's a regular user if not an admin (and they were found via Student ID or had a user doc)
-        // Further validation against the 'users' collection by UID could be added here if needed,
-        // but finding the email by student ID and successfully authenticating should be sufficient.
-        showToast("success", "Login successful!");
-        setTimeout(() => {
+        // Preload all dashboard data for regular users
+        try {
+          console.log("[Login] Preloading dashboard data...");
+
+          // Load all data concurrently
+          const [
+            userSnapshot,
+            eventsSnapshot,
+            finesSnapshot,
+            peopleSnapshot,
+            avatarData,
+            lastViewedData,
+          ] = await Promise.all([
+            // User data
+            getDocs(
+              query(collection(db, "users"), where("uid", "==", user.uid))
+            ),
+            // Events data
+            getDocs(query(collection(db, "events"), orderBy("dueDate", "asc"))),
+            // Fines data
+            getDocs(query(collection(db, "fines"), orderBy("dueDate", "asc"))),
+            // People data
+            getDocs(query(collection(db, "users"))),
+            // Avatar data
+            avatarRealtime
+              .fetchAvatar(user)
+              .catch((err) => ({ avatarUrl: null, error: err })),
+            // Last viewed data
+            getDoc(doc(db, "users", user.uid)).catch((err) => ({
+              exists: () => false,
+              error: err,
+            })),
+          ]);
+
+          // Process and store the data
+          const dashboardData = {
+            user: userSnapshot.empty
+              ? null
+              : {
+                  id: userSnapshot.docs[0].id,
+                  uid: user.uid,
+                  username: user.displayName,
+                  email: user.email,
+                  ...userSnapshot.docs[0].data(),
+                },
+            events: eventsSnapshot.docs.map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+              dueDate: doc.data().dueDate?.toDate(),
+            })),
+            fines: finesSnapshot.docs.map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+              dueDate: doc.data().dueDate?.toDate(),
+            })),
+            people: {
+              officers: peopleSnapshot.docs
+                .filter(
+                  (doc) =>
+                    doc.data().role === "treasurer" ||
+                    doc.data().role === "secretary"
+                )
+                .map((doc) => ({
+                  id: doc.id,
+                  ...doc.data(),
+                  username:
+                    doc.data().username || doc.data().displayName || "Unknown",
+                  yearLevel: doc.data().yearLevel || "N/A",
+                  bio: doc.data().bio || null,
+                  role: doc.data().role || "student",
+                  email: doc.data().email || null,
+                  avatarUrl: doc.data().avatarUrl || null,
+                })),
+              students: peopleSnapshot.docs
+                .filter(
+                  (doc) => !["treasurer", "secretary"].includes(doc.data().role)
+                )
+                .map((doc) => ({
+                  id: doc.id,
+                  ...doc.data(),
+                  username:
+                    doc.data().username || doc.data().displayName || "Unknown",
+                  yearLevel: doc.data().yearLevel || "N/A",
+                  bio: doc.data().bio || null,
+                  role: doc.data().role || "student",
+                  email: doc.data().email || null,
+                  avatarUrl: doc.data().avatarUrl || null,
+                })),
+            },
+            avatarUrl: avatarData.error ? null : avatarData.avatarUrl,
+            lastViewed:
+              lastViewedData.exists &&
+              lastViewedData.exists() &&
+              lastViewedData.data().lastViewed
+                ? {
+                    Fines: lastViewedData.data().lastViewed.Fines
+                      ? new Date(lastViewedData.data().lastViewed.Fines)
+                      : new Date(0),
+                    Events: lastViewedData.data().lastViewed.Events
+                      ? new Date(lastViewedData.data().lastViewed.Events)
+                      : new Date(0),
+                  }
+                : {
+                    Fines: new Date(0),
+                    Events: new Date(0),
+                  },
+          };
+
+          // Store the preloaded data in a global cache
+          global.dashboardData = dashboardData;
+
+          console.log("[Login] Dashboard data preloaded successfully");
+          showToast("success", "Login successful!");
+
+          // Navigate to dashboard with preloaded data
           navigation.reset({
             index: 0,
-            routes: [{ name: "Dashboard" }],
+            routes: [
+              {
+                name: "Dashboard",
+                params: { preloadedData: dashboardData },
+              },
+            ],
           });
-        }, 300);
+        } catch (error) {
+          console.error("[Login] Error preloading dashboard data:", error);
+          showToast(
+            "error",
+            "Failed to load dashboard data. Please try again."
+          );
+          setIsSubmitting(false);
+          return;
+        }
       }
     } catch (error) {
       console.error("Error during login:", error);

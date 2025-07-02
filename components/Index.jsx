@@ -49,7 +49,6 @@ const Index = () => {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [navigationReady, setNavigationReady] = useState(false);
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -58,61 +57,7 @@ const Index = () => {
     message: "",
   });
   const [errors, setErrors] = useState({});
-  const navigationTimeoutRef = useRef(null);
-
-  // Better navigation readiness check using useFocusEffect
-  useFocusEffect(
-    React.useCallback(() => {
-      // This ensures the navigation is ready when the screen is focused
-      setNavigationReady(true);
-      return () => {
-        // Cleanup if needed
-      };
-    }, [])
-  );
-
-  // Enhanced navigation readiness check
-  useEffect(() => {
-    const checkNavigation = () => {
-      try {
-        // Check if navigation object exists and has the required methods
-        if (
-          navigation &&
-          navigation.dispatch &&
-          navigationState &&
-          navigationState.routes &&
-          navigationState.routes.length > 0
-        ) {
-          setNavigationReady(true);
-          console.log("[Index] Navigation is ready");
-          if (navigationTimeoutRef.current) {
-            clearTimeout(navigationTimeoutRef.current);
-            navigationTimeoutRef.current = null;
-          }
-        } else {
-          // If navigation is not ready, try again after a short delay
-          if (!navigationTimeoutRef.current) {
-            navigationTimeoutRef.current = setTimeout(checkNavigation, 200);
-          }
-        }
-      } catch (error) {
-        console.warn("[Index] Navigation check error:", error);
-        // Retry after a longer delay if there's an error
-        if (!navigationTimeoutRef.current) {
-          navigationTimeoutRef.current = setTimeout(checkNavigation, 500);
-        }
-      }
-    };
-
-    checkNavigation();
-
-    return () => {
-      if (navigationTimeoutRef.current) {
-        clearTimeout(navigationTimeoutRef.current);
-        navigationTimeoutRef.current = null;
-      }
-    };
-  }, [navigation, navigationState]);
+  const isNavigating = useRef(false);
 
   // Handle splash screen and fade-in animation
   useEffect(() => {
@@ -133,55 +78,18 @@ const Index = () => {
   }, [fadeAnim]);
 
   const handleLoginPress = () => {
-    if (!navigationReady || !navigation) {
-      console.warn("[Index] Navigation not ready yet");
-      return;
-    }
+    if (isNavigating.current) return;
 
     try {
-      // Additional safety check before navigation
-      if (navigation.dispatch && typeof navigation.dispatch === "function") {
-        navigation.dispatch(
-          CommonActions.navigate({
-            name: "Login",
-          })
-        );
-        console.log("[Index] Navigation dispatched successfully");
-      } else {
-        throw new Error("Navigation dispatch method not available");
-      }
+      isNavigating.current = true;
+      navigation.navigate("Login");
     } catch (error) {
       console.error("[Index] Navigation error:", error);
-
-      // Alternative navigation method as fallback
-      try {
-        if (navigation.navigate && typeof navigation.navigate === "function") {
-          navigation.navigate("Login");
-          console.log("[Index] Fallback navigation successful");
-        } else {
-          console.error("[Index] No navigation methods available");
-        }
-      } catch (fallbackError) {
-        console.error(
-          "[Index] Fallback navigation also failed:",
-          fallbackError
-        );
-
-        // Final retry with delay
-        setTimeout(() => {
-          try {
-            if (navigation && navigation.dispatch) {
-              navigation.dispatch(
-                CommonActions.navigate({
-                  name: "Login",
-                })
-              );
-            }
-          } catch (retryError) {
-            console.error("[Index] Final retry failed:", retryError);
-          }
-        }, 1000);
-      }
+    } finally {
+      // Reset navigation flag after a short delay
+      setTimeout(() => {
+        isNavigating.current = false;
+      }, 1000);
     }
   };
 
@@ -257,16 +165,16 @@ const Index = () => {
                   style={[
                     styles.button,
                     styles.elevatedShadow,
-                    !navigationReady && styles.buttonDisabled,
+                    isNavigating.current && styles.buttonDisabled,
                   ]}
                   onPress={handleLoginPress}
                   activeOpacity={0.7}
-                  disabled={!navigationReady}
+                  disabled={isNavigating.current}
                 >
                   <View style={styles.buttonContent}>
                     <User color="#fff" size={24} style={styles.buttonIcon} />
                     <Text style={styles.buttonText}>
-                      {navigationReady ? "Login" : "Loading..."}
+                      {isNavigating.current ? "Loading..." : "Login"}
                     </Text>
                     <ChevronRight color="#fff" size={24} />
                   </View>

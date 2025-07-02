@@ -67,6 +67,18 @@ const Profile = ({
   const [unsubscribeAvatar, setUnsubscribeAvatar] = useState(null);
   const [isConfirmingPassword, setIsConfirmingPassword] = useState(false);
   const [confirmPasswordTimeout, setConfirmPasswordTimeout] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState({
+    length: false,
+    number: false,
+    letter: false,
+  });
+  const [passwordErrors, setPasswordErrors] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const isLoggingOut = useRef(false);
 
   // Animation values
   const [fadeAnim] = useState(new Animated.Value(isDataPreloaded ? 1 : 0));
@@ -336,15 +348,22 @@ const Profile = ({
   );
 
   const handleLogout = async () => {
+    if (isLoggingOut.current) return;
+
     try {
+      isLoggingOut.current = true;
       // First clean up presence service
       await userPresenceService.cleanup();
 
       // Then sign out from Firebase
       await auth.signOut();
 
-      // Use navigation.navigate instead of reset to avoid navigation errors
-      // This will trigger the auth state change in App.js which will redirect to Index
+      // Use navigation.reset instead of navigate to prevent double navigation
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "Index" }],
+      });
+
       Toast.show({
         type: "success",
         text1: "Logged out",
@@ -357,28 +376,55 @@ const Profile = ({
         text1: "Error",
         text2: "Failed to log out. Please try again.",
       });
+    } finally {
+      isLoggingOut.current = false;
     }
   };
+
+  const validatePassword = useCallback((password) => {
+    const errors = [];
+    if (password.length < 6) {
+      errors.push("Password must be at least 6 characters");
+    }
+    if (!/\d/.test(password)) {
+      errors.push("Password must contain at least one number");
+    }
+    if (!/[a-zA-Z]/.test(password)) {
+      errors.push("Password must contain at least one letter");
+    }
+    return errors;
+  }, []);
 
   const handlePasswordChange = async () => {
     try {
       const { currentPassword, newPassword, confirmPassword } = passwordData;
+      const errors = {
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      };
 
-      if (!currentPassword || !newPassword || !confirmPassword) {
-        Toast.show({
-          type: "error",
-          text1: "Error",
-          text2: "All fields are required",
-        });
-        return;
+      // Validate current password
+      if (!currentPassword) {
+        errors.currentPassword = "Current password is required";
       }
 
-      if (newPassword !== confirmPassword) {
-        Toast.show({
-          type: "error",
-          text1: "Error",
-          text2: "New passwords do not match",
-        });
+      // Validate new password
+      const newPasswordErrors = validatePassword(newPassword);
+      if (newPasswordErrors.length > 0) {
+        errors.newPassword = newPasswordErrors[0];
+      }
+
+      // Validate confirm password
+      if (!confirmPassword) {
+        errors.confirmPassword = "Please confirm your new password";
+      } else if (confirmPassword !== newPassword) {
+        errors.confirmPassword = "Passwords do not match";
+      }
+
+      // Check if there are any errors
+      if (Object.values(errors).some((error) => error !== "")) {
+        setPasswordErrors(errors);
         return;
       }
 
@@ -401,6 +447,11 @@ const Profile = ({
         newPassword: "",
         confirmPassword: "",
       });
+      setPasswordErrors({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
 
       Toast.show({
         type: "success",
@@ -409,15 +460,30 @@ const Profile = ({
       });
     } catch (error) {
       console.error("Error changing password:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: error.message || "Failed to update password",
-      });
+      if (error.code === "auth/wrong-password") {
+        setPasswordErrors((prev) => ({
+          ...prev,
+          currentPassword: "Current password is incorrect",
+        }));
+      } else {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: error.message || "Failed to update password",
+        });
+      }
     } finally {
       setIsConfirmingPassword(false);
     }
   };
+
+  const checkPasswordStrength = useCallback((password) => {
+    setPasswordStrength({
+      length: password.length >= 6,
+      number: /\d/.test(password),
+      letter: /[a-zA-Z]/.test(password),
+    });
+  }, []);
 
   const renderFieldEditModal = () => (
     <Modal
@@ -522,87 +588,188 @@ const Profile = ({
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Change Password</Text>
-            <TouchableOpacity onPress={() => setPasswordModalVisible(false)}>
+            <TouchableOpacity
+              onPress={() => {
+                setPasswordModalVisible(false);
+                setPasswordErrors({
+                  currentPassword: "",
+                  newPassword: "",
+                  confirmPassword: "",
+                });
+              }}
+            >
               <Feather name="x" size={24} color="#203562" />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.modalInputContainer}>
+          <View
+            style={[
+              styles.modalInputContainer,
+              passwordErrors.currentPassword && styles.inputError,
+            ]}
+          >
             <Feather
               name="lock"
               size={20}
-              color="#203562"
+              color={passwordErrors.currentPassword ? "#EF4444" : "#203562"}
               style={styles.modalInputIcon}
             />
             <TextInput
-              style={styles.modalInput}
+              style={[
+                styles.modalInput,
+                passwordErrors.currentPassword && styles.inputErrorText,
+              ]}
               value={passwordData.currentPassword}
-              onChangeText={(text) =>
-                setPasswordData((prev) => ({ ...prev, currentPassword: text }))
-              }
+              onChangeText={(text) => {
+                setPasswordData((prev) => ({ ...prev, currentPassword: text }));
+                setPasswordErrors((prev) => ({ ...prev, currentPassword: "" }));
+              }}
               placeholder="Current Password"
               placeholderTextColor="#94A3B8"
-              secureTextEntry
+              secureTextEntry={!showPassword}
             />
           </View>
+          {passwordErrors.currentPassword && (
+            <Text style={styles.errorText}>
+              {passwordErrors.currentPassword}
+            </Text>
+          )}
 
-          <View style={styles.modalInputContainer}>
+          <View
+            style={[
+              styles.modalInputContainer,
+              passwordErrors.newPassword && styles.inputError,
+            ]}
+          >
             <Feather
               name="lock"
               size={20}
-              color="#203562"
+              color={passwordErrors.newPassword ? "#EF4444" : "#203562"}
               style={styles.modalInputIcon}
             />
             <TextInput
-              style={styles.modalInput}
+              style={[
+                styles.modalInput,
+                passwordErrors.newPassword && styles.inputErrorText,
+              ]}
               value={passwordData.newPassword}
-              onChangeText={(text) =>
-                setPasswordData((prev) => ({ ...prev, newPassword: text }))
-              }
+              onChangeText={(text) => {
+                setPasswordData((prev) => ({ ...prev, newPassword: text }));
+                checkPasswordStrength(text);
+                setPasswordErrors((prev) => ({ ...prev, newPassword: "" }));
+              }}
               placeholder="New Password"
               placeholderTextColor="#94A3B8"
-              secureTextEntry
+              secureTextEntry={!showPassword}
             />
+            <TouchableOpacity
+              style={styles.passwordToggle}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <Feather
+                name={showPassword ? "eye-off" : "eye"}
+                size={20}
+                color="#64748B"
+              />
+            </TouchableOpacity>
           </View>
+          {passwordErrors.newPassword && (
+            <Text style={styles.errorText}>{passwordErrors.newPassword}</Text>
+          )}
 
-          <View style={styles.modalInputContainer}>
+          <View
+            style={[
+              styles.modalInputContainer,
+              passwordErrors.confirmPassword && styles.inputError,
+            ]}
+          >
             <Feather
               name="lock"
               size={20}
-              color="#203562"
+              color={passwordErrors.confirmPassword ? "#EF4444" : "#203562"}
               style={styles.modalInputIcon}
             />
             <TextInput
-              style={styles.modalInput}
+              style={[
+                styles.modalInput,
+                passwordErrors.confirmPassword && styles.inputErrorText,
+              ]}
               value={passwordData.confirmPassword}
               onChangeText={(text) => {
                 setPasswordData((prev) => ({ ...prev, confirmPassword: text }));
-                // Clear any existing timeout
-                if (confirmPasswordTimeout) {
-                  clearTimeout(confirmPasswordTimeout);
-                }
-                // Set new timeout for validation
-                const timeout = setTimeout(() => {
-                  if (text && text !== passwordData.newPassword) {
-                    Toast.show({
-                      type: "error",
-                      text1: "Passwords don't match",
-                      text2: "Please make sure your passwords match",
-                    });
-                  }
-                }, 1000);
-                setConfirmPasswordTimeout(timeout);
+                setPasswordErrors((prev) => ({ ...prev, confirmPassword: "" }));
               }}
               placeholder="Confirm New Password"
               placeholderTextColor="#94A3B8"
-              secureTextEntry
+              secureTextEntry={!showPassword}
             />
+          </View>
+          {passwordErrors.confirmPassword && (
+            <Text style={styles.errorText}>
+              {passwordErrors.confirmPassword}
+            </Text>
+          )}
+
+          <View style={styles.passwordRequirements}>
+            <Text style={styles.requirementsTitle}>Password Requirements:</Text>
+            <View style={styles.requirementItem}>
+              <Feather
+                name={passwordStrength.length ? "check-circle" : "circle"}
+                size={16}
+                color={passwordStrength.length ? "#16a34a" : "#64748B"}
+              />
+              <Text
+                style={[
+                  styles.requirementText,
+                  passwordStrength.length && styles.requirementMet,
+                ]}
+              >
+                At least 6 characters
+              </Text>
+            </View>
+            <View style={styles.requirementItem}>
+              <Feather
+                name={passwordStrength.number ? "check-circle" : "circle"}
+                size={16}
+                color={passwordStrength.number ? "#16a34a" : "#64748B"}
+              />
+              <Text
+                style={[
+                  styles.requirementText,
+                  passwordStrength.number && styles.requirementMet,
+                ]}
+              >
+                At least one number
+              </Text>
+            </View>
+            <View style={styles.requirementItem}>
+              <Feather
+                name={passwordStrength.letter ? "check-circle" : "circle"}
+                size={16}
+                color={passwordStrength.letter ? "#16a34a" : "#64748B"}
+              />
+              <Text
+                style={[
+                  styles.requirementText,
+                  passwordStrength.letter && styles.requirementMet,
+                ]}
+              >
+                At least one letter
+              </Text>
+            </View>
           </View>
 
           <View style={styles.modalActions}>
             <TouchableOpacity
               style={styles.modalCancelButton}
-              onPress={() => setPasswordModalVisible(false)}
+              onPress={() => {
+                setPasswordModalVisible(false);
+                setPasswordErrors({
+                  currentPassword: "",
+                  newPassword: "",
+                  confirmPassword: "",
+                });
+              }}
             >
               <Text style={styles.modalCancelButtonText}>Cancel</Text>
             </TouchableOpacity>
@@ -629,15 +796,24 @@ const Profile = ({
   // Remove local logoutModalVisible and use showLogoutModal for back button
   useEffect(() => {
     if (Platform.OS !== "android") return;
+
     const onBackPress = () => {
-      showLogoutModal();
-      return true;
+      if (!isLoggingOut.current) {
+        showLogoutModal();
+        return true;
+      }
+      return false;
     };
+
     const subscription = BackHandler.addEventListener(
       "hardwareBackPress",
       onBackPress
     );
-    return () => subscription.remove();
+
+    return () => {
+      subscription.remove();
+      isLoggingOut.current = false;
+    };
   }, [showLogoutModal]);
 
   if (loading) {
@@ -1090,6 +1266,52 @@ const styles = StyleSheet.create({
   },
   modalSaveButtonDisabled: {
     opacity: 0.7,
+  },
+  passwordRequirements: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  requirementsTitle: {
+    fontSize: 12,
+    color: "#64748B",
+    marginBottom: 8,
+    fontWeight: "600",
+  },
+  requirementItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  requirementText: {
+    fontSize: 12,
+    color: "#64748B",
+    marginLeft: 8,
+  },
+  requirementMet: {
+    color: "#16a34a",
+  },
+  passwordToggle: {
+    padding: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  inputError: {
+    borderColor: "#EF4444",
+    borderWidth: 1,
+  },
+  inputErrorText: {
+    color: "#EF4444",
+  },
+  errorText: {
+    color: "#EF4444",
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
+    marginBottom: 8,
   },
 });
 

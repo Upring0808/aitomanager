@@ -864,9 +864,63 @@ const People = ({
   showLogoutModal,
 }) => {
   const { user } = useAuth();
-  const [users, setUsers] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
-  const [loading, setLoading] = useState(!isDataPreloaded);
+  // Initialize with preloaded data immediately, filtering out users without names
+  const [users, setUsers] = useState(() => {
+    if (isDataPreloaded) {
+      console.log("[People] Initial preloaded data:", {
+        totalOfficers: initialData.officers.length,
+        totalStudents: initialData.students.length,
+        officersWithoutNames: initialData.officers.filter(
+          (o) => !o.username || o.username.trim() === ""
+        ).length,
+        studentsWithoutNames: initialData.students.filter(
+          (s) => !s.username || s.username.trim() === ""
+        ).length,
+      });
+
+      // Strict filtering for valid users
+      const validOfficers = initialData.officers.filter(
+        (officer) =>
+          officer.username &&
+          officer.username.trim() !== "" &&
+          officer.username !== "Unknown" &&
+          officer.role &&
+          officer.role !== "student"
+      );
+
+      const validStudents = initialData.students.filter(
+        (student) =>
+          student.username &&
+          student.username.trim() !== "" &&
+          student.username !== "Unknown" &&
+          (!student.role || student.role === "student")
+      );
+
+      console.log("[People] Filtered preloaded data:", {
+        validOfficers: validOfficers.length,
+        validStudents: validStudents.length,
+        totalValid: validOfficers.length + validStudents.length,
+        skippedOfficers: initialData.officers.length - validOfficers.length,
+        skippedStudents: initialData.students.length - validStudents.length,
+      });
+
+      return [...validOfficers, ...validStudents];
+    }
+    return [];
+  });
+  const [filteredUsers, setFilteredUsers] = useState(() => {
+    if (isDataPreloaded) {
+      const validOfficers = initialData.officers.filter(
+        (officer) => officer.username && officer.username.trim() !== ""
+      );
+      const validStudents = initialData.students.filter(
+        (student) => student.username && student.username.trim() !== ""
+      );
+      return [...validOfficers, ...validStudents];
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchModal, setShowSearchModal] = useState(false);
@@ -875,6 +929,9 @@ const People = ({
   const [appActive, setAppActive] = useState(true);
   const appStateRef = useRef(AppState.currentState);
   const isInitialMount = useRef(true);
+  const unsubscribeRef = useRef(null);
+  const isMounted = useRef(true);
+  const defaultAvatarUri = require("../../../../assets/aito.png");
 
   const { isOnline, refreshStatus, getIsUserOnline, forceConnectionCheck } =
     useOnlineStatus();
@@ -883,131 +940,205 @@ const People = ({
   const lastScrollY = useRef(0);
   const fabOpacity = useRef(new Animated.Value(1)).current;
   const cleanupListeners = useRef([]);
-  const isMounted = useRef(true);
-  const unsubscribeRef = useRef(null);
 
-  const defaultAvatarUri = require("../../../../assets/aito.png");
-
-  // Initialize with preloaded data if available
+  // Set up real-time listener for users only if not using preloaded data
   useEffect(() => {
-    if (isDataPreloaded && initialData) {
-      const allUsers = [...initialData.officers, ...initialData.students];
-      setUsers(allUsers);
-      setFilteredUsers(allUsers);
-      setLoading(false);
-    }
-  }, [isDataPreloaded, initialData]);
+    if (isDataPreloaded) return;
 
-  // Add activity tracker for current user
-  useEffect(() => {
-    const activityInterval = setInterval(() => {
-      if (isMounted.current && user) {
-        userPresenceService.updateLastActive().catch((error) => {
-          if (
-            !error?.message?.includes("Permission denied") &&
-            !error?.message?.includes("permission_denied")
-          ) {
-            console.warn("[People] Error updating activity:", error);
-          }
-        });
-      }
-    }, 30 * 1000);
-
-    return () => clearInterval(activityInterval);
-  }, [user]);
-
-  // Add AppState listener for presence tracking
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (nextAppState) => {
-      const isActive = nextAppState === "active";
-      setAppActive(isActive);
-
-      if (isActive && appStateRef.current !== "active") {
-        if (user) {
-          userPresenceService
-            .updatePresenceWithAppState("active")
-            .catch(console.error);
-        }
-      } else if (!isActive) {
-        if (user) {
-          userPresenceService
-            .updatePresenceWithAppState(nextAppState)
-            .catch(console.error);
-        }
-      }
-
-      appStateRef.current = nextAppState;
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [user]);
-
-  const fetchUsers = async () => {
-    if (!isMounted.current) return;
-
-    setLoading(true);
-    try {
-      const usersQuery = query(collection(db, "users"), orderBy("username"));
-      const querySnapshot = await getDocs(usersQuery);
-      const usersData = await Promise.all(
-        querySnapshot.docs.map(async (doc) => {
-          const data = doc.data();
-          const avatarUrl = data.avatarUrl || (await getAvatarUrl(data.uid));
-          return {
-            id: doc.id,
-            ...data,
-            username: data.username || data.displayName || "Unknown",
-            avatarUrl,
-            yearLevel: data.yearLevel || "N/A",
-            bio: data.bio || null,
-            role: data.role || "student",
-            email: data.email || null,
-          };
-        })
-      );
-
-      if (isMounted.current) {
-        setUsers(usersData);
-        setFilteredUsers(usersData);
-        setLoading(false);
-      }
-    } catch (error) {
-      console.error("[People] Error fetching users:", error);
-      if (isMounted.current) {
-        setLoading(false);
-        Toast.show({
-          type: "error",
-          text1: "Error",
-          text2: "Failed to fetch users",
-          position: "bottom",
-        });
-      }
-    }
-  };
-
-  // Set up real-time listener for users
-  useEffect(() => {
-    // Skip initial setup if we have preloaded data
-    if (isInitialMount.current && isDataPreloaded) {
-      isInitialMount.current = false;
-      return;
-    }
-
+    console.log("[People] Setting up real-time listener for users");
     const usersQuery = query(collection(db, "users"), orderBy("username"));
 
     unsubscribeRef.current = onSnapshot(
       usersQuery,
       async (snapshot) => {
+        if (!isMounted.current) return;
+
+        console.log(
+          "[People] Received snapshot with",
+          snapshot.docs.length,
+          "users"
+        );
+
+        try {
+          const usersData = await Promise.all(
+            snapshot.docs.map(async (doc) => {
+              const data = doc.data();
+              // Strict validation for valid users
+              if (
+                !data.username ||
+                data.username.trim() === "" ||
+                data.username === "Unknown"
+              ) {
+                console.log("[People] Skipping invalid user:", {
+                  id: doc.id,
+                  data: { ...data, password: undefined }, // Exclude sensitive data
+                });
+                return null;
+              }
+              const avatarUrl =
+                data.avatarUrl || (await getAvatarUrl(data.uid));
+              return {
+                id: doc.id,
+                ...data,
+                username: data.username,
+                avatarUrl,
+                yearLevel: data.yearLevel || "N/A",
+                bio: data.bio || null,
+                role: data.role || "student",
+                email: data.email || null,
+              };
+            })
+          );
+
+          if (isMounted.current) {
+            // Strict filtering for valid users
+            const validUsers = usersData.filter(
+              (user) =>
+                user !== null &&
+                user.username &&
+                user.username.trim() !== "" &&
+                user.username !== "Unknown"
+            );
+
+            console.log("[People] Processed users data:", {
+              total: usersData.length,
+              valid: validUsers.length,
+              invalid: usersData.length - validUsers.length,
+              byRole: {
+                officers: validUsers.filter(
+                  (u) => u.role && u.role !== "student"
+                ).length,
+                students: validUsers.filter(
+                  (u) => !u.role || u.role === "student"
+                ).length,
+              },
+            });
+
+            setUsers(validUsers);
+            setFilteredUsers(validUsers);
+          }
+        } catch (error) {
+          console.error("[People] Error processing users data:", error);
+        }
+      },
+      (error) => {
+        console.error("[People] Error in snapshot listener:", error);
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Failed to load users",
+          position: "bottom",
+        });
+      }
+    );
+
+    return () => {
+      if (unsubscribeRef.current) {
+        console.log("[People] Cleaning up real-time listener");
+        unsubscribeRef.current();
+      }
+    };
+  }, [isDataPreloaded]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+    };
+  }, []);
+
+  const getGroupedUsers = useCallback(() => {
+    const grouped = isDataPreloaded
+      ? {
+          officers: initialData.officers.filter(
+            (officer) =>
+              officer.username &&
+              officer.username.trim() !== "" &&
+              officer.username !== "Unknown" &&
+              officer.role &&
+              officer.role !== "student"
+          ),
+          students: initialData.students.filter(
+            (student) =>
+              student.username &&
+              student.username.trim() !== "" &&
+              student.username !== "Unknown" &&
+              (!student.role || student.role === "student")
+          ),
+        }
+      : {
+          officers: filteredUsers.filter(
+            (user) =>
+              user.role &&
+              user.role !== "student" &&
+              user.username &&
+              user.username.trim() !== "" &&
+              user.username !== "Unknown"
+          ),
+          students: filteredUsers.filter(
+            (user) =>
+              (!user.role || user.role === "student") &&
+              user.username &&
+              user.username.trim() !== "" &&
+              user.username !== "Unknown"
+          ),
+        };
+
+    console.log("[People] Grouped users:", {
+      officers: grouped.officers.length,
+      students: grouped.students.length,
+      total: grouped.officers.length + grouped.students.length,
+      skippedOfficers:
+        filteredUsers.length -
+        grouped.officers.length -
+        grouped.students.length,
+    });
+
+    return grouped;
+  }, [isDataPreloaded, initialData, filteredUsers]);
+
+  const handleRefresh = async () => {
+    if (!isMounted.current) return;
+
+    console.log("[People] Starting refresh");
+    setRefreshing(true);
+    try {
+      if (forceConnectionCheck) {
+        setCheckingConnection(true);
+        await forceConnectionCheck();
+        setCheckingConnection(false);
+      }
+
+      // Only fetch new data if not using preloaded data
+      if (!isDataPreloaded) {
+        console.log("[People] Fetching fresh data");
+        const usersQuery = query(collection(db, "users"), orderBy("username"));
+        const querySnapshot = await getDocs(usersQuery);
+        console.log("[People] Fetched", querySnapshot.docs.length, "users");
+
         const usersData = await Promise.all(
-          snapshot.docs.map(async (doc) => {
+          querySnapshot.docs.map(async (doc) => {
             const data = doc.data();
+            // Strict validation for valid users
+            if (
+              !data.username ||
+              data.username.trim() === "" ||
+              data.username === "Unknown"
+            ) {
+              console.log("[People] Skipping invalid user during refresh:", {
+                id: doc.id,
+                data: { ...data, password: undefined }, // Exclude sensitive data
+              });
+              return null;
+            }
             const avatarUrl = data.avatarUrl || (await getAvatarUrl(data.uid));
             return {
               id: doc.id,
               ...data,
-              username: data.username || data.displayName || "Unknown",
+              username: data.username,
               avatarUrl,
               yearLevel: data.yearLevel || "N/A",
               bio: data.bio || null,
@@ -1018,111 +1149,49 @@ const People = ({
         );
 
         if (isMounted.current) {
-          setUsers(usersData);
-          setFilteredUsers(usersData);
-          setLoading(false);
-        }
-      },
-      (error) => {
-        console.error("[People] Error in snapshot listener:", error);
-        if (isMounted.current) {
-          setLoading(false);
-          Toast.show({
-            type: "error",
-            text1: "Error",
-            text2: "Failed to load users",
-            position: "bottom",
+          // Strict filtering for valid users
+          const validUsers = usersData.filter(
+            (user) =>
+              user !== null &&
+              user.username &&
+              user.username.trim() !== "" &&
+              user.username !== "Unknown"
+          );
+
+          console.log("[People] Processed refresh data:", {
+            total: usersData.length,
+            valid: validUsers.length,
+            invalid: usersData.length - validUsers.length,
+            byRole: {
+              officers: validUsers.filter((u) => u.role && u.role !== "student")
+                .length,
+              students: validUsers.filter(
+                (u) => !u.role || u.role === "student"
+              ).length,
+            },
           });
+
+          setUsers(validUsers);
+          setFilteredUsers(validUsers);
         }
       }
-    );
 
-    return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
+      if (refreshStatus) {
+        await refreshStatus();
       }
-    };
-  }, [isDataPreloaded]);
-
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredUsers(users);
-    } else {
-      const filtered = users.filter((user) => {
-        const username = (user.username || "").toLowerCase();
-        const email = (user.email || "").toLowerCase();
-        const role = (user.role || "").toLowerCase();
-        const yearLevel = String(user.yearLevel || "").toLowerCase();
-        const searchLower = searchQuery.toLowerCase();
-
-        return (
-          username.includes(searchLower) ||
-          email.includes(searchLower) ||
-          role.includes(searchLower) ||
-          yearLevel.includes(searchLower)
-        );
-      });
-      setFilteredUsers(filtered);
-    }
-  }, [searchQuery, users]);
-
-  const getGroupedUsers = useCallback(() => {
-    const officers = filteredUsers.filter(
-      (user) => user.role && user.role !== "student"
-    );
-    const students = filteredUsers.filter(
-      (user) => !user.role || user.role === "student"
-    );
-    return { officers, students };
-  }, [filteredUsers]);
-
-  const getFilteredPeople = useCallback(
-    (query) => {
-      const searchLower = query.toLowerCase();
-      const { officers, students } = getGroupedUsers();
-
-      return {
-        officers: officers.filter(
-          (officer) =>
-            (officer.username?.toLowerCase() || "").includes(searchLower) ||
-            String(officer.yearLevel || "")
-              .toLowerCase()
-              .includes(searchLower) ||
-            (officer.role?.toLowerCase() || "").includes(searchLower)
-        ),
-        students: students.filter(
-          (student) =>
-            (student.username?.toLowerCase() || "").includes(searchLower) ||
-            String(student.yearLevel || "")
-              .toLowerCase()
-              .includes(searchLower) ||
-            (student.role?.toLowerCase() || "").includes(searchLower)
-        ),
-      };
-    },
-    [getGroupedUsers]
-  );
-
-  const handleRefresh = async () => {
-    if (!isMounted.current) return;
-
-    setRefreshing(true);
-    try {
-      // First force a connection check to make sure online status is accurate
-      if (forceConnectionCheck) {
-        setCheckingConnection(true);
-        await forceConnectionCheck();
-        setCheckingConnection(false);
-      }
-
-      // Then fetch data and refresh online status in parallel
-      await Promise.all([fetchUsers(), refreshStatus()]);
     } catch (error) {
       console.error("[People] Error refreshing:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to refresh data",
+        position: "bottom",
+      });
     } finally {
       if (isMounted.current) {
         setRefreshing(false);
         setCheckingConnection(false);
+        console.log("[People] Refresh completed");
       }
     }
   };
@@ -1245,7 +1314,7 @@ const People = ({
   return (
     <View style={styles.container}>
       <StatusBar
-        barStyle={showLogoutModal ? "light-content" : "dark-content"}
+        barStyle={showLogoutModal ? "dark-content" : "light-content"}
         backgroundColor={showLogoutModal ? "transparent" : "#ffffff"}
         translucent={!!showLogoutModal}
       />
@@ -1320,7 +1389,6 @@ const People = ({
           onSearch={setSearchQuery}
           searchQuery={searchQuery}
           onClear={clearSearch}
-          getFilteredPeople={getFilteredPeople}
           officers={getGroupedUsers().officers}
           students={getGroupedUsers().students}
         />
@@ -1427,9 +1495,9 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   searchFABTouchable: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: THEME_COLOR,
     justifyContent: "center",
     alignItems: "center",
@@ -1438,6 +1506,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
+    marginBottom: 20,
+    marginRight: 10,
   },
   contentContainer: {
     paddingBottom: SPACING * 2,

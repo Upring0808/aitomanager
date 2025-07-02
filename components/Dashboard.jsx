@@ -191,7 +191,6 @@ const Dashboard = ({ navigation, route }) => {
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [translateX] = useState(new Animated.Value(0));
   const [avatarUrl, setAvatarUrl] = useState(null);
-  const [loadingAvatar, setLoadingAvatar] = useState(true);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const insets = useSafeAreaInsets();
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -209,10 +208,6 @@ const Dashboard = ({ navigation, route }) => {
     Events: new Date(0),
   });
 
-  // Single loading state for the entire dashboard
-  const [isInitializing, setIsInitializing] = useState(true);
-  const [initError, setInitError] = useState(null);
-
   // Data storage - using refs to prevent rerenders
   const dashboardData = useRef({
     user: null,
@@ -225,7 +220,6 @@ const Dashboard = ({ navigation, route }) => {
   });
 
   // Control refs
-  const initialLoadComplete = useRef(false);
   const lastNavigationScreen = useRef(null);
   const unsubscribersRef = useRef({
     fines: null,
@@ -258,253 +252,154 @@ const Dashboard = ({ navigation, route }) => {
     }
   }, [navigation]);
 
-  // Single initialization effect - load everything at once
+  // Initialize dashboard with preloaded data
   useEffect(() => {
-    if (!user || initialLoadComplete.current) return;
+    if (!user) return;
 
-    let isMounted = true;
-
-    const initializeDashboard = async () => {
+    const setupRealtimeListeners = async (userId) => {
       try {
-        console.log("[Dashboard] Initializing dashboard for user:", user.uid);
-
-        // Load all data concurrently
-        const [
-          userSnapshot,
-          eventsSnapshot,
-          finesSnapshot,
-          peopleSnapshot,
-          avatarData,
-          lastViewedData,
-        ] = await Promise.all([
-          // User data
-          getDocs(query(collection(db, "users"), where("uid", "==", user.uid))),
-          // Events data
-          getDocs(query(collection(db, "events"), orderBy("dueDate", "asc"))),
-          // Fines data
-          getDocs(query(collection(db, "fines"), orderBy("dueDate", "asc"))),
-          // People data - Remove any filters to get all users
-          getDocs(query(collection(db, "users"))),
-          // Avatar data
-          avatarRealtime
-            .fetchAvatar(user)
-            .catch((err) => ({ avatarUrl: null, error: err })),
-          // Last viewed data
-          getDoc(doc(db, "users", user.uid)).catch((err) => ({
-            exists: () => false,
-            error: err,
-          })),
-        ]);
-
-        if (!isMounted) return;
-
-        // Process user data
-        let userData = null;
-        if (!userSnapshot.empty) {
-          const userDoc = userSnapshot.docs[0];
-          userData = {
-            id: userDoc.id,
-            uid: user.uid,
-            username: user.displayName,
-            email: user.email,
-            ...userDoc.data(),
-          };
-        }
-
-        // Process events data
-        const eventsData = eventsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          dueDate: doc.data().dueDate?.toDate(),
-        }));
-
-        // Process fines data
-        const finesData = finesSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          dueDate: doc.data().dueDate?.toDate(),
-        }));
-
-        // Process people data - Improved data processing
-        const peopleData = peopleSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          username: doc.data().username || doc.data().displayName || "Unknown",
-          yearLevel: doc.data().yearLevel || "N/A",
-          bio: doc.data().bio || null,
-          role: doc.data().role || "student",
-          email: doc.data().email || null,
-          avatarUrl: doc.data().avatarUrl || null,
-        }));
-
-        // Split people into officers and students - Improved filtering
-        const officersData = [];
-        const studentsData = [];
-        peopleData.forEach((user) => {
-          if (user.role === "treasurer" || user.role === "secretary") {
-            officersData.push(user);
-          } else {
-            // Include all other users as students
-            studentsData.push(user);
-          }
-        });
-
-        // Sort students by username
-        studentsData.sort((a, b) =>
-          (a.username || "").localeCompare(b.username || "")
+        console.log(
+          "[Dashboard] Setting up real-time listeners for user:",
+          userId
         );
-
-        // Sort officers by role and then username
-        officersData.sort((a, b) => {
-          if (a.role !== b.role) {
-            return a.role === "treasurer" ? -1 : 1;
-          }
-          return (a.username || "").localeCompare(b.username || "");
-        });
-
-        // Process avatar data
-        if (!avatarData.error) {
-          setAvatarUrl(avatarData.avatarUrl);
-        }
-        setLoadingAvatar(false);
-
-        // Process last viewed data
-        if (
-          lastViewedData.exists &&
-          lastViewedData.exists() &&
-          lastViewedData.data().lastViewed
-        ) {
-          const data = lastViewedData.data().lastViewed;
-          setLastViewed({
-            Fines: data.Fines ? new Date(data.Fines) : new Date(0),
-            Events: data.Events ? new Date(data.Events) : new Date(0),
-          });
-        }
-
-        // Store all data in ref
-        dashboardData.current = {
-          user: userData,
-          events: eventsData,
-          fines: finesData,
-          people: {
-            officers: officersData,
-            students: studentsData,
-          },
-        };
-
-        // Set up real-time listeners after initial load
-        await setupRealtimeListeners(userData?.id);
-
-        // Set up avatar subscription
-        setupAvatarSubscription();
-
-        initialLoadComplete.current = true;
-        setIsInitializing(false);
-        setInitError(null);
-
-        console.log("[Dashboard] Dashboard initialization completed");
-        console.log("[Dashboard] Total students loaded:", studentsData.length);
-        console.log("[Dashboard] Total officers loaded:", officersData.length);
-      } catch (error) {
-        console.error("[Dashboard] Error initializing dashboard:", error);
-        if (isMounted) {
-          setInitError(error.message || "Failed to initialize dashboard");
-          setIsInitializing(false);
-        }
-      }
-    };
-
-    // Setup realtime listeners
-    const setupRealtimeListeners = async (userDocId) => {
-      if (!userDocId) return;
-
-      try {
-        // Clean up existing listeners
-        Object.values(unsubscribersRef.current).forEach((unsub) => {
-          if (unsub && typeof unsub === "function") {
-            try {
-              unsub();
-            } catch (error) {
-              console.error("[Dashboard] Error cleaning up listener:", error);
-            }
-          }
-        });
 
         // Set up fines listener
         const finesQuery = query(
           collection(db, "fines"),
-          where("userId", "==", userDocId)
+          orderBy("dueDate", "asc")
         );
-        unsubscribersRef.current.fines = onSnapshot(
-          finesQuery,
-          (snapshot) => {
-            const newFines = snapshot.docs
-              .map((doc) => ({
-                id: doc.id,
-                ...doc.data(),
-                createdAt: doc.data().createdAt?.toDate(),
-              }))
-              .filter((fine) => fine.createdAt > lastViewed.Fines).length;
-
-            setNotifications((prev) => ({
-              ...prev,
-              Fines: newFines,
-            }));
-          },
-          (error) => {
-            console.error("[Dashboard] Fines snapshot error:", error);
-          }
-        );
+        unsubscribersRef.current.fines = onSnapshot(finesQuery, (snapshot) => {
+          const updatedFines = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+            dueDate: doc.data().dueDate?.toDate(),
+          }));
+          dashboardData.current.fines = updatedFines;
+        });
 
         // Set up events listener
-        unsubscribersRef.current.events = onSnapshot(
+        const eventsQuery = query(
           collection(db, "events"),
+          orderBy("dueDate", "asc")
+        );
+        unsubscribersRef.current.events = onSnapshot(
+          eventsQuery,
           (snapshot) => {
-            const newEvents = snapshot.docs
-              .map((doc) => ({
-                id: doc.id,
-                ...doc.data(),
-                createdAt: doc.data().createdAt?.toDate(),
-              }))
-              .filter((event) => event.createdAt > lastViewed.Events).length;
-
-            setNotifications((prev) => ({
-              ...prev,
-              Events: newEvents,
+            const updatedEvents = snapshot.docs.map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+              dueDate: doc.data().dueDate?.toDate(),
             }));
-          },
-          (error) => {
-            console.error("[Dashboard] Events snapshot error:", error);
+            dashboardData.current.events = updatedEvents;
           }
         );
+
+        // Set up people listener
+        const peopleQuery = query(collection(db, "users"));
+        unsubscribersRef.current.people = onSnapshot(
+          peopleQuery,
+          (snapshot) => {
+            const updatedPeople = {
+              officers: snapshot.docs
+                .filter(
+                  (doc) =>
+                    doc.data().role === "treasurer" ||
+                    doc.data().role === "secretary"
+                )
+                .map((doc) => ({
+                  id: doc.id,
+                  ...doc.data(),
+                  username:
+                    doc.data().username || doc.data().displayName || "Unknown",
+                  yearLevel: doc.data().yearLevel || "N/A",
+                  bio: doc.data().bio || null,
+                  role: doc.data().role || "student",
+                  email: doc.data().email || null,
+                  avatarUrl: doc.data().avatarUrl || null,
+                })),
+              students: snapshot.docs
+                .filter(
+                  (doc) => !["treasurer", "secretary"].includes(doc.data().role)
+                )
+                .map((doc) => ({
+                  id: doc.id,
+                  ...doc.data(),
+                  username:
+                    doc.data().username || doc.data().displayName || "Unknown",
+                  yearLevel: doc.data().yearLevel || "N/A",
+                  bio: doc.data().bio || null,
+                  role: doc.data().role || "student",
+                  email: doc.data().email || null,
+                  avatarUrl: doc.data().avatarUrl || null,
+                })),
+            };
+            dashboardData.current.people = updatedPeople;
+          }
+        );
+
+        console.log("[Dashboard] Real-time listeners set up successfully");
       } catch (error) {
         console.error(
-          "[Dashboard] Error setting up realtime listeners:",
+          "[Dashboard] Error setting up real-time listeners:",
           error
         );
       }
     };
 
-    // Setup avatar subscription
     const setupAvatarSubscription = () => {
       try {
+        console.log("[Dashboard] Setting up avatar subscription");
         unsubscribersRef.current.avatar =
           avatarRealtime.subscribeToAvatarUpdates(user, (newAvatarUrl) => {
             setAvatarUrl(newAvatarUrl);
-            // Update the stored user data
             if (dashboardData.current.user) {
               dashboardData.current.user.avatarUrl = newAvatarUrl;
             }
           });
+        console.log("[Dashboard] Avatar subscription set up successfully");
       } catch (error) {
-        console.error("[Dashboard] Avatar subscription error:", error);
+        console.error(
+          "[Dashboard] Error setting up avatar subscription:",
+          error
+        );
+      }
+    };
+
+    const initializeDashboard = async () => {
+      try {
+        console.log("[Dashboard] Initializing dashboard for user:", user.uid);
+
+        // Get preloaded data from login
+        const preloadedData =
+          route.params?.preloadedData || global.dashboardData;
+
+        if (!preloadedData) {
+          console.error("[Dashboard] No preloaded data found");
+          return;
+        }
+
+        console.log("[Dashboard] Using preloaded data");
+
+        // Use preloaded data
+        dashboardData.current = preloadedData;
+        setAvatarUrl(preloadedData.avatarUrl);
+        setLastViewed(preloadedData.lastViewed);
+
+        // Set up real-time listeners
+        await setupRealtimeListeners(preloadedData.user?.id);
+
+        // Set up avatar subscription
+        setupAvatarSubscription();
+
+        console.log("[Dashboard] Dashboard initialization completed");
+      } catch (error) {
+        console.error("[Dashboard] Error initializing dashboard:", error);
       }
     };
 
     initializeDashboard();
 
     return () => {
-      isMounted = false;
       // Clean up all listeners
       Object.values(unsubscribersRef.current).forEach((unsub) => {
         if (unsub && typeof unsub === "function") {
@@ -519,11 +414,11 @@ const Dashboard = ({ navigation, route }) => {
         }
       });
     };
-  }, [user]);
+  }, [user, route.params?.preloadedData]);
 
   // Handle navigation parameters - only after initialization
   useEffect(() => {
-    if (!route.params?.screen || isInitializing) return;
+    if (!route.params?.screen || !user) return;
 
     const screenName = route.params.screen;
     if (screenName === lastNavigationScreen.current) return;
@@ -543,13 +438,7 @@ const Dashboard = ({ navigation, route }) => {
         friction: 7,
       }).start();
     }
-  }, [
-    route.params?.screen,
-    isInitializing,
-    translateX,
-    tabWidth,
-    underlineOffset,
-  ]);
+  }, [route.params?.screen, user, translateX, tabWidth, underlineOffset]);
 
   // Tab press handler
   const handleTabPress = useCallback(
@@ -662,7 +551,7 @@ const Dashboard = ({ navigation, route }) => {
         return (
           <Home
             initialData={dashboardData.current.user}
-            isDataPreloaded={!isInitializing}
+            isDataPreloaded={!!user}
             showLogoutModal={() => setShowLogoutModal(true)}
           />
         );
@@ -670,7 +559,7 @@ const Dashboard = ({ navigation, route }) => {
         return (
           <Events
             initialData={dashboardData.current.events}
-            isDataPreloaded={!isInitializing}
+            isDataPreloaded={!!user}
             showLogoutModal={() => setShowLogoutModal(true)}
           />
         );
@@ -678,7 +567,7 @@ const Dashboard = ({ navigation, route }) => {
         return (
           <Fines
             initialData={dashboardData.current.fines}
-            isDataPreloaded={!isInitializing}
+            isDataPreloaded={!!user}
             showLogoutModal={() => setShowLogoutModal(true)}
           />
         );
@@ -686,7 +575,7 @@ const Dashboard = ({ navigation, route }) => {
         return (
           <People
             initialData={dashboardData.current.people}
-            isDataPreloaded={!isInitializing}
+            isDataPreloaded={!!user}
             showLogoutModal={() => setShowLogoutModal(true)}
           />
         );
@@ -694,7 +583,7 @@ const Dashboard = ({ navigation, route }) => {
         return (
           <Profile
             initialData={dashboardData.current.user}
-            isDataPreloaded={!isInitializing}
+            isDataPreloaded={!!user}
             onAvatarUpdate={(newAvatarUrl) => {
               setAvatarUrl(newAvatarUrl);
               if (dashboardData.current.user) {
@@ -707,11 +596,11 @@ const Dashboard = ({ navigation, route }) => {
       default:
         return <View style={{ flex: 1 }} />;
     }
-  }, [activeTab, isInitializing]);
+  }, [activeTab, user]);
 
   // Render avatar
   const renderAvatar = useCallback(() => {
-    if (loadingAvatar) {
+    if (!user) {
       return <ActivityIndicator size="small" color="#aaa" />;
     }
 
@@ -735,7 +624,7 @@ const Dashboard = ({ navigation, route }) => {
         }
       />
     );
-  }, [avatarUrl, loadingAvatar, activeTab, theme]);
+  }, [avatarUrl, user, activeTab, theme]);
 
   // Render tab
   const renderTab = useCallback(
@@ -805,7 +694,7 @@ const Dashboard = ({ navigation, route }) => {
     );
   }
 
-  // Always render the full dashboard structure
+  // Normal dashboard rendering when user is logged in
   return (
     <SafeAreaView
       style={[dashboardStyles.safeArea, { backgroundColor: theme.background }]}
@@ -866,52 +755,6 @@ const Dashboard = ({ navigation, route }) => {
           {ADMIN_TABS.map(renderTab)}
         </View>
       </View>
-
-      {/* Loading overlay - shows on top of dashboard during initialization */}
-      {isInitializing && (
-        <View
-          style={[
-            styles.loadingOverlay,
-            isDarkMode && styles.loadingOverlayDark,
-          ]}
-        >
-          <View style={styles.loadingContent}>
-            <ActivityIndicator size="large" color="#203562" />
-            <Text
-              style={[
-                styles.loadingTextNeutral,
-                isDarkMode && styles.loadingTextDark,
-              ]}
-            >
-              Loading Dashboard...
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Error overlay */}
-      {initError && (
-        <View
-          style={[
-            styles.loadingOverlay,
-            isDarkMode && styles.loadingOverlayDark,
-          ]}
-        >
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>Error: {initError}</Text>
-            <TouchableOpacity
-              style={styles.retryButton}
-              onPress={() => {
-                initialLoadComplete.current = false;
-                setIsInitializing(true);
-                setInitError(null);
-              }}
-            >
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
 
       {showLogoutModal && (
         <Logout
