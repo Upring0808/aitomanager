@@ -19,6 +19,7 @@ import Toast from "react-native-toast-message";
 import { auth, db } from "../../config/firebaseconfig";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore"; // import Firestore functions
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const AdminLogin = ({ navigation }) => {
   const [email, setEmail] = useState("");
@@ -60,15 +61,14 @@ const AdminLogin = ({ navigation }) => {
         password
       );
       const user = userCredential.user;
-
-      // Fetch the user from the admin collection to check if they are an admin
-      const adminRef = doc(db, "admin", user.uid); // Fetch based on user's UID
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) throw new Error("No organization selected.");
+      // Fetch the user from the org's admins collection to check if they are an admin
+      const adminRef = doc(db, "organizations", orgId, "admins", user.uid);
       const adminDoc = await getDoc(adminRef);
 
       if (adminDoc.exists()) {
         showToast("success", "Admin login successful!");
-        // Navigate to the Admin Dashboard using reset to prevent navigation issues
-        // Add a small delay to ensure Firebase auth state is fully updated
         setTimeout(() => {
           navigation.reset({
             index: 0,
@@ -76,9 +76,17 @@ const AdminLogin = ({ navigation }) => {
           });
         }, 300);
       } else {
-        showToast("error", "You do not have admin privileges.");
-        // Optionally, sign out the user since they are not an admin
-        // auth.signOut();
+        showToast(
+          "error",
+          "You do not have admin privileges in this organization."
+        );
+        await auth.signOut();
+        setTimeout(() => {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: "LandingScreen" }],
+          });
+        }, 500);
       }
     } catch (error) {
       console.error("Error during login:", error);

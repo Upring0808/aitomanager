@@ -12,6 +12,7 @@ import {
   setPersistenceEnabled,
   query,
   limitToLast,
+  collection,
 } from "firebase/database";
 import { onAuthStateChanged } from "firebase/auth";
 

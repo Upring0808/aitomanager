@@ -14,9 +14,9 @@ import {
 import Toast from "react-native-toast-message";
 
 // Fetch Events
-export const fetchEvents = async (yearLevel = null) => {
+export const fetchEvents = async (yearLevel = null, orgId) => {
   try {
-    const eventsCollection = collection(db, "events");
+    const eventsCollection = collection(db, "organizations", orgId, "events");
     const eventsQuery = yearLevel
       ? query(eventsCollection, where("yearLevel", "array-contains", yearLevel))
       : eventsCollection;
@@ -47,7 +47,8 @@ export const addEvent = async (
   timeframe,
   dueDate,
   description,
-  yearLevels = []
+  yearLevels = [],
+  orgId
 ) => {
   try {
     const user = auth.currentUser;
@@ -55,7 +56,7 @@ export const addEvent = async (
       throw new Error("User is not authenticated.");
     }
 
-    const adminDocRef = doc(db, "admin", user.uid);
+    const adminDocRef = doc(db, "organizations", orgId, "admin", user.uid);
     const adminDoc = await getDoc(adminDocRef);
 
     if (!adminDoc.exists()) {
@@ -67,15 +68,18 @@ export const addEvent = async (
 
     const dueDateTimestamp = Timestamp.fromDate(dueDate);
 
-    const docRef = await addDoc(collection(db, "events"), {
-      title,
-      timeframe,
-      yearLevel: yearLevels,
-      dueDate: dueDateTimestamp,
-      description, // Add description here
-      createdAt: Timestamp.now(),
-      createdBy: username,
-    });
+    const docRef = await addDoc(
+      collection(db, "organizations", orgId, "events"),
+      {
+        title,
+        timeframe,
+        yearLevel: yearLevels,
+        dueDate: dueDateTimestamp,
+        description, // Add description here
+        createdAt: Timestamp.now(),
+        createdBy: username,
+      }
+    );
 
     // Add activity log for event creation
     await addDoc(collection(db, "activities"), {
@@ -116,7 +120,8 @@ export const handleSaveEvent = async (
   newDescription,
   events,
   setEvents,
-  setEditingEventId
+  setEditingEventId,
+  orgId
 ) => {
   if (!newTitle || !newTimeframe) {
     console.error("Title or timeframe is missing");
@@ -124,7 +129,7 @@ export const handleSaveEvent = async (
   }
 
   try {
-    const eventDocRef = doc(db, "events", id);
+    const eventDocRef = doc(db, "organizations", orgId, "events", id);
     await updateDoc(eventDocRef, {
       title: newTitle,
       timeframe: newTimeframe,
@@ -154,9 +159,9 @@ export const handleSaveEvent = async (
 };
 
 // Delete Event
-export const deleteEvent = async (id) => {
+export const deleteEvent = async (id, orgId) => {
   try {
-    const eventDocRef = doc(db, "events", id);
+    const eventDocRef = doc(db, "organizations", orgId, "events", id);
     await deleteDoc(eventDocRef);
     Toast.show({ type: "success", text1: "Event deleted successfully" });
   } catch (error) {
@@ -166,9 +171,9 @@ export const deleteEvent = async (id) => {
 };
 
 // Fetch Events by Year Level
-export const fetchEventsByYearLevel = async (yearLevel) => {
+export const fetchEventsByYearLevel = async (yearLevel, orgId) => {
   try {
-    const eventsCollection = collection(db, "events");
+    const eventsCollection = collection(db, "organizations", orgId, "events");
     const eventsQuery = query(
       eventsCollection,
       where("yearLevel", "array-contains", yearLevel)
@@ -194,13 +199,13 @@ export const fetchEventsByYearLevel = async (yearLevel) => {
 };
 
 // Update Event Year Levels
-export const updateEventYearLevels = async (eventId, yearLevels) => {
+export const updateEventYearLevels = async (eventId, yearLevels, orgId) => {
   try {
     if (!Array.isArray(yearLevels)) {
       yearLevels = [yearLevels]; // Ensure it's an array
     }
 
-    const eventDocRef = doc(db, "events", eventId);
+    const eventDocRef = doc(db, "organizations", orgId, "events", eventId);
     await updateDoc(eventDocRef, {
       yearLevel: yearLevels,
     });

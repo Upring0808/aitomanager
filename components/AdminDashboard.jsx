@@ -27,6 +27,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { dashboardServices } from "../services/dashboardServices";
 import userPresenceService from "../services/UserPresenceService";
 import { auth } from "../config/firebaseconfig";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { constants, dashboardStyles } from "../styles/dashboardStyles";
 import Header from "./Header";
@@ -99,34 +100,41 @@ const AdminDashboard = ({ navigation, route }) => {
     const user = auth.currentUser;
     if (user) {
       let unsubscribe = () => {};
-      try {
-        unsubscribe = dashboardServices.subscribeToAvatarUpdates(
-          user,
-          (newAvatarUrl) => {
-            setAvatarUrl(newAvatarUrl);
-            setLoadingAvatar(false);
+      (async () => {
+        try {
+          const orgId = await AsyncStorage.getItem("selectedOrgId");
+          if (orgId) {
+            unsubscribe = dashboardServices.subscribeToAvatarUpdates(
+              user,
+              orgId,
+              (newAvatarUrl) => {
+                setAvatarUrl(newAvatarUrl);
+                setLoadingAvatar(false);
+              },
+              true // isAdmin
+            );
           }
-        );
 
-        dashboardServices
-          .fetchAvatar(user)
-          .then(({ avatarUrl, error }) => {
-            if (!error) {
-              setAvatarUrl(avatarUrl);
+          dashboardServices
+            .fetchAvatar(user, orgId, true) // isAdmin
+            .then(({ avatarUrl, error }) => {
+              if (!error) {
+                setAvatarUrl(avatarUrl);
+                setLoadingAvatar(false);
+              } else {
+                console.error("[AdminDashboard] Error fetching avatar:", error);
+                setLoadingAvatar(false);
+              }
+            })
+            .catch((error) => {
+              console.error("[AdminDashboard] Avatar fetch exception:", error);
               setLoadingAvatar(false);
-            } else {
-              console.error("[AdminDashboard] Error fetching avatar:", error);
-              setLoadingAvatar(false);
-            }
-          })
-          .catch((error) => {
-            console.error("[AdminDashboard] Avatar fetch exception:", error);
-            setLoadingAvatar(false);
-          });
-      } catch (error) {
-        console.error("[AdminDashboard] Avatar subscription error:", error);
-        setLoadingAvatar(false);
-      }
+            });
+        } catch (error) {
+          console.error("[AdminDashboard] Avatar subscription error:", error);
+          setLoadingAvatar(false);
+        }
+      })();
 
       return () => {
         try {
@@ -169,14 +177,14 @@ const AdminDashboard = ({ navigation, route }) => {
       // Use a more reliable approach with a single reset call
       navigation.reset({
         index: 0,
-        routes: [{ name: "Index" }],
+        routes: [{ name: "LoginScreen" }],
       });
     } catch (error) {
       console.error("[AdminDashboard] Error during logout:", error);
       // Attempt to navigate anyway with a single reset call
       navigation.reset({
         index: 0,
-        routes: [{ name: "Index" }],
+        routes: [{ name: "LoginScreen" }],
       });
     }
   }, [navigation]);
@@ -209,7 +217,7 @@ const AdminDashboard = ({ navigation, route }) => {
         return (
           <AdminProfile
             onAvatarUpdate={dashboardServices.fetchAvatar}
-            showLogoutModal={setShowLogoutModal}
+            onShowLogoutModal={() => setShowLogoutModal(true)}
           />
         );
       case "Events":

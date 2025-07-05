@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Aito Check",
+    "name": "Fivent",
     "slug": "FirebaseAuth",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/aitoIcon.png",
+    "icon": "./assets/fivent.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/aitoIcon1.png",
+      "image": "./assets/fivent.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -15,20 +15,30 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "This app requires access to your photo library to upload your profile picture."
+        "NSPhotoLibraryUsageDescription": "This app requires access to your photo library to upload your profile picture.",
+        "NSCameraUsageDescription": "This app needs access to your camera to scan QR codes for organization access."
       },
       "bundleIdentifier": "com.anonymous.FirebaseAuth"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/fivent.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.anonymous.FirebaseAuth"
+      "package": "com.anonymous.FirebaseAuth",
+      "permissions": ["CAMERA"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Fivent to access your camera to scan QR codes."
+        }
+      ]
+    ],
     "experiments": {
       "tsconfigPaths": true
     },

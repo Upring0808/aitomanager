@@ -31,6 +31,7 @@ import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { dashboardServices } from "../../../../services/dashboardServices";
 import userPresenceService from "../../../../services/UserPresenceService";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const Profile = () => {
   const navigation = useNavigation();
@@ -190,7 +191,10 @@ const Profile = () => {
       setAvatarUrl(downloadURL);
 
       // Notify dashboard of avatar update
-      dashboardServices.updateAvatarUrl(auth.currentUser, downloadURL);
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (orgId) {
+        dashboardServices.updateAvatarUrl(auth.currentUser, orgId, downloadURL);
+      }
 
       Toast.show({
         type: "success",

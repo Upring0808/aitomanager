@@ -21,6 +21,7 @@ import {
 } from "react-native";
 import { createStackNavigator } from "@react-navigation/stack";
 import Ionicons from "react-native-vector-icons/Ionicons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Conditionally import BackHandler to prevent errors on web
 let BackHandler;
@@ -258,14 +259,14 @@ const Dashboard = ({ navigation, route }) => {
 
     const setupRealtimeListeners = async (userId) => {
       try {
-        console.log(
-          "[Dashboard] Setting up real-time listeners for user:",
-          userId
-        );
-
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) {
+          console.error("[Dashboard] No orgId found in AsyncStorage");
+          return;
+        }
         // Set up fines listener
         const finesQuery = query(
-          collection(db, "fines"),
+          collection(db, "organizations", orgId, "fines"),
           orderBy("dueDate", "asc")
         );
         unsubscribersRef.current.fines = onSnapshot(finesQuery, (snapshot) => {
@@ -279,7 +280,7 @@ const Dashboard = ({ navigation, route }) => {
 
         // Set up events listener
         const eventsQuery = query(
-          collection(db, "events"),
+          collection(db, "organizations", orgId, "events"),
           orderBy("dueDate", "asc")
         );
         unsubscribersRef.current.events = onSnapshot(
@@ -295,7 +296,9 @@ const Dashboard = ({ navigation, route }) => {
         );
 
         // Set up people listener
-        const peopleQuery = query(collection(db, "users"));
+        const peopleQuery = query(
+          collection(db, "organizations", orgId, "users")
+        );
         unsubscribersRef.current.people = onSnapshot(
           peopleQuery,
           (snapshot) => {
@@ -442,7 +445,7 @@ const Dashboard = ({ navigation, route }) => {
 
   // Tab press handler
   const handleTabPress = useCallback(
-    (name, index) => {
+    async (name, index) => {
       setActiveTab(name);
       setActiveTabIndex(index);
 
@@ -470,7 +473,8 @@ const Dashboard = ({ navigation, route }) => {
 
         // Save to Firestore
         try {
-          const userDocRef = doc(db, "users", user.uid);
+          const orgId = await AsyncStorage.getItem("selectedOrgId");
+          const userDocRef = doc(db, "organizations", orgId, "users", user.uid);
           updateDoc(userDocRef, {
             [`lastViewed.${name}`]: now,
           }).catch((error) => {
@@ -513,16 +517,16 @@ const Dashboard = ({ navigation, route }) => {
       // Sign out from Firebase
       await auth.signOut();
 
-      // Navigate to login with a small delay to ensure cleanup is complete
+      // Navigate to login screen with a small delay to ensure cleanup is complete
       if (isNavigationReady && navigation) {
         setTimeout(() => {
-          navigation.replace("Index");
+          navigation.replace("LoginScreen");
         }, 100);
       }
     } catch (error) {
       console.error("[Dashboard] Error during logout:", error);
       if (isNavigationReady && navigation) {
-        navigation.replace("Index");
+        navigation.replace("LoginScreen");
       }
     }
   }, [navigation, isNavigationReady]);

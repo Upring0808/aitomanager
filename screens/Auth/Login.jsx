@@ -43,6 +43,32 @@ import avatarRealtime from "../../services/avatarRealtime";
 const { width, height } = Dimensions.get("window");
 const { height: screenHeight, width: screenWidth } = Dimensions.get("screen");
 
+// DEPRECATED: This login screen is no longer used. Use LoginScreen.js instead.
+export default function DeprecatedLogin() {
+  return (
+    <View
+      style={{
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "#fff",
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 18,
+          color: "#16325B",
+          textAlign: "center",
+          padding: 32,
+        }}
+      >
+        This login screen is deprecated. Please use LoginScreen.js for all user
+        logins.
+      </Text>
+    </View>
+  );
+}
+
 const Login = ({ navigation }) => {
   // Your existing state variables
   const [loginInput, setLoginInput] = useState("");
@@ -427,6 +453,12 @@ const Login = ({ navigation }) => {
       const userDoc = querySnapshot.docs[0];
       const email = userDoc.data().email;
 
+      if (typeof email !== "string" || !email.includes("@")) {
+        showToast("error", "Invalid email address for this user.");
+        setIsResetting(false);
+        return;
+      }
+
       await sendPasswordResetEmail(auth, email);
       showToast(
         "success",
@@ -790,5 +822,3 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
 });
-
-export default Login;

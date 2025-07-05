@@ -24,6 +24,9 @@ import {
 } from "../../../../services/admineventsServices";
 import { eventsStyles } from "../../../../styles/eventsStyles";
 import AdminEventCard from "../../../../components/AdminEventCard";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "../../../../config/firebaseconfig";
 
 const AdminEvents = () => {
   const [editingEventId, setEditingEventId] = useState(null);
@@ -51,7 +54,14 @@ const AdminEvents = () => {
     const loadEvents = async () => {
       setLoading(true);
       try {
-        const eventsList = await fetchEvents();
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) return;
+        const eventsRef = collection(db, "organizations", orgId, "events");
+        const snapshot = await getDocs(eventsRef);
+        const eventsList = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
         setEvents(eventsList);
       } catch (error) {
         console.error("Error fetching events:", error);
@@ -69,11 +79,19 @@ const AdminEvents = () => {
     }
     const timeframe = `${formatTime(startTime)} - ${formatTime(endTime)}`;
     try {
-      const newEvent = await addEvent(title, timeframe, dueDate, description); // Pass description
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) return;
+      const newEvent = await addEvent(
+        title,
+        timeframe,
+        dueDate,
+        description,
+        orgId
+      );
       setEvents([...events, newEvent]);
       Toast.show({ type: "success", text1: "Event created" });
       setTitle("");
-      setDescription(""); // Reset description
+      setDescription("");
       setStartTime(new Date());
       setEndTime(new Date());
       setDueDate(new Date());
@@ -96,7 +114,9 @@ const AdminEvents = () => {
         style: "destructive",
         onPress: async () => {
           try {
-            await deleteEvent(id);
+            const orgId = await AsyncStorage.getItem("selectedOrgId");
+            if (!orgId) return;
+            await deleteEvent(id, orgId);
             setEvents(events.filter((event) => event.id !== id));
             Toast.show({ type: "success", text1: "Event deleted" });
           } catch (error) {
@@ -233,7 +253,8 @@ const AdminEvents = () => {
             editValues.newDescription,
             events,
             setEvents,
-            setEditingEventId
+            setEditingEventId,
+            event.orgId
           )
         }
         onCancel={() => setEditingEventId(null)}

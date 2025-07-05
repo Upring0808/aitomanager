@@ -17,11 +17,5 @@ module.exports = {
         ios: null,
       },
     },
-    "@react-native-async-storage/async-storage": {
-      platforms: {
-        android: null,
-        ios: null,
-      },
-    },
   },
 };

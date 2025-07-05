@@ -18,6 +18,7 @@ import Icon from "react-native-vector-icons/Ionicons";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../../../config/firebaseconfig";
 import { BarChart } from "react-native-chart-kit";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -34,8 +35,26 @@ const StudentOverview = ({ navigation }) => {
     const fetchStudentData = async () => {
       try {
         setLoading(true);
-        const usersCollectionRef = collection(db, "users");
-        const finesCollectionRef = collection(db, "fines");
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) {
+          setTotalStudents(0);
+          setStudentsByYear({});
+          setStudentsWithOutstandingFines(0);
+          setLoading(false);
+          return;
+        }
+        const usersCollectionRef = collection(
+          db,
+          "organizations",
+          orgId,
+          "users"
+        );
+        const finesCollectionRef = collection(
+          db,
+          "organizations",
+          orgId,
+          "fines"
+        );
 
         const [usersSnapshot, finesSnapshot] = await Promise.all([
           getDocs(usersCollectionRef),

@@ -28,6 +28,7 @@ import {
 } from "firebase/firestore";
 import Toast from "react-native-toast-message";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const THEME_COLOR = "#0A2463";
 const THEME_SECONDARY = "#3E92CC";
@@ -46,13 +47,17 @@ const AdminPeople = () => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const usersQuery = query(collection(db, "users"), orderBy("username"));
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) return;
+      const usersQuery = query(
+        collection(db, "organizations", orgId, "users"),
+        orderBy("username")
+      );
       const querySnapshot = await getDocs(usersQuery);
       const usersData = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
-
       setUsers(usersData);
       setFilteredUsers(usersData);
     } catch (error) {
@@ -118,7 +123,11 @@ const AdminPeople = () => {
 
   const confirmDelete = async () => {
     try {
-      await deleteDoc(doc(db, "users", selectedUser.id));
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) return;
+      await deleteDoc(
+        doc(db, "organizations", orgId, "users", selectedUser.id)
+      );
       Toast.show({
         type: "success",
         text1: "User Deleted",
@@ -248,7 +257,9 @@ const AdminPeople = () => {
       if (!user) return;
       setLoading(true);
       try {
-        const userRef = doc(db, "users", user.id);
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) return;
+        const userRef = doc(db, "organizations", orgId, "users", user.id);
         await updateDoc(userRef, {
           role: selectedRole,
           yearLevel: parseInt(selectedYear),

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -22,8 +22,10 @@ import BackgroundImage from "../../components/ImageBackground";
 import Toast from "react-native-toast-message";
 import { auth, db } from "../../config/firebaseconfig";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { useNavigation } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { doc, setDoc } from "firebase/firestore";
 
 const Register = () => {
   const [username, setUsername] = useState("");
@@ -35,6 +37,8 @@ const Register = () => {
   const [showPicker, setShowPicker] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [orgLogo, setOrgLogo] = useState(null);
+  const [orgName, setOrgName] = useState("");
   const navigation = useNavigation();
 
   const yearLevels = [
@@ -64,7 +68,7 @@ const Register = () => {
     });
   };
 
-  const validateStudentId = async (studentId) => {
+  const validateStudentId = (studentId) => {
     const studentIdRegex = /^\d{4}-\d{4}-[A-Z]{2}$/;
     if (!studentIdRegex.test(studentId)) {
       showWarning(
@@ -72,19 +76,7 @@ const Register = () => {
       );
       return false;
     }
-
-    try {
-      const q = query(
-        collection(db, "ictStudentIds"),
-        where("studentId", "==", studentId)
-      );
-      const querySnapshot = await getDocs(q);
-      return !querySnapshot.empty; // Return true if studentId exists
-    } catch (error) {
-      console.error("Error validating student ID:", error);
-      showWarning("Error checking Student ID. Please try again.");
-      return false;
-    }
+    return true;
   };
 
   const handleRegister = async () => {
@@ -106,23 +98,31 @@ const Register = () => {
       return;
     }
 
-    // Validate student ID against ICT student list
-    const isValidStudentId = await validateStudentId(studentId);
+    // Validate student ID format only
+    const isValidStudentId = validateStudentId(studentId);
     if (!isValidStudentId) {
-      showWarning("This Student ID is not recognized as an ICT student.");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
+      // Username uniqueness check should be org-specific
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) {
+        showWarning("No organization selected.");
+        setIsSubmitting(false);
+        return;
+      }
       const usernameQuery = query(
-        collection(db, "users"),
+        collection(db, "organizations", orgId, "users"),
         where("username", "==", username)
       );
       const usernameSnapshot = await getDocs(usernameQuery);
       if (!usernameSnapshot.empty) {
-        showWarning("Username is already taken. Please choose another.");
+        showWarning(
+          "Username is already taken in this organization. Please choose another."
+        );
         setIsSubmitting(false);
         return;
       }
@@ -140,9 +140,10 @@ const Register = () => {
         email,
         password
       );
-
-      await addDoc(collection(db, "users"), {
-        uid: userCredential.user.uid,
+      const userId = userCredential.user.uid;
+      // Save user profile under organizations/{orgId}/users/{userId}
+      await setDoc(doc(db, "organizations", orgId, "users", userId), {
+        uid: userId,
         username,
         studentId,
         email,
@@ -150,9 +151,8 @@ const Register = () => {
         yearLevel,
         createdAt: new Date(),
       });
-
       showSuccess("Registration successful!");
-      navigation.navigate("Login");
+      navigation.navigate("LoginScreen");
     } catch (error) {
       console.error("Error during registration:", error);
       if (error.code === "auth/email-already-in-use") {
@@ -239,6 +239,16 @@ const Register = () => {
     );
   };
 
+  useEffect(() => {
+    const fetchLogoAndName = async () => {
+      const logoUrl = await AsyncStorage.getItem("selectedOrgLogo");
+      setOrgLogo(logoUrl);
+      const name = await AsyncStorage.getItem("selectedOrgName");
+      setOrgName(name || "");
+    };
+    fetchLogoAndName();
+  }, []);
+
   return (
     <BackgroundImage>
       <LinearGradient
@@ -256,10 +266,13 @@ const Register = () => {
                 <View style={styles.logoAndWelcome}>
                   <View style={styles.logoContainer}>
                     <Image
-                      source={aito}
+                      source={orgLogo ? { uri: orgLogo } : aito}
                       style={styles.logo}
                       resizeMode="contain"
                     />
+                    {orgName ? (
+                      <Text style={styles.orgName}>{orgName}</Text>
+                    ) : null}
                   </View>
                   <View style={styles.headerContainer}>
                     <Text style={styles.welcomeTitle}>Create Your Account</Text>
@@ -389,7 +402,7 @@ const Register = () => {
                       Already have an account?{" "}
                     </Text>
                     <TouchableOpacity
-                      onPress={() => navigation.navigate("Login")}
+                      onPress={() => navigation.navigate("LoginScreen")}
                     >
                       <Text style={styles.loginLink}>Login</Text>
                     </TouchableOpacity>
@@ -524,6 +537,10 @@ const styles = StyleSheet.create({
   logo: {
     width: 100,
     height: 100,
+    borderRadius: 50,
+    borderWidth: 2,
+    borderColor: "#e0e0e0",
+    backgroundColor: "#fff",
   },
   // Additional styles for YearLevelPicker
   modalContainer: {
@@ -568,6 +585,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#333",
     marginLeft: 10,
+  },
+  orgName: {
+    marginTop: 10,
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#16325B",
+    textAlign: "center",
+    letterSpacing: 0.5,
   },
 });
 

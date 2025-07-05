@@ -21,6 +21,7 @@ import Toast from "react-native-toast-message";
 import EventDetailsCard from "../../../../components/EventDetailsCard";
 import DropdownPicker from "../../../../components/DropdownPicker";
 import { Styles } from "../../../../styles/Styles";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const Events = ({
   initialData = [],
@@ -37,7 +38,9 @@ const Events = ({
 
   const fetchEvents = useCallback(async () => {
     try {
-      const eventsRef = collection(db, "events");
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) return;
+      const eventsRef = collection(db, "organizations", orgId, "events");
       const q = query(eventsRef, orderBy("dueDate", "asc"));
       const snapshot = await getDocs(q);
       const eventsData = snapshot.docs.map((doc) => ({
@@ -68,33 +71,35 @@ const Events = ({
       return;
     }
 
-    const eventsRef = collection(db, "events");
-    const q = query(eventsRef, orderBy("dueDate", "asc"));
-
-    // Store the unsubscribe function in the ref
-    unsubscribeRef.current = onSnapshot(
-      q,
-      (snapshot) => {
-        const eventsData = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          dueDate: doc.data().dueDate?.toDate(),
-        }));
-        setEvents(eventsData);
-        setLoading(false);
-        setRefreshing(false);
-      },
-      (error) => {
-        console.error("[Events] Error in snapshot listener:", error);
-        setLoading(false);
-        setRefreshing(false);
-        Toast.show({
-          type: "error",
-          text1: "Error",
-          text2: "Failed to load events",
-        });
-      }
-    );
+    (async () => {
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) return;
+      const eventsRef = collection(db, "organizations", orgId, "events");
+      const q = query(eventsRef, orderBy("dueDate", "asc"));
+      unsubscribeRef.current = onSnapshot(
+        q,
+        (snapshot) => {
+          const eventsData = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+            dueDate: doc.data().dueDate?.toDate(),
+          }));
+          setEvents(eventsData);
+          setLoading(false);
+          setRefreshing(false);
+        },
+        (error) => {
+          console.error("[Events] Error in snapshot listener:", error);
+          setLoading(false);
+          setRefreshing(false);
+          Toast.show({
+            type: "error",
+            text1: "Error",
+            text2: "Failed to load events",
+          });
+        }
+      );
+    })();
 
     // Cleanup function
     return () => {

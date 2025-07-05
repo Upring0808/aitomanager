@@ -20,6 +20,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import Icon from "react-native-vector-icons/Ionicons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { width, height } = Dimensions.get("window");
 
@@ -45,8 +46,10 @@ const Fines = ({
           return;
         }
 
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) return;
         const userQuery = query(
-          collection(db, "users"),
+          collection(db, "organizations", orgId, "users"),
           where("uid", "==", currentUser.uid)
         );
 
@@ -62,7 +65,7 @@ const Fines = ({
         const userDocId = userDoc.id;
 
         // Query fines collection with userId
-        const finesRef = collection(db, "fines");
+        const finesRef = collection(db, "organizations", orgId, "fines");
         const finesQuery = query(
           finesRef,
           where("userId", "==", userDocId),

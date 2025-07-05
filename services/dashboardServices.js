@@ -1,15 +1,18 @@
 import { auth, storage, db } from "../config/firebaseconfig";
 import { ref, getDownloadURL, listAll, getMetadata } from "firebase/storage";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, collection } from "firebase/firestore";
 
 export const dashboardServices = {
   // Fetches the initial avatar URL from Storage and updates Firestore
-  fetchAvatar: async (user) => {
+  fetchAvatar: async (user, orgId, isAdmin = false) => {
     if (!user) return { avatarUrl: null, error: null };
 
     try {
-      const avatarFolderRef = ref(storage, `admin/${user.uid}`);
+      const avatarFolderRef = ref(
+        storage,
+        `${isAdmin ? "admin" : "avatars"}/${user.uid}`
+      );
       const listResult = await listAll(avatarFolderRef);
 
       if (listResult.items.length > 0) {
@@ -30,7 +33,10 @@ export const dashboardServices = {
         const url = await getDownloadURL(mostRecentItem);
 
         // Update Firestore with the latest avatar URL
-        const userDocRef = doc(db, "users", user.uid);
+        const userDocRef = doc(
+          collection(db, "organizations", orgId, isAdmin ? "admins" : "users"),
+          user.uid
+        );
         await setDoc(
           userDocRef,
           {
@@ -51,10 +57,39 @@ export const dashboardServices = {
   },
 
   // Subscribe to real-time avatar updates
-  subscribeToAvatarUpdates: (user, callback) => {
-    if (!user) return () => {};
+  subscribeToAvatarUpdates: (user, orgId, callback, isAdmin = false) => {
+    if (!user || !user.uid) {
+      console.warn(
+        "[DEBUG] subscribeToAvatarUpdates: user or user.uid is missing:",
+        user
+      );
+      return () => {};
+    }
+    if (!orgId || typeof orgId !== "string") {
+      console.warn(
+        "[DEBUG] subscribeToAvatarUpdates: orgId is missing or not a string:",
+        orgId
+      );
+      return () => {};
+    }
+    if (typeof callback !== "function") {
+      console.warn(
+        "[DEBUG] subscribeToAvatarUpdates: callback is not a function:",
+        callback
+      );
+      return () => {};
+    }
+    // Defensive log
+    console.log("[DEBUG] subscribeToAvatarUpdates called with:", {
+      user,
+      orgId,
+      isAdmin,
+    });
 
-    const userDocRef = doc(db, "users", user.uid);
+    const userDocRef = doc(
+      collection(db, "organizations", orgId, isAdmin ? "admins" : "users"),
+      user.uid
+    );
 
     // Set up real-time listener
     const unsubscribe = onSnapshot(
@@ -76,9 +111,12 @@ export const dashboardServices = {
     return unsubscribe;
   },
 
-  updateAvatarUrl: async (user, avatarUrl) => {
+  updateAvatarUrl: async (user, orgId, avatarUrl, isAdmin = false) => {
     try {
-      const userDocRef = doc(db, "users", user.uid);
+      const userDocRef = doc(
+        collection(db, "organizations", orgId, isAdmin ? "admins" : "users"),
+        user.uid
+      );
       await setDoc(
         userDocRef,
         {

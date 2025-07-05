@@ -38,6 +38,7 @@ import aito from "../assets/aito.png";
 import BackgroundImage from "./ImageBackground";
 import { textStyles } from "../fallbackStyles";
 import * as SplashScreen from "expo-splash-screen";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const { width, height } = Dimensions.get("window");
 
@@ -77,12 +78,27 @@ const Index = () => {
     initializeScreen();
   }, [fadeAnim]);
 
+  // Add a global error boundary for debugging
+  useEffect(() => {
+    const errorHandler = (error, isFatal) => {
+      console.log("[GLOBAL ERROR]", error, isFatal);
+    };
+    if (typeof ErrorUtils !== "undefined") {
+      ErrorUtils.setGlobalHandler(errorHandler);
+    }
+    return () => {
+      if (typeof ErrorUtils !== "undefined") {
+        ErrorUtils.setGlobalHandler(() => {});
+      }
+    };
+  }, []);
+
   const handleLoginPress = () => {
     if (isNavigating.current) return;
 
     try {
       isNavigating.current = true;
-      navigation.navigate("Login");
+      navigation.navigate("LoginScreen");
     } catch (error) {
       console.error("[Index] Navigation error:", error);
     } finally {

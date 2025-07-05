@@ -17,10 +17,10 @@ const Logout = ({
     try {
       await auth.signOut();
 
-      // Reset the navigation stack to Index
+      // Reset the navigation stack to LoginScreen
       navigation.reset({
         index: 0,
-        routes: [{ name: "Index" }],
+        routes: [{ name: "LoginScreen" }],
       });
 
       Toast.show({

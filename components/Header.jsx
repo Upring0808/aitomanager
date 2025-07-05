@@ -1,10 +1,20 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Platform, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import logo from "../assets/aito.png";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const Header = ({ title = "Aito Check" }) => {
   const insets = useSafeAreaInsets();
+  const [orgLogo, setOrgLogo] = useState(null);
+
+  useEffect(() => {
+    const fetchLogo = async () => {
+      const logoUrl = await AsyncStorage.getItem("selectedOrgLogo");
+      setOrgLogo(logoUrl);
+    };
+    fetchLogo();
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -17,7 +27,11 @@ const Header = ({ title = "Aito Check" }) => {
       />
       {/* Header Content */}
       <View style={styles.header}>
-        <Image source={logo} style={styles.logo} resizeMode="contain" />
+        <Image
+          source={orgLogo ? { uri: orgLogo } : logo}
+          style={styles.logo}
+          resizeMode="contain"
+        />
         <Text style={styles.title}>{title}</Text>
       </View>
     </View>
@@ -40,9 +54,13 @@ const styles = StyleSheet.create({
     borderBottomColor: "#E0E0E0", // Subtle border
   },
   logo: {
-    width: 32, // Minimal size for logo
+    width: 32,
     height: 32,
     marginRight: 8,
+    borderRadius: 16, // Make it circular
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    backgroundColor: "#fff",
   },
   title: {
     fontSize: 24, // Balanced font size

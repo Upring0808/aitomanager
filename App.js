@@ -53,8 +53,9 @@ try {
 
 // Import screens
 import Index from "./components/Index";
+import LandingScreen from "./screens/LandingScreen";
+import LoginScreen from "./screens/LoginScreen";
 import Register from "./screens/Auth/Register";
-import Login from "./screens/Auth/Login";
 import RegisterAdmin from "./screens/Auth/RegisterAdmin";
 import AdminLogin from "./screens/Auth/AdminLogin";
 import Dashboard from "./components/Dashboard";
@@ -77,6 +78,10 @@ import AdminEvents from "./screens/Auth/Dashboard/Admin/AdminEvents";
 import ActivityHistory from "./screens/Auth/Dashboard/Admin/ActivityHistory";
 import AdminReports from "./screens/Auth/Dashboard/Admin/AdminReports";
 import StudentOverview from "./screens/Auth/Dashboard/Admin/StudentOverview";
+import CreateOrganizationScreen from "./screens/CreateOrganizationScreen";
+import OrgCodeVerificationScreen from "./screens/OrgCodeVerificationScreen";
+import EntryScreen from "./screens/EntryScreen";
+import QRLoginScreen from "./screens/QRLoginScreen";
 
 // Override default Text component to use system fonts
 Text.defaultProps = Text.defaultProps || {};
@@ -339,48 +344,26 @@ const App = () => {
 
     return (
       <>
+        <Stack.Screen name="EntryScreen" component={EntryScreen} />
+        <Stack.Screen name="LandingScreen" component={LandingScreen} />
         <Stack.Screen
-          name="Index"
-          component={Index}
-          options={{ gestureEnabled: false }}
+          name="OrgCodeVerification"
+          component={OrgCodeVerificationScreen}
+        />
+        <Stack.Screen name="QRLoginScreen" component={QRLoginScreen} />
+        <Stack.Screen name="LoginScreen" component={LoginScreen} />
+        <Stack.Screen name="Register" component={Register} />
+        <Stack.Screen name="RegisterAdmin" component={RegisterAdmin} />
+        <Stack.Screen name="AdminLogin" component={AdminLogin} />
+        <Stack.Screen name="Dashboard" component={DashboardNavigator} />
+        <Stack.Screen
+          name="AdminDashboard"
+          component={AdminDashboardNavigator}
         />
         <Stack.Screen
-          name="Login"
-          component={Login}
-          options={{ gestureEnabled: false }}
+          name="CreateOrganization"
+          component={CreateOrganizationScreen}
         />
-        <Stack.Screen
-          name="Register"
-          component={Register}
-          options={{ gestureEnabled: false }}
-        />
-        <Stack.Screen
-          name="AdminLogin"
-          component={AdminLogin}
-          options={{ gestureEnabled: false }}
-        />
-        <Stack.Screen
-          name="RegisterAdmin"
-          component={RegisterAdmin}
-          options={{ gestureEnabled: false }}
-        />
-        {userLoggedIn && user && (
-          <>
-            {isAdmin ? (
-              <Stack.Screen
-                name="AdminDashboard"
-                component={AdminDashboardNavigator}
-                options={{ gestureEnabled: false }}
-              />
-            ) : (
-              <Stack.Screen
-                name="Dashboard"
-                component={DashboardNavigator}
-                options={{ gestureEnabled: false }}
-              />
-            )}
-          </>
-        )}
       </>
     );
   };
@@ -408,9 +391,23 @@ const App = () => {
             <Stack.Navigator
               screenOptions={{
                 headerShown: false,
-                gestureEnabled: false,
+                gestureEnabled: true,
+                cardStyleInterpolator: ({ current, layouts }) => {
+                  return {
+                    cardStyle: {
+                      transform: [
+                        {
+                          translateX: current.progress.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [layouts.screen.width, 0],
+                          }),
+                        },
+                      ],
+                    },
+                  };
+                },
               }}
-              initialRouteName="Index"
+              initialRouteName="EntryScreen"
             >
               {renderNavigationContent()}
             </Stack.Navigator>

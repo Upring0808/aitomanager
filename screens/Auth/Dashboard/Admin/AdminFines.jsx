@@ -33,6 +33,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import DropdownPicker from "../../../../components/DropdownPicker";
 import Toast from "react-native-toast-message";
 import { auth } from "../../../../config/firebaseconfig";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 
@@ -73,7 +74,8 @@ const AdminFines = () => {
   const fetchUserHistory = async (userId) => {
     try {
       setOperationLoading(true); // Use operation loading instead of main loading
-      const finesRef = collection(db, "fines");
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      const finesRef = collection(db, "organizations", orgId, "fines");
       const q = query(
         finesRef,
         where("userId", "==", userId),
@@ -101,7 +103,9 @@ const AdminFines = () => {
       setLoading(true);
 
       // Fetch all users
-      const usersQuery = query(collection(db, "users"), orderBy("username"));
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      const usersRef = collection(db, "organizations", orgId, "users");
+      const usersQuery = query(usersRef, orderBy("username"));
       const usersSnapshot = await getDocs(usersQuery);
       const usersData = usersSnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -120,7 +124,8 @@ const AdminFines = () => {
       setOfficers(officers);
 
       // Fetch events
-      const eventsSnapshot = await getDocs(collection(db, "events"));
+      const eventsRef = collection(db, "organizations", orgId, "events");
+      const eventsSnapshot = await getDocs(eventsRef);
       const eventsData = eventsSnapshot.docs.map((doc) => ({
         id: doc.id,
         title: doc.data().title,
@@ -131,7 +136,8 @@ const AdminFines = () => {
       setEvents(eventsData);
 
       // Fetch fines
-      const finesSnapshot = await getDocs(collection(db, "fines"));
+      const finesRef = collection(db, "organizations", orgId, "fines");
+      const finesSnapshot = await getDocs(finesRef);
       const finesData = finesSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -178,10 +184,9 @@ const AdminFines = () => {
   const handleMarkAsPaid = async (fineId) => {
     try {
       setOperationLoading(true);
-      const now = Timestamp.now();
-
-      // Get the fine details using getDoc
-      const fineDocRef = doc(db, "fines", fineId);
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      const finesRef = collection(db, "organizations", orgId, "fines");
+      const fineDocRef = doc(finesRef, fineId);
       const fineDocSnap = await getDoc(fineDocRef);
 
       if (!fineDocSnap.exists()) {
@@ -198,13 +203,15 @@ const AdminFines = () => {
       const fineData = fineDocSnap.data();
 
       // Get user details using getDoc
-      const userDocRef = doc(db, "users", fineData.userId);
+      const usersRef = collection(db, "organizations", orgId, "users");
+      const userDocRef = doc(usersRef, fineData.userId);
       const userDocSnap = await getDoc(userDocRef);
 
       const userData = userDocSnap.exists() ? userDocSnap.data() : {}; // Get user data or empty object with fallback
 
       // Get event details using getDoc
-      const eventDocRef = doc(db, "events", fineData.eventId);
+      const eventsRef = collection(db, "organizations", orgId, "events");
+      const eventDocRef = doc(eventsRef, fineData.eventId);
       const eventDocSnap = await getDoc(eventDocRef);
 
       const eventData = eventDocSnap.exists() ? eventDocSnap.data() : {}; // Get event data or empty object with fallback
@@ -219,9 +226,9 @@ const AdminFines = () => {
       const adminData = adminSnapshot.docs[0]?.data();
 
       // Update fine status
-      await updateDoc(doc(db, "fines", fineId), {
+      await updateDoc(doc(finesRef, fineId), {
         status: "paid",
-        paidAt: now,
+        paidAt: Timestamp.now(),
         paidBy: {
           uid: currentUser.uid,
           username: adminData?.username || "System",
@@ -233,7 +240,7 @@ const AdminFines = () => {
       const activityData = {
         type: "fine_paid",
         description: "Fine payment received", // This description might be overridden by formatActivityDescription
-        timestamp: now,
+        timestamp: Timestamp.now(),
         details: {
           fineId: fineId,
           amount: fineData.amount || 0,
@@ -246,7 +253,7 @@ const AdminFines = () => {
           issuedBy: adminData?.username || "System",
           adminUid: currentUser.uid,
           status: "paid", // Include status in details
-          paidAt: now, // Include paidAt timestamp in details
+          paidAt: Timestamp.now(), // Include paidAt timestamp in details
         },
       };
 
@@ -258,7 +265,7 @@ const AdminFines = () => {
         setSelectedUserHistory((prevHistory) =>
           prevHistory.map((fine) =>
             fine.id === fineId
-              ? { ...fine, status: "paid", paidAt: now.toDate() } // Update local history item
+              ? { ...fine, status: "paid", paidAt: Timestamp.now().toDate() } // Update local history item
               : fine
           )
         );
@@ -321,7 +328,9 @@ const AdminFines = () => {
       const adminData = adminSnapshot.docs[0]?.data();
 
       // Get event details using getDoc for a single document
-      const eventDocRef = doc(db, "events", selectedEvent.id);
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      const eventsRef = collection(db, "organizations", orgId, "events");
+      const eventDocRef = doc(eventsRef, selectedEvent.id);
       const eventDocSnap = await getDoc(eventDocRef);
 
       if (!eventDocSnap.exists()) {
@@ -340,7 +349,8 @@ const AdminFines = () => {
       // Process each selected user
       for (const user of selectedUsers) {
         // Get user details using getDoc for a single document
-        const userDocRef = doc(db, "users", user.id);
+        const usersRef = collection(db, "organizations", orgId, "users");
+        const userDocRef = doc(usersRef, user.id);
         const userDocSnap = await getDoc(userDocRef);
 
         if (!userDocSnap.exists()) {
@@ -389,7 +399,8 @@ const AdminFines = () => {
         };
 
         // Add fine to Firestore
-        const fineRef = await addDoc(collection(db, "fines"), fineData);
+        const finesRef = collection(db, "organizations", orgId, "fines");
+        const fineRef = await addDoc(finesRef, fineData);
 
         // Create detailed activity log
         const activityData = {

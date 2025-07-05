@@ -39,6 +39,7 @@ import {
   updatePassword,
 } from "firebase/auth";
 import Logout from "../../../../components/Logout";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const Profile = ({
   initialData,
@@ -133,59 +134,86 @@ const Profile = ({
   }, [initialData, isDataPreloaded]);
 
   useEffect(() => {
-    // Only fetch data if not preloaded and no initial data provided
-    if (isDataPreloaded || initialData) {
-      return;
-    }
-
+    // Always fetch data from Firestore on mount for latest info
     const fetchUserData = async () => {
       const currentUser = auth.currentUser;
       if (!currentUser) {
         setLoading(false);
         return;
       }
-
       try {
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) return;
         // Query users collection with uid
         const usersQuery = query(
-          collection(db, "users"),
+          collection(db, "organizations", orgId, "users"),
           where("uid", "==", currentUser.uid)
         );
-
-        const userSnapshot = await getDocs(usersQuery);
-
+        let userSnapshot;
+        try {
+          userSnapshot = await getDocs(usersQuery);
+        } catch (fetchError) {
+          console.error("[DEBUG] Error in getDocs:", fetchError);
+          throw fetchError;
+        }
         if (!userSnapshot.empty) {
           const userDoc = userSnapshot.docs[0];
           const userData = userDoc.data();
-
+          // Defensive logging for all userData fields
+          Object.entries(userData).forEach(([key, value]) => {
+            if (
+              typeof value !== "string" &&
+              typeof value !== "number" &&
+              value !== undefined &&
+              value !== null
+            ) {
+              console.warn(
+                `[DEBUG] userData field '${key}' is not a string/number:`,
+                value
+              );
+            }
+          });
+          // Defensive fix: ensure username, email, phone are always strings
+          userData.username =
+            typeof userData.username === "string" ? userData.username : "";
+          userData.email =
+            typeof userData.email === "string" ? userData.email : "";
+          userData.phone =
+            typeof userData.phone === "string" ? userData.phone : "";
           if (!isMounted.current) return;
-
           // Set all user data
           setUserData(userData);
           userDataRef.current = userData;
           setDocId(userDoc.id);
           setTempData({
-            username: userData.username || "",
-            email: userData.email || "",
-            phone: userData.phone || "",
+            username: userData.username,
+            email: userData.email,
+            phone: userData.phone,
           });
           setAvatarUrl(userData.avatarUrl);
           avatarUrlRef.current = userData.avatarUrl;
-
           // Set up real-time avatar subscription
-          const unsubscribe = dashboardServices.subscribeToAvatarUpdates(
-            currentUser,
-            (newAvatarUrl) => {
-              if (isMounted.current) {
-                setAvatarUrl(newAvatarUrl);
-                avatarUrlRef.current = newAvatarUrl;
-                if (onAvatarUpdate) {
-                  onAvatarUpdate(newAvatarUrl);
+          try {
+            const unsubscribe = dashboardServices.subscribeToAvatarUpdates(
+              currentUser,
+              (newAvatarUrl) => {
+                if (isMounted.current) {
+                  setAvatarUrl(newAvatarUrl);
+                  avatarUrlRef.current = newAvatarUrl;
+                  if (onAvatarUpdate) {
+                    onAvatarUpdate(newAvatarUrl);
+                  }
                 }
               }
-            }
-          );
-          setUnsubscribeAvatar(() => unsubscribe);
+            );
+            setUnsubscribeAvatar(() => unsubscribe);
+          } catch (subError) {
+            console.error(
+              "[DEBUG] Error in subscribeToAvatarUpdates:",
+              subError
+            );
+          }
+          console.log("[DEBUG] Successfully set userData:", userData);
         } else {
           Toast.show({
             type: "error",
@@ -195,11 +223,14 @@ const Profile = ({
         }
       } catch (error) {
         console.error("[DEBUG] Error fetching user data:", error);
-        Toast.show({
-          type: "error",
-          text1: "Error",
-          text2: "Failed to fetch data.",
-        });
+        // Only show toast if userData is not set
+        if (!userDataRef.current) {
+          Toast.show({
+            type: "error",
+            text1: "Error",
+            text2: "Failed to fetch data.",
+          });
+        }
       } finally {
         if (isMounted.current) {
           setLoading(false);
@@ -219,9 +250,7 @@ const Profile = ({
         }
       }
     };
-
     fetchUserData();
-
     // Cleanup subscription when component unmounts
     return () => {
       if (unsubscribeAvatar) {
@@ -230,6 +259,21 @@ const Profile = ({
     };
   }, [initialData, isDataPreloaded]);
 
+  // Add a global error boundary for debugging
+  useEffect(() => {
+    const errorHandler = (error, isFatal) => {
+      console.log("[GLOBAL ERROR]", error, isFatal);
+    };
+    if (typeof ErrorUtils !== "undefined") {
+      ErrorUtils.setGlobalHandler(errorHandler);
+    }
+    return () => {
+      if (typeof ErrorUtils !== "undefined") {
+        ErrorUtils.setGlobalHandler(() => {});
+      }
+    };
+  }, []);
+
   const handleSave = useCallback(
     async (field) => {
       try {
@@ -237,7 +281,9 @@ const Profile = ({
           console.error("[DEBUG] No document ID found");
           return;
         }
-        const userDocRef = doc(db, "users", docId);
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) return;
+        const userDocRef = doc(db, "organizations", orgId, "users", docId);
         await updateDoc(userDocRef, { [field]: tempData[field] });
 
         if (isMounted.current) {
@@ -302,13 +348,13 @@ const Profile = ({
         const blob = await response.blob();
         const filename = `avatars/${auth.currentUser.uid}/${Date.now()}.jpg`;
         const storageRef = ref(storage, filename);
-
         await uploadBytes(storageRef, blob);
         const downloadURL = await getDownloadURL(storageRef);
-
         const currentUser = auth.currentUser;
         if (!currentUser) return;
-        const userDocRef = doc(db, "users", docId);
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) return;
+        const userDocRef = doc(db, "organizations", orgId, "users", docId);
         await updateDoc(userDocRef, { avatarUrl: downloadURL });
 
         if (isMounted.current) {
@@ -361,7 +407,7 @@ const Profile = ({
       // Use navigation.reset instead of navigate to prevent double navigation
       navigation.reset({
         index: 0,
-        routes: [{ name: "Index" }],
+        routes: [{ name: "LoginScreen" }],
       });
 
       Toast.show({
@@ -919,7 +965,13 @@ const Profile = ({
                     !userData?.[field] && styles.placeholderText,
                   ]}
                 >
-                  {userData?.[field] || placeholder}
+                  {typeof userData?.[field] === "string"
+                    ? userData[field]
+                    : (console.warn(
+                        `[DEBUG] userData.${field} is not a string:`,
+                        userData?.[field]
+                      ),
+                      "")}
                 </Text>
               </View>
               <TouchableOpacity

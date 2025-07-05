@@ -1,4 +1,5 @@
 import { Ionicons, MaterialIcons, Feather } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const ADMIN_TABS = [
   { name: "Home", icon: "home", component: Ionicons },

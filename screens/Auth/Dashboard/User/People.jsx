@@ -47,6 +47,7 @@ import { useOnlineStatus } from "../../../../contexts/OnlineStatusContext";
 import { useNavigation } from "@react-navigation/native";
 import { useAuth } from "../../../../context/AuthContext";
 import NetInfo from "@react-native-community/netinfo";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Import Haptics conditionally to prevent crashes
 let Haptics;
@@ -940,6 +941,36 @@ const People = ({
   const lastScrollY = useRef(0);
   const fabOpacity = useRef(new Animated.Value(1)).current;
   const cleanupListeners = useRef([]);
+
+  const fetchPeople = useCallback(async () => {
+    try {
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) return;
+      const usersQuery = query(
+        collection(db, "organizations", orgId, "users"),
+        orderBy("username")
+      );
+      // ... existing code ...
+    } catch (error) {
+      // ... existing code ...
+    }
+  }, []);
+
+  useEffect(() => {
+    let unsubscribe;
+    (async () => {
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) return;
+      const usersQuery = query(
+        collection(db, "organizations", orgId, "users"),
+        orderBy("username")
+      );
+      unsubscribe = onSnapshot(usersQuery, (snapshot) => {
+        // ... existing code ...
+      });
+    })();
+    return () => unsubscribe && unsubscribe();
+  }, []);
 
   // Set up real-time listener for users only if not using preloaded data
   useEffect(() => {

@@ -40,6 +40,7 @@ import {
   Clock,
 } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import Icon from "react-native-vector-icons/Ionicons";
 
@@ -110,62 +111,68 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
   }, []);
 
   const setupRealtimeUpdates = useCallback(() => {
-    const eventsRef = collection(db, "events");
-    const q = query(eventsRef);
+    let unsubscribe;
+    (async () => {
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) return;
+      const eventsRef = collection(db, "organizations", orgId, "events");
+      const q = query(eventsRef);
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const allEvents = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          color: EVENT_COLORS[Math.floor(Math.random() * EVENT_COLORS.length)],
+        }));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allEvents = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        color: EVENT_COLORS[Math.floor(Math.random() * EVENT_COLORS.length)],
-      }));
+        // Update week days with events
+        const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+        const weekEnd = addDays(weekStart, 6);
 
-      // Update week days with events
-      const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
-      const weekEnd = addDays(weekStart, 6);
-
-      const eventsInWeek = allEvents.filter((event) => {
-        const eventDate = event.dueDate?.toDate() || new Date();
-        return isWithinInterval(eventDate, { start: weekStart, end: weekEnd });
-      });
-
-      // Calculate which days have events
-      const daysWithEvents = generateWeekDays(weekStart).map((day) => ({
-        ...day,
-        hasEvents: eventsInWeek.some((event) => {
+        const eventsInWeek = allEvents.filter((event) => {
           const eventDate = event.dueDate?.toDate() || new Date();
-          return isSameDay(eventDate, day.date);
-        }),
-      }));
+          return isWithinInterval(eventDate, {
+            start: weekStart,
+            end: weekEnd,
+          });
+        });
 
-      // Update weekDays with event information
-      setWeekDays(daysWithEvents);
+        // Calculate which days have events
+        const daysWithEvents = generateWeekDays(weekStart).map((day) => ({
+          ...day,
+          hasEvents: eventsInWeek.some((event) => {
+            const eventDate = event.dueDate?.toDate() || new Date();
+            return isSameDay(eventDate, day.date);
+          }),
+        }));
 
-      // Filter events for the selected date
-      const selectedDayEvents = allEvents.filter((event) => {
-        const eventDate = event.dueDate?.toDate() || new Date();
-        return isSameDay(eventDate, selectedDate);
-      });
+        // Update weekDays with event information
+        setWeekDays(daysWithEvents);
 
-      // Filter upcoming events
-      const upcomingEvents = allEvents
-        .filter((event) => {
+        // Filter events for the selected date
+        const selectedDayEvents = allEvents.filter((event) => {
           const eventDate = event.dueDate?.toDate() || new Date();
-          return eventDate > new Date();
-        })
-        .sort(
-          (a, b) =>
-            (a.dueDate?.toDate() || new Date()) -
-            (b.dueDate?.toDate() || new Date())
-        )
-        .slice(0, 3); // Top 3 upcoming events
+          return isSameDay(eventDate, selectedDate);
+        });
 
-      setEvents(selectedDayEvents);
-      setUpcomingEvents(upcomingEvents);
-      setAllEvents(allEvents);
-    });
+        // Filter upcoming events
+        const upcomingEvents = allEvents
+          .filter((event) => {
+            const eventDate = event.dueDate?.toDate() || new Date();
+            return eventDate > new Date();
+          })
+          .sort(
+            (a, b) =>
+              (a.dueDate?.toDate() || new Date()) -
+              (b.dueDate?.toDate() || new Date())
+          )
+          .slice(0, 3); // Top 3 upcoming events
 
-    return () => unsubscribe();
+        setEvents(selectedDayEvents);
+        setUpcomingEvents(upcomingEvents);
+        setAllEvents(allEvents);
+      });
+    })();
+    return () => unsubscribe && unsubscribe();
   }, [selectedDate, generateWeekDays]);
 
   const timeToDecimalHours = (timeStr) => {
@@ -196,11 +203,13 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
       );
 
       if (currentUser) {
-        // First try to get user data from the users collection
-        const usersRef = collection(db, "users");
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) return;
+        // First try to get user data from the org's users collection
+        const usersRef = collection(db, "organizations", orgId, "users");
         const q = query(usersRef, where("uid", "==", currentUser.uid));
         console.log(
-          "[DEBUG] Querying users collection for uid:",
+          "[DEBUG] Querying org's users collection for uid:",
           currentUser.uid
         );
 
@@ -213,7 +222,7 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
           setUsername(userData.username || "User");
         } else {
           console.log(
-            "[DEBUG] User not found in users collection, checking admin collection"
+            "[DEBUG] User not found in org's users collection, checking admin collection"
           );
 
           // Check admin collection
@@ -263,7 +272,9 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
 
   const fetchEvents = useCallback(async () => {
     try {
-      const eventsRef = collection(db, "events");
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) return;
+      const eventsRef = collection(db, "organizations", orgId, "events");
       const eventsSnapshot = await getDocs(eventsRef);
 
       const allFetchedEvents = eventsSnapshot.docs.map((doc) => ({

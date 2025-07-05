@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
   SafeAreaView,
+  Image,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,12 +17,22 @@ import { auth, db } from "../../config/firebaseconfig"; // Import Firebase Auth 
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import Toast from "react-native-toast-message";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const RegisterAdmin = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [orgLogo, setOrgLogo] = useState(null);
+
+  useEffect(() => {
+    const fetchLogo = async () => {
+      const logoUrl = await AsyncStorage.getItem("selectedOrgLogo");
+      setOrgLogo(logoUrl);
+    };
+    fetchLogo();
+  }, []);
 
   const showToast = (type, message) => {
     Toast.show({
@@ -61,15 +72,16 @@ const RegisterAdmin = ({ navigation }) => {
         password
       );
       const user = userCredential.user;
-
-      await setDoc(doc(db, "admin", user.uid), {
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) throw new Error("No organization selected.");
+      await setDoc(doc(db, "organizations", orgId, "admins", user.uid), {
         uid: user.uid,
         email: email,
       });
 
       showToast("success", "Admin registered successfully!");
       // Navigate back to login or dashboard
-      navigation.navigate("Login");
+      navigation.navigate("LoginScreen");
     } catch (error) {
       console.error("Error during registration:", error);
       let errorMessage = "An error occurred. Please try again.";
@@ -98,6 +110,22 @@ const RegisterAdmin = ({ navigation }) => {
           style={styles.container}
         >
           <ScrollView contentContainerStyle={styles.scrollView}>
+            {orgLogo && (
+              <View style={{ alignItems: "center", marginBottom: 10 }}>
+                <Image
+                  source={{ uri: orgLogo }}
+                  style={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: 40,
+                    borderWidth: 2,
+                    borderColor: "#e0e0e0",
+                    backgroundColor: "#fff",
+                  }}
+                  resizeMode="contain"
+                />
+              </View>
+            )}
             <Text style={styles.header}>Register Admin</Text>
 
             <View style={styles.inputContainer}>
@@ -151,7 +179,7 @@ const RegisterAdmin = ({ navigation }) => {
 
             <TouchableOpacity
               style={styles.loginLink}
-              onPress={() => navigation.navigate("Login")}
+              onPress={() => navigation.navigate("LoginScreen")}
             >
               <Text style={styles.loginLinkText}>Back to Login</Text>
             </TouchableOpacity>
