@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { doc, getDoc } from "firebase/firestore";
 import { getDb } from "../firebase";
@@ -31,6 +32,7 @@ const { width, height } = Dimensions.get("window");
 
 const QRLoginScreen = () => {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [loading, setLoading] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
@@ -349,7 +351,7 @@ const QRLoginScreen = () => {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor={WHITE} />
         <View style={styles.content}>
-          <View style={styles.header}>
+          <View style={[styles.header, { paddingTop: insets.top }]}>
             <TouchableOpacity
               style={styles.backButton}
               onPress={handleBack}
@@ -388,9 +390,9 @@ const QRLoginScreen = () => {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#000" />
-        <View style={styles.scannerContainer}>
+        <View style={[styles.scannerContainer, { paddingTop: insets.top }]}>
           {/* Header */}
-          <View style={styles.scannerHeader}>
+          <View style={[styles.scannerHeader, { paddingTop: insets.top }]}>
             <TouchableOpacity
               style={styles.backButton}
               onPress={handleBack}
@@ -474,7 +476,7 @@ const QRLoginScreen = () => {
       <StatusBar barStyle="dark-content" backgroundColor={WHITE} />
       <View style={styles.content}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top }]}>
           <TouchableOpacity
             style={styles.backButton}
             onPress={handleBack}

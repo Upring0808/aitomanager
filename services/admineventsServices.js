@@ -6,6 +6,7 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  setDoc,
   Timestamp,
   query,
   where,
@@ -48,7 +49,9 @@ export const addEvent = async (
   dueDate,
   description,
   yearLevels = [],
-  orgId
+  orgId,
+  eventId = null,
+  qrCode = null
 ) => {
   try {
     const user = auth.currentUser;
@@ -56,7 +59,7 @@ export const addEvent = async (
       throw new Error("User is not authenticated.");
     }
 
-    const adminDocRef = doc(db, "organizations", orgId, "admin", user.uid);
+    const adminDocRef = doc(db, "organizations", orgId, "admins", user.uid);
     const adminDoc = await getDoc(adminDocRef);
 
     if (!adminDoc.exists()) {
@@ -68,18 +71,32 @@ export const addEvent = async (
 
     const dueDateTimestamp = Timestamp.fromDate(dueDate);
 
-    const docRef = await addDoc(
-      collection(db, "organizations", orgId, "events"),
-      {
-        title,
-        timeframe,
-        yearLevel: yearLevels,
-        dueDate: dueDateTimestamp,
-        description, // Add description here
-        createdAt: Timestamp.now(),
-        createdBy: username,
-      }
-    );
+    const eventData = {
+      title,
+      timeframe,
+      yearLevel: yearLevels,
+      dueDate: dueDateTimestamp,
+      description,
+      createdAt: Timestamp.now(),
+      createdBy: username,
+    };
+
+    // Add QR code data if provided
+    if (qrCode) {
+      eventData.qrCode = qrCode;
+    }
+
+    // Use custom eventId if provided, otherwise let Firestore generate one
+    let docRef;
+    if (eventId) {
+      docRef = doc(db, "organizations", orgId, "events", eventId);
+      await setDoc(docRef, eventData);
+    } else {
+      docRef = await addDoc(
+        collection(db, "organizations", orgId, "events"),
+        eventData
+      );
+    }
 
     // Add activity log for event creation
     await addDoc(collection(db, "activities"), {
@@ -97,14 +114,15 @@ export const addEvent = async (
     });
 
     return {
-      id: docRef.id,
+      id: eventId || docRef.id,
       title,
       timeframe,
       yearLevel: yearLevels,
       dueDate: dueDateTimestamp,
-      description, // Include it in the returned event object
+      description,
       createdAt: Timestamp.now(),
       createdBy: username,
+      qrCode: qrCode,
     };
   } catch (error) {
     console.error("Error adding event:", error);
@@ -121,7 +139,8 @@ export const handleSaveEvent = async (
   events,
   setEvents,
   setEditingEventId,
-  orgId
+  orgId,
+  extraFields = {}
 ) => {
   if (!newTitle || !newTimeframe) {
     console.error("Title or timeframe is missing");
@@ -134,6 +153,7 @@ export const handleSaveEvent = async (
       title: newTitle,
       timeframe: newTimeframe,
       description: newDescription,
+      ...extraFields,
     });
 
     // Update the event in the local state

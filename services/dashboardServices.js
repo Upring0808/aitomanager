@@ -11,7 +11,9 @@ export const dashboardServices = {
     try {
       const avatarFolderRef = ref(
         storage,
-        `${isAdmin ? "admin" : "avatars"}/${user.uid}`
+        `organizations/${orgId}/${isAdmin ? "admin_avatars" : "avatars"}/${
+          user.uid
+        }`
       );
       const listResult = await listAll(avatarFolderRef);
 

@@ -76,9 +76,8 @@ export const avatarRealtime = {
     return unsubscribe;
   },
 
-  updateAvatarUrl: async (user) => {
+  updateAvatarUrl: async (user, avatarUrl) => {
     try {
-      avatarUrl;
       const userDocRef = doc(db, "users", user.uid);
       await setDoc(
         userDocRef,

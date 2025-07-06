@@ -945,123 +945,177 @@ const People = ({
   const fetchPeople = useCallback(async () => {
     try {
       const orgId = await AsyncStorage.getItem("selectedOrgId");
-      if (!orgId) return;
+      if (!orgId) {
+        console.log("[People] No organization selected in fetchPeople");
+        return;
+      }
+
+      console.log("[People] Fetching people for organization:", orgId);
       const usersQuery = query(
         collection(db, "organizations", orgId, "users"),
         orderBy("username")
       );
-      // ... existing code ...
+
+      const querySnapshot = await getDocs(usersQuery);
+      console.log("[People] Fetched", querySnapshot.docs.length, "users");
+
+      const usersData = await Promise.all(
+        querySnapshot.docs.map(async (doc) => {
+          const data = doc.data();
+          if (
+            !data.username ||
+            data.username.trim() === "" ||
+            data.username === "Unknown"
+          ) {
+            return null;
+          }
+          const avatarUrl = data.avatarUrl || (await getAvatarUrl(data.uid));
+          return {
+            id: doc.id,
+            ...data,
+            username: data.username,
+            avatarUrl,
+            yearLevel: data.yearLevel || "N/A",
+            bio: data.bio || null,
+            role: data.role || "student",
+            email: data.email || null,
+          };
+        })
+      );
+
+      const validUsers = usersData.filter(
+        (user) =>
+          user !== null &&
+          user.username &&
+          user.username.trim() !== "" &&
+          user.username !== "Unknown"
+      );
+
+      setUsers(validUsers);
+      setFilteredUsers(validUsers);
     } catch (error) {
-      // ... existing code ...
+      console.error("[People] Error fetching people:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to load people",
+        position: "bottom",
+      });
     }
   }, []);
 
-  useEffect(() => {
-    let unsubscribe;
-    (async () => {
-      const orgId = await AsyncStorage.getItem("selectedOrgId");
-      if (!orgId) return;
-      const usersQuery = query(
-        collection(db, "organizations", orgId, "users"),
-        orderBy("username")
-      );
-      unsubscribe = onSnapshot(usersQuery, (snapshot) => {
-        // ... existing code ...
-      });
-    })();
-    return () => unsubscribe && unsubscribe();
-  }, []);
+  // Remove this old useEffect as it's now handled in the main real-time listener
 
   // Set up real-time listener for users only if not using preloaded data
   useEffect(() => {
     if (isDataPreloaded) return;
 
     console.log("[People] Setting up real-time listener for users");
-    const usersQuery = query(collection(db, "users"), orderBy("username"));
 
-    unsubscribeRef.current = onSnapshot(
-      usersQuery,
-      async (snapshot) => {
-        if (!isMounted.current) return;
+    let unsubscribe;
+    (async () => {
+      try {
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) {
+          console.log("[People] No organization selected");
+          return;
+        }
 
-        console.log(
-          "[People] Received snapshot with",
-          snapshot.docs.length,
-          "users"
+        console.log("[People] Fetching users for organization:", orgId);
+        const usersQuery = query(
+          collection(db, "organizations", orgId, "users"),
+          orderBy("username")
         );
 
-        try {
-          const usersData = await Promise.all(
-            snapshot.docs.map(async (doc) => {
-              const data = doc.data();
-              // Strict validation for valid users
-              if (
-                !data.username ||
-                data.username.trim() === "" ||
-                data.username === "Unknown"
-              ) {
-                console.log("[People] Skipping invalid user:", {
-                  id: doc.id,
-                  data: { ...data, password: undefined }, // Exclude sensitive data
-                });
-                return null;
-              }
-              const avatarUrl =
-                data.avatarUrl || (await getAvatarUrl(data.uid));
-              return {
-                id: doc.id,
-                ...data,
-                username: data.username,
-                avatarUrl,
-                yearLevel: data.yearLevel || "N/A",
-                bio: data.bio || null,
-                role: data.role || "student",
-                email: data.email || null,
-              };
-            })
-          );
+        unsubscribe = onSnapshot(
+          usersQuery,
+          async (snapshot) => {
+            if (!isMounted.current) return;
 
-          if (isMounted.current) {
-            // Strict filtering for valid users
-            const validUsers = usersData.filter(
-              (user) =>
-                user !== null &&
-                user.username &&
-                user.username.trim() !== "" &&
-                user.username !== "Unknown"
+            console.log(
+              "[People] Received snapshot with",
+              snapshot.docs.length,
+              "users"
             );
 
-            console.log("[People] Processed users data:", {
-              total: usersData.length,
-              valid: validUsers.length,
-              invalid: usersData.length - validUsers.length,
-              byRole: {
-                officers: validUsers.filter(
-                  (u) => u.role && u.role !== "student"
-                ).length,
-                students: validUsers.filter(
-                  (u) => !u.role || u.role === "student"
-                ).length,
-              },
-            });
+            try {
+              const usersData = await Promise.all(
+                snapshot.docs.map(async (doc) => {
+                  const data = doc.data();
+                  // Strict validation for valid users
+                  if (
+                    !data.username ||
+                    data.username.trim() === "" ||
+                    data.username === "Unknown"
+                  ) {
+                    console.log("[People] Skipping invalid user:", {
+                      id: doc.id,
+                      data: { ...data, password: undefined }, // Exclude sensitive data
+                    });
+                    return null;
+                  }
+                  const avatarUrl =
+                    data.avatarUrl || (await getAvatarUrl(data.uid));
+                  return {
+                    id: doc.id,
+                    ...data,
+                    username: data.username,
+                    avatarUrl,
+                    yearLevel: data.yearLevel || "N/A",
+                    bio: data.bio || null,
+                    role: data.role || "student",
+                    email: data.email || null,
+                  };
+                })
+              );
 
-            setUsers(validUsers);
-            setFilteredUsers(validUsers);
+              if (isMounted.current) {
+                // Strict filtering for valid users
+                const validUsers = usersData.filter(
+                  (user) =>
+                    user !== null &&
+                    user.username &&
+                    user.username.trim() !== "" &&
+                    user.username !== "Unknown"
+                );
+
+                console.log("[People] Processed users data:", {
+                  total: usersData.length,
+                  valid: validUsers.length,
+                  invalid: usersData.length - validUsers.length,
+                  byRole: {
+                    officers: validUsers.filter(
+                      (u) => u.role && u.role !== "student"
+                    ).length,
+                    students: validUsers.filter(
+                      (u) => !u.role || u.role === "student"
+                    ).length,
+                  },
+                });
+
+                setUsers(validUsers);
+                setFilteredUsers(validUsers);
+              }
+            } catch (error) {
+              console.error("[People] Error processing users data:", error);
+            }
+          },
+          (error) => {
+            console.error("[People] Error in snapshot listener:", error);
+            Toast.show({
+              type: "error",
+              text1: "Error",
+              text2: "Failed to load users",
+              position: "bottom",
+            });
           }
-        } catch (error) {
-          console.error("[People] Error processing users data:", error);
-        }
-      },
-      (error) => {
-        console.error("[People] Error in snapshot listener:", error);
-        Toast.show({
-          type: "error",
-          text1: "Error",
-          text2: "Failed to load users",
-          position: "bottom",
-        });
+        );
+
+        unsubscribeRef.current = unsubscribe;
+      } catch (error) {
+        console.error("[People] Error setting up listener:", error);
       }
-    );
+    })();
 
     return () => {
       if (unsubscribeRef.current) {
@@ -1081,7 +1135,23 @@ const People = ({
     };
   }, []);
 
+  // Manual fetch on mount if no data is loaded
+  useEffect(() => {
+    if (!isDataPreloaded && users.length === 0 && !loading) {
+      console.log("[People] No data loaded, triggering manual fetch");
+      fetchPeople();
+    }
+  }, [isDataPreloaded, users.length, loading, fetchPeople]);
+
   const getGroupedUsers = useCallback(() => {
+    console.log("[People] getGroupedUsers called with:", {
+      isDataPreloaded,
+      initialDataLength:
+        initialData?.officers?.length + initialData?.students?.length,
+      filteredUsersLength: filteredUsers.length,
+      usersLength: users.length,
+    });
+
     const grouped = isDataPreloaded
       ? {
           officers: initialData.officers.filter(
@@ -1118,7 +1188,7 @@ const People = ({
           ),
         };
 
-    console.log("[People] Grouped users:", {
+    console.log("[People] Grouped users result:", {
       officers: grouped.officers.length,
       students: grouped.students.length,
       total: grouped.officers.length + grouped.students.length,
@@ -1146,7 +1216,17 @@ const People = ({
       // Only fetch new data if not using preloaded data
       if (!isDataPreloaded) {
         console.log("[People] Fetching fresh data");
-        const usersQuery = query(collection(db, "users"), orderBy("username"));
+
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) {
+          console.log("[People] No organization selected during refresh");
+          return;
+        }
+
+        const usersQuery = query(
+          collection(db, "organizations", orgId, "users"),
+          orderBy("username")
+        );
         const querySnapshot = await getDocs(usersQuery);
         console.log("[People] Fetched", querySnapshot.docs.length, "users");
 
@@ -1342,6 +1422,17 @@ const People = ({
     );
   }
 
+  // Debug logging for render
+  const { officers, students } = getGroupedUsers();
+  console.log("[People] Render state:", {
+    loading,
+    usersLength: users.length,
+    filteredUsersLength: filteredUsers.length,
+    officersLength: officers.length,
+    studentsLength: students.length,
+    totalUsers: officers.length + students.length,
+  });
+
   return (
     <View style={styles.container}>
       <StatusBar
@@ -1355,14 +1446,15 @@ const People = ({
         data={[]}
         renderItem={null}
         ListHeaderComponent={() => {
-          const { officers, students } = getGroupedUsers();
           return (
             <View>
               {officers.length > 0 && (
                 <View style={styles.sectionContainer}>
                   {renderSectionHeader("Officers", officers.length)}
                   {officers.map((item) => (
-                    <View key={item.id}>{renderUserCard(item)}</View>
+                    <View key={item.id || item.uid}>
+                      {renderUserCard(item)}
+                    </View>
                   ))}
                 </View>
               )}
@@ -1370,8 +1462,43 @@ const People = ({
                 <View style={styles.sectionContainer}>
                   {renderSectionHeader("Students", students.length)}
                   {students.map((item) => (
-                    <View key={item.id}>{renderUserCard(item)}</View>
+                    <View key={item.id || item.uid}>
+                      {renderUserCard(item)}
+                    </View>
                   ))}
+                </View>
+              )}
+
+              {/* Empty state when no users */}
+              {officers.length === 0 && students.length === 0 && !loading && (
+                <View style={styles.emptyContainer}>
+                  <Ionicons
+                    name="people-outline"
+                    size={60}
+                    color="#CBD5E1"
+                    style={{ marginBottom: 16 }}
+                  />
+                  <Text style={styles.emptyTitle}>No People Found</Text>
+                  <Text style={styles.emptySubtitle}>
+                    {loading
+                      ? "Loading people..."
+                      : "No users have registered in this organization yet."}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.refreshButton}
+                    onPress={handleRefresh}
+                    disabled={refreshing}
+                  >
+                    <Ionicons
+                      name="refresh"
+                      size={20}
+                      color="#FFFFFF"
+                      style={{ marginRight: 8 }}
+                    />
+                    <Text style={styles.refreshButtonText}>
+                      {refreshing ? "Refreshing..." : "Refresh"}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -1781,6 +1908,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6B7280",
     textAlign: "center",
+  },
+  refreshButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: THEME_COLOR,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    marginTop: 20,
+  },
+  refreshButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
   },
   lastSeenText: {
     fontSize: 12,

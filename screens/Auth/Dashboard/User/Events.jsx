@@ -9,7 +9,7 @@ import {
   Animated,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { db } from "../../../../config/firebaseconfig";
+import { db, auth } from "../../../../config/firebaseconfig";
 import {
   collection,
   query,
@@ -20,6 +20,7 @@ import {
 import Toast from "react-native-toast-message";
 import EventDetailsCard from "../../../../components/EventDetailsCard";
 import DropdownPicker from "../../../../components/DropdownPicker";
+import QRScanner from "../../../../components/QRScanner";
 import { Styles } from "../../../../styles/Styles";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -32,6 +33,9 @@ const Events = ({
   const [filter, setFilter] = useState("All");
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [qrScannerVisible, setQrScannerVisible] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [userAttendance, setUserAttendance] = useState({});
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const unsubscribeRef = useRef(null);
   const isInitialMount = useRef(true);
@@ -49,6 +53,10 @@ const Events = ({
         dueDate: doc.data().dueDate?.toDate(),
       }));
       setEvents(eventsData);
+
+      // Update user attendance status
+      updateUserAttendance(eventsData);
+
       setLoading(false);
       setRefreshing(false);
     } catch (error) {
@@ -62,6 +70,18 @@ const Events = ({
       });
     }
   }, []);
+
+  const updateUserAttendance = (eventsData) => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    const attendance = {};
+    eventsData.forEach((event) => {
+      const attendees = event.attendees || [];
+      attendance[event.id] = attendees.includes(currentUser.uid);
+    });
+    setUserAttendance(attendance);
+  };
 
   // Set up real-time listener for events
   useEffect(() => {
@@ -85,6 +105,10 @@ const Events = ({
             dueDate: doc.data().dueDate?.toDate(),
           }));
           setEvents(eventsData);
+
+          // Update user attendance status
+          updateUserAttendance(eventsData);
+
           setLoading(false);
           setRefreshing(false);
         },
@@ -113,6 +137,16 @@ const Events = ({
     setRefreshing(true);
     await fetchEvents();
   }, [fetchEvents]);
+
+  const handleScanQR = (event) => {
+    setSelectedEvent(event);
+    setQrScannerVisible(true);
+  };
+
+  const handleAttendanceMarked = () => {
+    // Refresh events to update attendance status
+    fetchEvents();
+  };
 
   const animateEventsEntrance = () => {
     fadeAnim.setValue(0);
@@ -151,7 +185,7 @@ const Events = ({
   if (loading) {
     return (
       <View style={Styles.loader}>
-        <ActivityIndicator size="large" color="#007BFF" />
+        <ActivityIndicator size="large" color="#203562" />
         <Text style={Styles.loadingText}>Loading Events...</Text>
       </View>
     );
@@ -171,8 +205,8 @@ const Events = ({
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={["#007BFF"]}
-              tintColor="#007BFF"
+              colors={["#203562"]}
+              tintColor="#203562"
             />
           }
         >
@@ -186,7 +220,12 @@ const Events = ({
 
           {filteredEvents.length > 0 ? (
             filteredEvents.map((event) => (
-              <EventDetailsCard event={event} key={event.id} />
+              <EventDetailsCard
+                event={event}
+                key={event.id}
+                onScanQR={handleScanQR}
+                hasAttended={userAttendance[event.id] || false}
+              />
             ))
           ) : (
             <Text style={Styles.noEvent}>No events available.</Text>
@@ -194,6 +233,13 @@ const Events = ({
         </ScrollView>
         <Toast />
       </View>
+
+      {/* QR Scanner Modal */}
+      <QRScanner
+        visible={qrScannerVisible}
+        onClose={() => setQrScannerVisible(false)}
+        onAttendanceMarked={handleAttendanceMarked}
+      />
     </SafeAreaView>
   );
 };

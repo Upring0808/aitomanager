@@ -75,6 +75,9 @@ import AdminFines from "./screens/Auth/Dashboard/Admin/AdminFines";
 import AdminPeople from "./screens/Auth/Dashboard/Admin/AdminPeople";
 import AdminProfile from "./screens/Auth/Dashboard/Admin/AdminProfile";
 import AdminEvents from "./screens/Auth/Dashboard/Admin/AdminEvents";
+import AdminAttendance from "./screens/Auth/Dashboard/Admin/AdminAttendance";
+import EventQR from "./screens/Auth/Dashboard/Admin/EventQR";
+import EventAttendance from "./screens/Auth/Dashboard/Admin/EventAttendance";
 import ActivityHistory from "./screens/Auth/Dashboard/Admin/ActivityHistory";
 import AdminReports from "./screens/Auth/Dashboard/Admin/AdminReports";
 import StudentOverview from "./screens/Auth/Dashboard/Admin/StudentOverview";
@@ -121,6 +124,15 @@ const AdminDashboardNavigator = () => {
         component={AdminProfile}
       />
       <AdminDashboardStack.Screen name="AdminEvents" component={AdminEvents} />
+      <AdminDashboardStack.Screen
+        name="AdminAttendance"
+        component={AdminAttendance}
+      />
+      <AdminDashboardStack.Screen name="EventQR" component={EventQR} />
+      <AdminDashboardStack.Screen
+        name="EventAttendance"
+        component={EventAttendance}
+      />
       <AdminDashboardStack.Screen
         name="ActivityHistory"
         component={ActivityHistory}
@@ -360,6 +372,7 @@ const App = () => {
           name="AdminDashboard"
           component={AdminDashboardNavigator}
         />
+        <Stack.Screen name="EventAttendance" component={EventAttendance} />
         <Stack.Screen
           name="CreateOrganization"
           component={CreateOrganizationScreen}

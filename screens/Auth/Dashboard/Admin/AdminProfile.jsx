@@ -26,6 +26,7 @@ import {
   getDoc,
   setDoc,
   deleteDoc,
+  onSnapshot,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Toast from "react-native-toast-message";
@@ -140,34 +141,33 @@ const AdminProfile = ({
   }, []);
 
   useEffect(() => {
+    let unsubscribe;
     (async () => {
       const orgId = await AsyncStorage.getItem("selectedOrgId");
-      if (!orgId) return;
-      try {
-        const infoDocRef = doc(db, "organizations", orgId, "info", "details");
-        const infoSnap = await getDoc(infoDocRef);
-        if (infoSnap.exists()) {
-          setOrgInfo(infoSnap.data());
-          setOrgInfoEdit(infoSnap.data());
-        }
-        // Fetch stats
-        const usersSnap = await getDocs(
-          collection(db, "organizations", orgId, "users")
-        );
-        const adminsSnap = await getDocs(
-          collection(db, "organizations", orgId, "admins")
-        );
-        setOrgStats({ users: usersSnap.size, admins: adminsSnap.size });
-      } catch (e) {
-        Toast.show({
-          type: "error",
-          text1: "Error",
-          text2: "Failed to load org info.",
-        });
-      } finally {
+      if (!orgId) {
         setOrgInfoLoading(false);
+        return;
       }
+      const infoDocRef = doc(db, "organizations", orgId, "info", "details");
+      unsubscribe = onSnapshot(infoDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+          setOrgInfo(docSnap.data());
+          setOrgInfoEdit(docSnap.data());
+        }
+        setOrgInfoLoading(false);
+      });
+      // Fetch stats
+      const usersSnap = await getDocs(
+        collection(db, "organizations", orgId, "users")
+      );
+      const adminsSnap = await getDocs(
+        collection(db, "organizations", orgId, "admins")
+      );
+      setOrgStats({ users: usersSnap.size, admins: adminsSnap.size });
     })();
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const handleSave = async (field) => {
@@ -225,30 +225,30 @@ const AdminProfile = ({
   const uploadImage = async (uri) => {
     try {
       setLoading(true);
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) return;
       const response = await fetch(uri);
       const blob = await response.blob();
-      const filename = `admin/${auth.currentUser.uid}/${Date.now()}.jpg`;
+      const filename = `org_logos/${orgId}/admin/${
+        auth.currentUser.uid
+      }/${Date.now()}.jpg`;
       const storageRef = ref(storage, filename);
 
       await uploadBytes(storageRef, blob);
       const downloadURL = await getDownloadURL(storageRef);
-      const orgId = await AsyncStorage.getItem("selectedOrgId");
-      if (!orgId) return;
       const adminDocRef = doc(db, "organizations", orgId, "admins", docId);
       await updateDoc(adminDocRef, { avatarUrl: downloadURL });
       setAdminData((prevState) => ({ ...prevState, avatarUrl: downloadURL }));
       setAvatarUrl(downloadURL);
-
-      // Notify the dashboard of the avatar update
+      if (onAvatarUpdate) {
+        onAvatarUpdate(downloadURL);
+      }
       dashboardServices.updateAvatarUrl(
         auth.currentUser,
         orgId,
         downloadURL,
         true
       );
-      if (onAvatarUpdate) {
-        onAvatarUpdate(downloadURL);
-      }
       Toast.show({
         type: "success",
         text1: "Success",
@@ -338,9 +338,12 @@ const AdminProfile = ({
         const storageRef = ref(storage, `org_logos/${orgId}/logo.${ext}`);
         await uploadBytes(storageRef, blob);
         const url = await getDownloadURL(storageRef);
+        // Update Firestore org info document with new logo_url
+        const infoDocRef = doc(db, "organizations", orgId, "info", "details");
+        await updateDoc(infoDocRef, { logo_url: url });
         setOrgInfoEdit((prev) => ({ ...prev, logo_url: url }));
         setOrgLogoUploading(false);
-        Toast.show({ type: "success", text1: "Logo updated (not saved yet)" });
+        Toast.show({ type: "success", text1: "Logo uploaded!" });
       }
     } catch (e) {
       setOrgLogoUploading(false);
@@ -498,14 +501,19 @@ const AdminProfile = ({
                   onPress={pickOrgLogo}
                   style={styles.avatarWrapper}
                 >
-                  <Image
-                    source={
-                      orgInfoEdit.logo_url
-                        ? { uri: orgInfoEdit.logo_url }
-                        : require("../../../../assets/aito.png")
-                    }
-                    style={styles.avatar}
-                  />
+                  {orgInfo?.logo_url ? (
+                    <Image
+                      source={{ uri: orgInfo.logo_url }}
+                      style={styles.avatar}
+                    />
+                  ) : (
+                    <Feather
+                      name="user"
+                      size={80}
+                      color="#ccc"
+                      style={styles.avatar}
+                    />
+                  )}
                   <View style={styles.editIconContainer}>
                     <Feather name="camera" size={18} color="white" />
                   </View>
@@ -820,17 +828,19 @@ const AdminProfile = ({
         )}
 
         {/* QR Code Generator Modal */}
-        <QRCodeGenerator
-          organization={{
-            id:
-              orgInfoEdit.orgId ||
-              (orgInfoEdit.name ? orgInfoEdit.name.replace(/\s+/g, "_") : ""),
-            name: orgInfoEdit.name || "Organization",
-            logo_url: orgInfoEdit.logo_url,
-          }}
-          visible={showQRGenerator}
-          onClose={() => setShowQRGenerator(false)}
-        />
+        {showQRGenerator && orgInfo && (
+          <QRCodeGenerator
+            organization={{
+              id:
+                orgInfo.orgId ||
+                (orgInfo.name ? orgInfo.name.replace(/\s+/g, "_") : ""),
+              name: orgInfo.name || "Organization",
+              logoUrl: orgInfo.logo_url,
+            }}
+            visible={showQRGenerator}
+            onClose={() => setShowQRGenerator(false)}
+          />
+        )}
 
         <Toast />
       </SafeAreaView>

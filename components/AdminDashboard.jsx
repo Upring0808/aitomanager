@@ -28,6 +28,8 @@ import { dashboardServices } from "../services/dashboardServices";
 import userPresenceService from "../services/UserPresenceService";
 import { auth } from "../config/firebaseconfig";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { db } from "../config/firebaseconfig";
 
 import { constants, dashboardStyles } from "../styles/dashboardStyles";
 import Header from "./Header";
@@ -61,6 +63,7 @@ const AdminDashboard = ({ navigation, route }) => {
   const [loadingAvatar, setLoadingAvatar] = useState(true);
   const [showLogoutModal, setShowLogoutModal] = useState(false); // Logout modal state
   const insets = useSafeAreaInsets();
+  const [orgLogoUrl, setOrgLogoUrl] = useState(null);
 
   // Handle hardware back button press
   useFocusEffect(
@@ -161,6 +164,24 @@ const AdminDashboard = ({ navigation, route }) => {
     }
   }, [activeTabIndex, translateX]);
 
+  useEffect(() => {
+    let unsubscribe;
+    const fetchOrgLogo = async () => {
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) return;
+      const infoDocRef = doc(db, "organizations", orgId, "info", "details");
+      unsubscribe = onSnapshot(infoDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+          setOrgLogoUrl(docSnap.data().logo_url || null);
+        }
+      });
+    };
+    fetchOrgLogo();
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [activeTab]);
+
   const handleTabPress = useCallback((name, index) => {
     setActiveTab(name);
     setActiveTabIndex(index);
@@ -195,53 +216,51 @@ const AdminDashboard = ({ navigation, route }) => {
   }, []);
 
   const renderContent = useCallback(() => {
-    // If user is not logged in, don't render content
     if (!auth.currentUser) {
       return (
-        <View
-          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-        >
-          <Text>Please log in to view this content</Text>
+        <View style={dashboardStyles.loadingContainer}>
+          <ActivityIndicator size="large" color="#203562" />
         </View>
       );
     }
-
-    switch (activeTab) {
-      case "Home":
-        return <AdminHome />;
-      case "Fines":
-        return <AdminFines />;
-      case "People":
-        return <AdminPeople />;
-      case "Profile":
-        return (
+    return (
+      <View style={dashboardStyles.container}>
+        {activeTab === "Home" && <AdminHome />}
+        {activeTab === "Fines" && <AdminFines />}
+        {activeTab === "People" && <AdminPeople />}
+        {activeTab === "Profile" && (
           <AdminProfile
-            onAvatarUpdate={dashboardServices.fetchAvatar}
+            onAvatarUpdate={(url) => {
+              setAvatarUrl(url);
+              setLoadingAvatar(false);
+            }}
             onShowLogoutModal={() => setShowLogoutModal(true)}
           />
-        );
-      case "Events":
-        return <AdminEvents />;
-      default:
-        return <AdminHome />;
-    }
-  }, [activeTab]);
+        )}
+        {activeTab === "Events" && (
+          <AdminEvents navigation={navigation} route={route} />
+        )}
+      </View>
+    );
+  }, [activeTab, setAvatarUrl]);
 
   const renderAvatar = useCallback(() => {
+    console.log("Dashboard orgLogoUrl:", orgLogoUrl);
     if (loadingAvatar) {
       return <ActivityIndicator size="small" color="#aaa" />;
     }
-
-    if (avatarUrl) {
+    if (orgLogoUrl) {
       return (
         <Image
-          source={{ uri: avatarUrl }}
+          source={{ uri: orgLogoUrl }}
           style={dashboardStyles.avatar}
-          onError={handleAvatarError}
+          onError={(e) => {
+            console.error("Org logo image load error:", e.nativeEvent);
+            handleAvatarError();
+          }}
         />
       );
     }
-
     const IconComponent = ADMIN_TABS.find(
       (tab) => tab.name === "Profile"
     )?.component;
@@ -252,7 +271,7 @@ const AdminDashboard = ({ navigation, route }) => {
         color={activeTab === "Profile" ? "#3652AD" : "#aaa"}
       />
     );
-  }, [avatarUrl, loadingAvatar, activeTab, handleAvatarError]);
+  }, [orgLogoUrl, loadingAvatar, activeTab, handleAvatarError]);
 
   const renderTab = useCallback(
     ({ name, icon, component: IconComponent }, index) => (

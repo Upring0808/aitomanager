@@ -261,6 +261,7 @@ export const eventsStyles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
     marginBottom: 16,
+    position: "relative",
   },
 
   cardContent: {
@@ -485,4 +486,150 @@ export const eventsStyles = StyleSheet.create({
     color: "#333",
   },
   createdByText: { color: "#659287" },
+
+  // Event Actions Styles
+  eventActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 12,
+    gap: 8,
+  },
+  qrButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#203562",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  qrButtonText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 14,
+    marginLeft: 6,
+  },
+  attendanceButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#28a745",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  attendanceButtonText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 14,
+    marginLeft: 6,
+  },
+
+  // Optimized Layout Styles
+  compactForm: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  formRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  dateButton: {
+    backgroundColor: "#f8f9fa",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e9ecef",
+  },
+  dateButtonText: {
+    fontSize: 14,
+    color: "#203562",
+    fontWeight: "500",
+  },
+  compactFilterContainer: {
+    marginBottom: 16,
+  },
+  eventsListContainer: {
+    flex: 1,
+  },
+
+  // Card Actions Styles
+  cardActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  menuButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: "#f8f9fa",
+    justifyContent: "center",
+    alignItems: "center",
+    minWidth: 32,
+    height: 32,
+  },
+  arrowButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: "#f0f4ff",
+    justifyContent: "center",
+    alignItems: "center",
+    minWidth: 32,
+    height: 32,
+  },
+
+  // Dropdown Menu Styles
+  dropdownMenu: {
+    position: "absolute",
+    top: 40,
+    right: 0,
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 8,
+    minWidth: 160,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 1000,
+  },
+  menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 12,
+  },
+  deleteMenuItem: {
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+    marginTop: 4,
+  },
+  menuItemText: {
+    fontSize: 16,
+    color: "#333",
+    fontWeight: "500",
+  },
+  deleteMenuText: {
+    color: "#dc3545",
+  },
 });

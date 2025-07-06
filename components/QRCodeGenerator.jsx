@@ -1,44 +1,63 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   Modal,
-  Share,
+  TouchableOpacity,
   Alert,
-  ActivityIndicator,
+  Share,
+  Platform,
+  SafeAreaView,
+  StatusBar,
 } from "react-native";
-import QRCode from "qrcode.react";
-import { Camera, Download, Share2 } from "lucide-react-native";
-import * as MediaLibrary from "expo-media-library";
+import { Feather } from "@expo/vector-icons";
+import QRCode from "react-native-qrcode-svg";
 import * as FileSystem from "expo-file-system";
+import * as MediaLibrary from "expo-media-library";
+import Toast from "react-native-toast-message";
 import ViewShot from "react-native-view-shot";
 
-const NAVY = "#203562";
-const WHITE = "#fff";
-
 const QRCodeGenerator = ({ organization, visible, onClose }) => {
-  const [qrData, setQrData] = useState("");
   const [saving, setSaving] = useState(false);
-  const [viewShotRef, setViewShotRef] = useState(null);
+  const viewShotRef = useRef();
 
-  useEffect(() => {
-    if (organization && visible) {
-      // Create QR data with organization information
-      const data = {
-        orgId: organization.id,
-        organizationId: organization.id,
-        name: organization.name,
-        timestamp: new Date().toISOString(),
-        type: "organization_login",
-      };
-      setQrData(JSON.stringify(data));
+  // Parse QR data to determine if it's an event or organization QR
+  const qrData =
+    organization.qrData ||
+    JSON.stringify({
+      type: "organization_login",
+      orgId: organization.id,
+      orgName: organization.name,
+    });
+
+  const qrDataObj = JSON.parse(qrData);
+  const isEventQR = qrDataObj.type === "event_attendance";
+
+  const handleShare = async () => {
+    try {
+      const result = await Share.share({
+        message: `Join ${organization.name}! Use this QR code to access our organization portal. Org ID: ${organization.id}`,
+        title: "Organization QR Code",
+      });
+    } catch (error) {
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to share QR code",
+      });
     }
-  }, [organization, visible]);
+  };
 
-  const handleSaveQR = async () => {
-    if (!viewShotRef) return;
+  const handleSaveImage = async () => {
+    if (!viewShotRef.current) {
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "QR code not ready",
+      });
+      return;
+    }
 
     try {
       setSaving(true);
@@ -48,154 +67,177 @@ const QRCodeGenerator = ({ organization, visible, onClose }) => {
       if (status !== "granted") {
         Alert.alert(
           "Permission Required",
-          "Please grant permission to save the QR code to your gallery."
+          "Please grant permission to save images to your gallery."
         );
+        setSaving(false);
         return;
       }
 
-      // Capture the QR code as image
-      const uri = await viewShotRef.capture();
+      // Capture the QR code using ViewShot
+      const uri = await viewShotRef.current.capture({
+        format: "png",
+        quality: 1.0,
+        result: "tmpfile",
+      });
+
+      console.log("Captured QR code URI:", uri);
 
       // Save to media library
       await MediaLibrary.saveToLibraryAsync(uri);
 
-      Alert.alert("Success", "QR code has been saved to your gallery!", [
-        { text: "OK" },
-      ]);
-    } catch (error) {
-      console.error("Error saving QR code:", error);
-      Alert.alert("Error", "Failed to save QR code. Please try again.", [
-        { text: "OK" },
-      ]);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleShareQR = async () => {
-    if (!viewShotRef) return;
-
-    try {
-      setSaving(true);
-
-      // Capture the QR code as image
-      const uri = await viewShotRef.capture();
-
-      // Share the image
-      await Share.share({
-        url: uri,
-        title: `${organization.name} QR Code`,
-        message: `Scan this QR code to access ${organization.name} on FIVENT FLOW`,
+      Toast.show({
+        type: "success",
+        text1: "Success",
+        text2: "QR code saved to gallery!",
       });
     } catch (error) {
-      console.error("Error sharing QR code:", error);
-      Alert.alert("Error", "Failed to share QR code. Please try again.", [
-        { text: "OK" },
-      ]);
+      console.error("Error saving QR code:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Failed to save QR code: " + error.message,
+      });
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleTestQR = () => {
-    Alert.alert(
-      "Test QR Code",
-      "To test this QR code:\n\n1. Open FIVENT FLOW on another device\n2. Go to QR Login\n3. Scan this QR code\n4. You should be redirected to the login screen for this organization",
-      [{ text: "OK" }]
-    );
   };
 
   return (
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="pageSheet"
+      transparent={true}
       onRequestClose={onClose}
     >
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeButtonText}>Close</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>QR Code</Text>
-          <View style={styles.placeholder} />
-        </View>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="rgba(0,0,0,0.8)" />
+        <View style={styles.overlay}>
+          <View style={styles.modalContent}>
+            {/* Header */}
+            <View style={styles.header}>
+              <Text style={styles.title}>
+                {isEventQR
+                  ? "Event Attendance QR Code"
+                  : "Organization QR Code"}
+              </Text>
+              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                <Feather name="x" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
 
-        <View style={styles.content}>
-          <View style={styles.orgInfo}>
-            <Text style={styles.orgName}>{organization?.name}</Text>
-            <Text style={styles.orgSubtitle}>Organization QR Code</Text>
-          </View>
+            {/* Event/Organization Info */}
+            <View style={styles.orgInfo}>
+              {isEventQR ? (
+                <>
+                  <Text style={styles.eventTitle}>{qrDataObj.eventTitle}</Text>
+                  <Text style={styles.eventTimeframe}>
+                    {qrDataObj.eventTimeframe}
+                  </Text>
+                  <Text style={styles.eventDate}>
+                    {new Date(qrDataObj.eventDate).toLocaleDateString()}
+                  </Text>
+                  <Text style={styles.orgName}>{organization.name}</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.orgName}>{organization.name}</Text>
+                  <Text style={styles.orgId}>ID: {organization.id}</Text>
+                </>
+              )}
+            </View>
 
-          <View style={styles.qrContainer}>
+            {/* QR Code with ViewShot wrapper */}
             <ViewShot
-              ref={setViewShotRef}
+              ref={viewShotRef}
               options={{
                 format: "png",
-                quality: 1,
-                width: 300,
-                height: 300,
+                quality: 1.0,
+                result: "tmpfile",
               }}
-              style={styles.qrWrapper}
+              style={styles.qrContainer}
             >
-              <View style={styles.qrBackground}>
-                {qrData ? (
-                  <QRCode
-                    value={qrData}
-                    size={250}
-                    fgColor={NAVY}
-                    bgColor={WHITE}
-                    level="M"
-                    includeMargin={true}
-                  />
-                ) : (
-                  <View style={styles.qrPlaceholder}>
-                    <ActivityIndicator size="large" color={NAVY} />
-                    <Text style={styles.qrPlaceholderText}>
-                      Generating QR Code...
-                    </Text>
-                  </View>
-                )}
+              <View style={styles.qrWrapper}>
+                <QRCode
+                  value={qrData}
+                  size={200}
+                  color="#203562"
+                  backgroundColor="white"
+                  logo={
+                    organization.logoUrl
+                      ? { uri: organization.logoUrl }
+                      : require("../assets/logo.png")
+                  }
+                  logoSize={30}
+                  logoMargin={8}
+                  logoBorderRadius={12}
+                  logoBackgroundColor="white"
+                />
               </View>
             </ViewShot>
+
+            {/* Instructions */}
+            <View style={styles.instructions}>
+              <Text style={styles.instructionTitle}>How to use:</Text>
+              {isEventQR ? (
+                <>
+                  <Text style={styles.instructionText}>
+                    1. Display this QR code during the event
+                  </Text>
+                  <Text style={styles.instructionText}>
+                    2. Participants scan it to mark attendance
+                  </Text>
+                  <Text style={styles.instructionText}>
+                    3. Attendance is automatically recorded
+                  </Text>
+                  <Text style={styles.instructionText}>
+                    4. Each QR code is unique to this specific event
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.instructionText}>
+                    1. Share this QR code with organization members
+                  </Text>
+                  <Text style={styles.instructionText}>
+                    2. They can scan it to quickly access the login screen
+                  </Text>
+                  <Text style={styles.instructionText}>
+                    3. The organization ID will be automatically filled
+                  </Text>
+                </>
+              )}
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.actionButtons}>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.shareButton]}
+                onPress={handleShare}
+                activeOpacity={0.7}
+              >
+                <Feather name="share-2" size={20} color="white" />
+                <Text style={styles.actionButtonText}>Share</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionButton, styles.saveButton]}
+                onPress={handleSaveImage}
+                disabled={saving}
+                activeOpacity={0.7}
+              >
+                <Feather
+                  name={saving ? "loader" : "download"}
+                  size={20}
+                  color="white"
+                />
+                <Text style={styles.actionButtonText}>
+                  {saving ? "Saving..." : "Save"}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-
-          <Text style={styles.instructions}>
-            Share this QR code with your organization members. When they scan
-            it, they'll be directed to the login screen for {organization?.name}
-            .
-          </Text>
-
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={handleSaveQR}
-              disabled={saving}
-            >
-              <Download size={20} color={WHITE} />
-              <Text style={styles.actionButtonText}>
-                {saving ? "Saving..." : "Save to Gallery"}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, styles.shareButton]}
-              onPress={handleShareQR}
-              disabled={saving}
-            >
-              <Share2 size={20} color={NAVY} />
-              <Text style={styles.shareButtonText}>
-                {saving ? "Sharing..." : "Share"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity style={styles.testButton} onPress={handleTestQR}>
-            <Camera size={16} color={NAVY} />
-            <Text style={styles.testButtonText}>How to Test</Text>
-          </TouchableOpacity>
         </View>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 };
@@ -203,141 +245,131 @@ const QRCodeGenerator = ({ organization, visible, onClose }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: WHITE,
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    maxWidth: 350,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    alignItems: "center",
+    marginBottom: 20,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: NAVY,
+  title: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#203562",
   },
   closeButton: {
-    padding: 8,
-  },
-  closeButtonText: {
-    color: NAVY,
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  placeholder: {
-    width: 60,
-  },
-  content: {
-    flex: 1,
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 32,
+    padding: 4,
   },
   orgInfo: {
     alignItems: "center",
-    marginBottom: 32,
+    marginBottom: 24,
   },
   orgName: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: NAVY,
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#203562",
+    textAlign: "center",
+  },
+  orgId: {
+    fontSize: 14,
+    color: "#666",
+    marginTop: 4,
+  },
+  eventTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#203562",
     textAlign: "center",
     marginBottom: 4,
   },
-  orgSubtitle: {
+  eventTimeframe: {
     fontSize: 16,
+    fontWeight: "600",
+    color: "#007BFF",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  eventDate: {
+    fontSize: 14,
     color: "#666",
     textAlign: "center",
+    marginBottom: 8,
   },
   qrContainer: {
     alignItems: "center",
-    marginBottom: 32,
+    marginBottom: 24,
+    padding: 20,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 16,
   },
   qrWrapper: {
     alignItems: "center",
     justifyContent: "center",
   },
-  qrBackground: {
-    backgroundColor: WHITE,
-    padding: 20,
-    borderRadius: 16,
-    shadowColor: NAVY,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+  instructions: {
+    marginBottom: 24,
   },
-  qrPlaceholder: {
-    width: 250,
-    height: 250,
-    alignItems: "center",
-    justifyContent: "center",
+  instructionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#203562",
+    marginBottom: 12,
   },
-  qrPlaceholderText: {
-    marginTop: 16,
+  instructionText: {
     fontSize: 14,
     color: "#666",
-    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 4,
   },
-  instructions: {
-    fontSize: 16,
-    color: "#666",
-    textAlign: "center",
-    lineHeight: 24,
-    marginBottom: 32,
-    paddingHorizontal: 16,
-  },
-  buttonContainer: {
+  actionButtons: {
     flexDirection: "row",
+    justifyContent: "space-between",
     gap: 12,
-    marginBottom: 24,
   },
   actionButton: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: 12,
-    backgroundColor: NAVY,
-    shadowColor: NAVY,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 2,
-  },
-  actionButtonText: {
-    color: WHITE,
-    fontSize: 16,
-    fontWeight: "600",
-    marginLeft: 8,
+    elevation: 3,
   },
   shareButton: {
-    backgroundColor: WHITE,
-    borderWidth: 2,
-    borderColor: NAVY,
+    backgroundColor: "#007BFF",
   },
-  shareButtonText: {
-    color: NAVY,
-    fontSize: 16,
+  saveButton: {
+    backgroundColor: "#28a745",
+  },
+  actionButtonText: {
+    color: "white",
     fontWeight: "600",
-    marginLeft: 8,
-  },
-  testButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  testButtonText: {
-    color: NAVY,
     fontSize: 16,
     marginLeft: 8,
-    textDecorationLine: "underline",
   },
 });
 

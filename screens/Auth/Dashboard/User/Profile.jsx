@@ -144,6 +144,12 @@ const Profile = ({
       try {
         const orgId = await AsyncStorage.getItem("selectedOrgId");
         if (!orgId) return;
+        console.log(
+          "[DEBUG] Querying for user with orgId:",
+          orgId,
+          "uid:",
+          currentUser.uid
+        );
         // Query users collection with uid
         const usersQuery = query(
           collection(db, "organizations", orgId, "users"),
@@ -156,8 +162,16 @@ const Profile = ({
           console.error("[DEBUG] Error in getDocs:", fetchError);
           throw fetchError;
         }
+        console.log(
+          "[DEBUG] Query result - empty:",
+          userSnapshot.empty,
+          "size:",
+          userSnapshot.size
+        );
         if (!userSnapshot.empty) {
           const userDoc = userSnapshot.docs[0];
+          console.log("[DEBUG] Found user document with ID:", userDoc.id);
+          console.log("[DEBUG] User document data:", userDoc.data());
           const userData = userDoc.data();
           // Defensive logging for all userData fields
           Object.entries(userData).forEach(([key, value]) => {
@@ -184,6 +198,7 @@ const Profile = ({
           // Set all user data
           setUserData(userData);
           userDataRef.current = userData;
+          console.log("[DEBUG] Setting docId:", userDoc.id);
           setDocId(userDoc.id);
           setTempData({
             username: userData.username,
@@ -194,19 +209,23 @@ const Profile = ({
           avatarUrlRef.current = userData.avatarUrl;
           // Set up real-time avatar subscription
           try {
-            const unsubscribe = dashboardServices.subscribeToAvatarUpdates(
-              currentUser,
-              (newAvatarUrl) => {
-                if (isMounted.current) {
-                  setAvatarUrl(newAvatarUrl);
-                  avatarUrlRef.current = newAvatarUrl;
-                  if (onAvatarUpdate) {
-                    onAvatarUpdate(newAvatarUrl);
+            const orgId = await AsyncStorage.getItem("selectedOrgId");
+            if (orgId) {
+              const unsubscribe = dashboardServices.subscribeToAvatarUpdates(
+                currentUser,
+                orgId,
+                (newAvatarUrl) => {
+                  if (isMounted.current) {
+                    setAvatarUrl(newAvatarUrl);
+                    avatarUrlRef.current = newAvatarUrl;
+                    if (onAvatarUpdate) {
+                      onAvatarUpdate(newAvatarUrl);
+                    }
                   }
                 }
-              }
-            );
-            setUnsubscribeAvatar(() => unsubscribe);
+              );
+              setUnsubscribeAvatar(() => unsubscribe);
+            }
           } catch (subError) {
             console.error(
               "[DEBUG] Error in subscribeToAvatarUpdates:",
@@ -277,13 +296,20 @@ const Profile = ({
   const handleSave = useCallback(
     async (field) => {
       try {
-        if (!docId) {
-          console.error("[DEBUG] No document ID found");
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          console.error("[DEBUG] No current user found");
           return;
         }
         const orgId = await AsyncStorage.getItem("selectedOrgId");
         if (!orgId) return;
-        const userDocRef = doc(db, "organizations", orgId, "users", docId);
+        const userDocRef = doc(
+          db,
+          "organizations",
+          orgId,
+          "users",
+          currentUser.uid
+        );
         await updateDoc(userDocRef, { [field]: tempData[field] });
 
         if (isMounted.current) {
@@ -304,7 +330,7 @@ const Profile = ({
         Toast.show({ type: "error", text1: "Error", text2: "Update failed." });
       }
     },
-    [docId, tempData]
+    [tempData]
   );
 
   const pickImage = useCallback(async () => {
@@ -327,8 +353,22 @@ const Profile = ({
         quality: 0.5,
       });
 
-      if (!result.canceled && result.assets.length > 0) {
-        await uploadImage(result.assets[0].uri);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedAsset = result.assets[0];
+        console.log("Selected asset:", selectedAsset);
+        if (selectedAsset && selectedAsset.uri) {
+          console.log("Uploading image with URI:", selectedAsset.uri);
+          await uploadImage(selectedAsset.uri);
+        } else {
+          console.error("Invalid asset selected:", selectedAsset);
+          Toast.show({
+            type: "error",
+            text1: "Error",
+            text2: "Invalid image selected. Please try again.",
+          });
+        }
+      } else {
+        console.log("Image picker result:", result);
       }
     } catch (error) {
       console.error("Error picking image:", error);
@@ -342,19 +382,83 @@ const Profile = ({
 
   const uploadImage = useCallback(
     async (uri) => {
+      // Validate URI first before setting loading state
+      if (!uri || typeof uri !== "string") {
+        console.error("Invalid URI provided:", uri);
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Invalid image selected. Please try again.",
+        });
+        return;
+      }
+
+      // Set loading state
+      setLoading(true);
+
       try {
-        setLoading(true);
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        const filename = `avatars/${auth.currentUser.uid}/${Date.now()}.jpg`;
-        const storageRef = ref(storage, filename);
-        await uploadBytes(storageRef, blob);
-        const downloadURL = await getDownloadURL(storageRef);
         const currentUser = auth.currentUser;
-        if (!currentUser) return;
+        if (!currentUser) {
+          Toast.show({
+            type: "error",
+            text1: "Error",
+            text2: "User not authenticated. Please log in again.",
+          });
+          return;
+        }
+
         const orgId = await AsyncStorage.getItem("selectedOrgId");
-        if (!orgId) return;
-        const userDocRef = doc(db, "organizations", orgId, "users", docId);
+        if (!orgId) {
+          Toast.show({
+            type: "error",
+            text1: "Error",
+            text2: "Organization not found. Please try again.",
+          });
+          return;
+        }
+
+        // Use currentUser.uid as the document ID since that's how user documents are structured
+        const userDocumentId = currentUser.uid;
+        console.log("[DEBUG] Using user UID as document ID:", userDocumentId);
+
+        const response = await fetch(uri);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch image: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        if (!blob || blob.size === 0) {
+          throw new Error("Invalid image blob received");
+        }
+        const filename = `org_logos/${orgId}/students/${
+          currentUser.uid
+        }/${Date.now()}.jpg`;
+        console.log("Uploading to filename:", filename);
+
+        if (!storage) {
+          throw new Error("Firebase Storage is not initialized");
+        }
+
+        const storageRef = ref(storage, filename);
+        console.log("Storage reference created");
+        await uploadBytes(storageRef, blob);
+        console.log("Upload completed, getting download URL");
+        const downloadURL = await getDownloadURL(storageRef);
+        console.log("Download URL obtained:", downloadURL);
+
+        console.log(
+          "[DEBUG] Updating document with orgId:",
+          orgId,
+          "userDocumentId:",
+          userDocumentId
+        );
+        const userDocRef = doc(
+          db,
+          "organizations",
+          orgId,
+          "users",
+          userDocumentId
+        );
         await updateDoc(userDocRef, { avatarUrl: downloadURL });
 
         if (isMounted.current) {
@@ -379,18 +483,24 @@ const Profile = ({
         }
       } catch (error) {
         console.error("Error uploading image:", error);
+        console.error("Error details:", {
+          message: error.message,
+          stack: error.stack,
+          name: error.name,
+        });
         Toast.show({
           type: "error",
           text1: "Error",
           text2: "Avatar update failed. Please try again.",
         });
       } finally {
+        // Always reset loading state
         if (isMounted.current) {
           setLoading(false);
         }
       }
     },
-    [docId, onAvatarUpdate]
+    [onAvatarUpdate]
   );
 
   const handleLogout = async () => {

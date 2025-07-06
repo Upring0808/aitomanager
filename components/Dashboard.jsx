@@ -39,7 +39,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
-import { avatarRealtime } from "../services/avatarRealtime";
+import { dashboardServices } from "../services/dashboardServices";
 import userPresenceService from "../services/UserPresenceService";
 import { auth, db } from "../config/firebaseconfig";
 import Logout from "../components/Logout";
@@ -349,17 +349,28 @@ const Dashboard = ({ navigation, route }) => {
       }
     };
 
-    const setupAvatarSubscription = () => {
+    const setupAvatarSubscription = async () => {
       try {
         console.log("[Dashboard] Setting up avatar subscription");
-        unsubscribersRef.current.avatar =
-          avatarRealtime.subscribeToAvatarUpdates(user, (newAvatarUrl) => {
-            setAvatarUrl(newAvatarUrl);
-            if (dashboardData.current.user) {
-              dashboardData.current.user.avatarUrl = newAvatarUrl;
-            }
-          });
-        console.log("[Dashboard] Avatar subscription set up successfully");
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (orgId) {
+          unsubscribersRef.current.avatar =
+            dashboardServices.subscribeToAvatarUpdates(
+              user,
+              orgId,
+              (newAvatarUrl) => {
+                setAvatarUrl(newAvatarUrl);
+                if (dashboardData.current.user) {
+                  dashboardData.current.user.avatarUrl = newAvatarUrl;
+                }
+              }
+            );
+          console.log("[Dashboard] Avatar subscription set up successfully");
+        } else {
+          console.warn(
+            "[Dashboard] No organization ID found for avatar subscription"
+          );
+        }
       } catch (error) {
         console.error(
           "[Dashboard] Error setting up avatar subscription:",
@@ -376,23 +387,21 @@ const Dashboard = ({ navigation, route }) => {
         const preloadedData =
           route.params?.preloadedData || global.dashboardData;
 
-        if (!preloadedData) {
-          console.error("[Dashboard] No preloaded data found");
-          return;
+        if (preloadedData) {
+          console.log("[Dashboard] Using preloaded data");
+          dashboardData.current = preloadedData;
+          setAvatarUrl(preloadedData.avatarUrl);
+          setLastViewed(preloadedData.lastViewed);
+        } else {
+          // No preloaded data, initialize as empty and continue
+          dashboardData.current = {};
         }
 
-        console.log("[Dashboard] Using preloaded data");
-
-        // Use preloaded data
-        dashboardData.current = preloadedData;
-        setAvatarUrl(preloadedData.avatarUrl);
-        setLastViewed(preloadedData.lastViewed);
-
         // Set up real-time listeners
-        await setupRealtimeListeners(preloadedData.user?.id);
+        await setupRealtimeListeners(preloadedData?.user?.id);
 
         // Set up avatar subscription
-        setupAvatarSubscription();
+        await setupAvatarSubscription();
 
         console.log("[Dashboard] Dashboard initialization completed");
       } catch (error) {
@@ -576,13 +585,7 @@ const Dashboard = ({ navigation, route }) => {
           />
         );
       case "People":
-        return (
-          <People
-            initialData={dashboardData.current.people}
-            isDataPreloaded={!!user}
-            showLogoutModal={() => setShowLogoutModal(true)}
-          />
-        );
+        return <People showLogoutModal={() => setShowLogoutModal(true)} />;
       case "Profile":
         return (
           <Profile

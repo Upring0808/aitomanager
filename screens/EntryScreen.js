@@ -10,6 +10,7 @@ import {
   Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { QrCode } from "lucide-react-native";
 import aitoLogo from "../assets/fivent1.png";
 
 const NAVY = "#203562";
@@ -39,15 +40,18 @@ const EntryScreen = () => {
             <Text style={styles.buttonText}>Find my department/org</Text>
           </TouchableOpacity>
 
+          {/* QR Login Row */}
           <TouchableOpacity
-            style={styles.qrButton}
+            style={styles.qrRow}
             onPress={() => navigation.navigate("QRLoginScreen")}
             activeOpacity={0.85}
           >
-            <Text style={styles.qrButtonText}>Scan QR Code</Text>
+            <QrCode size={22} color={NAVY} style={{ marginRight: 8 }} />
+            <Text style={styles.qrRowText}>QR Login</Text>
           </TouchableOpacity>
 
-          <Text style={styles.footer}>Batanes State College</Text>
+          {/* Batanes State College Text */}
+          <Text style={styles.collegeText}>Batanes State College</Text>
         </View>
       </View>
     </SafeAreaView>
@@ -65,7 +69,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: WHITE,
     paddingHorizontal: 24,
-    paddingBottom: Platform.OS === "ios" ? 32 : 18,
+    paddingBottom: 30,
   },
   centerContent: {
     flex: 1,
@@ -104,7 +108,9 @@ const styles = StyleSheet.create({
   bottomContent: {
     width: "100%",
     alignItems: "center",
-    marginBottom: 80,
+    flex: 1,
+    justifyContent: "flex-end",
+    paddingBottom: Platform.OS === "ios" ? 32 : 18,
   },
   button: {
     backgroundColor: NAVY,
@@ -112,7 +118,7 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     width: "100%",
     alignItems: "center",
-    marginBottom: 18,
+    marginBottom: 32,
     shadowColor: NAVY,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -126,31 +132,28 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     fontFamily: Platform.OS === "ios" ? "System" : "sans-serif-medium",
   },
-  qrButton: {
-    backgroundColor: WHITE,
-    borderWidth: 2,
-    borderColor: NAVY,
-    borderRadius: 8,
-    paddingVertical: 16,
-    width: "100%",
+  qrRow: {
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 18,
-    shadowColor: NAVY,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 2,
+    justifyContent: "center",
+    marginBottom: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 0,
+    backgroundColor: "transparent",
+    borderRadius: 0,
+    width: undefined,
+    alignSelf: "center",
   },
-  qrButtonText: {
+  qrRowText: {
     color: NAVY,
     fontSize: 16,
     fontWeight: "600",
     letterSpacing: 0.5,
     fontFamily: Platform.OS === "ios" ? "System" : "sans-serif-medium",
   },
-  footer: {
+  collegeText: {
     color: NAVY,
-    fontSize: 13,
+    fontSize: 14,
     opacity: 0.7,
     textAlign: "center",
     marginTop: 2,
