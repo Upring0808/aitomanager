@@ -348,7 +348,6 @@ const AdminDashboard = ({ navigation, route }) => {
   // Normal dashboard rendering when user is logged in
   return (
     <SafeAreaView style={dashboardStyles.safeArea} edges={["right", "left"]}>
-      <Header onLogout={() => setShowLogoutModal(true)} />
       <View style={dashboardStyles.container}>
         {renderContent()}
         <View

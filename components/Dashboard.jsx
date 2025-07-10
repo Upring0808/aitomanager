@@ -704,8 +704,14 @@ const Dashboard = ({ navigation, route }) => {
   // Normal dashboard rendering when user is logged in
   return (
     <SafeAreaView
-      style={[dashboardStyles.safeArea, { backgroundColor: theme.background }]}
-      edges={["right", "left"]}
+      style={[
+        dashboardStyles.safeArea,
+        {
+          backgroundColor:
+            activeTab === "Profile" ? "transparent" : theme.background,
+        },
+      ]}
+      edges={["top", "right", "left"]}
     >
       <StatusBar
         barStyle={
@@ -715,27 +721,18 @@ const Dashboard = ({ navigation, route }) => {
             ? "light-content"
             : "dark-content"
         }
-        backgroundColor={showLogoutModal ? "transparent" : theme.background}
-        translucent={showLogoutModal ? true : false}
+        backgroundColor="transparent"
+        translucent={true}
       />
       <View
-        style={[
-          styles.statusBarBackground,
-          { backgroundColor: theme.background },
-        ]}
+        style={[styles.statusBarBackground, { backgroundColor: "transparent" }]}
       />
-      <Header
-        onLogout={() => setShowLogoutModal(true)}
-        userName={user?.displayName || "User"}
-        avatarUrl={avatarUrl}
-        isDarkMode={isDarkMode}
-        toggleDarkMode={() => setIsDarkMode(!isDarkMode)}
-      />
-
       <View
         style={[
           dashboardStyles.container,
-          { backgroundColor: theme.background },
+          activeTab === "Profile"
+            ? { backgroundColor: "transparent", paddingTop: 0 }
+            : { backgroundColor: theme.background, paddingTop: insets.top },
         ]}
       >
         {renderContent()}

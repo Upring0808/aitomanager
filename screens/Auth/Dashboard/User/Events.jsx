@@ -23,6 +23,7 @@ import DropdownPicker from "../../../../components/DropdownPicker";
 import QRScanner from "../../../../components/QRScanner";
 import { Styles } from "../../../../styles/Styles";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const Events = ({
   initialData = [],
@@ -39,6 +40,8 @@ const Events = ({
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const unsubscribeRef = useRef(null);
   const isInitialMount = useRef(true);
+  const insets = useSafeAreaInsets();
+  const headerColor = "#ffffff";
 
   const fetchEvents = useCallback(async () => {
     try {
@@ -192,55 +195,76 @@ const Events = ({
   }
 
   return (
-    <SafeAreaView style={Styles.safeArea}>
+    <View style={{ flex: 1 }}>
+      {/* Extend header background behind status bar */}
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top + 80, // Adjust 80 to your header height
+          backgroundColor: headerColor,
+          zIndex: 0,
+        }}
+      />
       <StatusBar
-        barStyle={showLogoutModal ? "light-content" : "dark-content"}
-        backgroundColor={showLogoutModal ? "transparent" : "#ffffff"}
-        translucent={!!showLogoutModal}
+        barStyle="light-content"
+        backgroundColor={headerColor}
+        translucent={false}
       />
-      <View style={Styles.mainContainer}>
-        <ScrollView
-          contentContainerStyle={Styles.scrollContainer}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={["#203562"]}
-              tintColor="#203562"
-            />
-          }
-        >
-          <View style={Styles.filterContainer}>
-            <DropdownPicker
-              options={["All", "Current", "Upcoming", "Past"]}
-              selectedValue={filter}
-              onValueChange={setFilter}
-            />
-          </View>
-
-          {filteredEvents.length > 0 ? (
-            filteredEvents.map((event) => (
-              <EventDetailsCard
-                event={event}
-                key={event.id}
-                onScanQR={handleScanQR}
-                hasAttended={userAttendance[event.id] || false}
+      <SafeAreaView
+        style={{
+          flex: 1,
+          backgroundColor: "transparent",
+          paddingTop: insets.top,
+        }}
+        edges={["top", "left", "right"]}
+      >
+        <View style={Styles.mainContainer}>
+          <ScrollView
+            contentContainerStyle={Styles.scrollContainer}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={["#203562"]}
+                tintColor="#203562"
               />
-            ))
-          ) : (
-            <Text style={Styles.noEvent}>No events available.</Text>
-          )}
-        </ScrollView>
-        <Toast />
-      </View>
+            }
+          >
+            <View style={Styles.filterContainer}>
+              <DropdownPicker
+                options={["All", "Current", "Upcoming", "Past"]}
+                selectedValue={filter}
+                onValueChange={setFilter}
+              />
+            </View>
 
-      {/* QR Scanner Modal */}
-      <QRScanner
-        visible={qrScannerVisible}
-        onClose={() => setQrScannerVisible(false)}
-        onAttendanceMarked={handleAttendanceMarked}
-      />
-    </SafeAreaView>
+            {filteredEvents.length > 0 ? (
+              filteredEvents.map((event) => (
+                <EventDetailsCard
+                  event={event}
+                  key={event.id}
+                  onScanQR={handleScanQR}
+                  hasAttended={userAttendance[event.id] || false}
+                />
+              ))
+            ) : (
+              <Text style={Styles.noEvent}>No events available.</Text>
+            )}
+          </ScrollView>
+          <Toast />
+        </View>
+
+        {/* QR Scanner Modal */}
+        <QRScanner
+          visible={qrScannerVisible}
+          onClose={() => setQrScannerVisible(false)}
+          onAttendanceMarked={handleAttendanceMarked}
+        />
+      </SafeAreaView>
+    </View>
   );
 };
 

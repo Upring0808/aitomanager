@@ -40,6 +40,10 @@ import {
 } from "firebase/auth";
 import Logout from "../../../../components/Logout";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 const Profile = ({
   initialData,
@@ -89,6 +93,9 @@ const Profile = ({
   const userDataRef = useRef(initialData);
   const avatarUrlRef = useRef(initialData?.avatarUrl || null);
   const isMounted = useRef(true);
+
+  const insets = useSafeAreaInsets();
+  const headerColor = "#203562";
 
   useEffect(() => {
     return () => {
@@ -972,13 +979,22 @@ const Profile = ({
     };
   }, [showLogoutModal]);
 
+  useEffect(() => {
+    StatusBar.setBarStyle("light-content", true);
+    if (Platform.OS === "android") {
+      StatusBar.setBackgroundColor("transparent", true);
+      StatusBar.setTranslucent(true);
+    }
+  }, []);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar
-          barStyle="dark-content"
-          backgroundColor="#f8f9fa"
+          barStyle="light-content"
+          backgroundColor="transparent"
           translucent={true}
+          hidden={false}
         />
         <ActivityIndicator size="large" color="#203562" />
         <Text style={styles.loadingTextNeutral}>Loading Profile...</Text>
@@ -987,48 +1003,58 @@ const Profile = ({
   }
 
   return (
-    <View style={styles.container}>
+    <View style={{ flex: 1, backgroundColor: "transparent" }}>
       <StatusBar
-        barStyle={showLogoutModal ? "dark-content" : "light-content"}
-        backgroundColor={showLogoutModal ? "transparent" : "#ffffff"}
-        translucent={!!showLogoutModal}
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent={true}
+        hidden={false}
+      />
+      {/* Absolutely positioned gradient behind header */}
+      <LinearGradient
+        colors={["#203562", "#ffffff"]}
+        style={{
+          position: "absolute",
+          top: -50, // Extend above the screen
+          left: 0,
+          right: 0,
+          height: 310, // Increased height to ensure full coverage
+          zIndex: 0,
+        }}
       />
       <ScrollView
-        contentContainerStyle={styles.scrollContainer}
+        style={{ flex: 1, backgroundColor: "transparent" }}
+        contentContainerStyle={[
+          styles.scrollContainer,
+          { backgroundColor: "transparent" },
+        ]}
         showsVerticalScrollIndicator={false}
         bounces={true}
       >
-        <LinearGradient
-          colors={["#203562", "#16325B"]}
-          style={styles.headerGradient}
-        >
-          <View style={styles.headerContent}>
-            <View style={styles.avatarContainer}>
-              <TouchableOpacity
-                onPress={pickImage}
-                style={styles.avatarWrapper}
-              >
-                <Image
-                  source={
-                    avatarUrl
-                      ? { uri: avatarUrl }
-                      : require("../../../../assets/aito.png")
-                  }
-                  style={styles.avatar}
-                />
-                <View style={styles.editIconContainer}>
-                  <Feather name="camera" size={18} color="white" />
-                </View>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.username}>{userData?.username || "User"}</Text>
-            <Text style={styles.userRole}>
-              {userData?.yearLevel
-                ? `Year ${userData.yearLevel}`
-                : "Year Level Not Set"}
-            </Text>
+        {/* Add marginTop if needed to avoid overlap with status bar */}
+        <View style={[styles.headerContent, { paddingTop: insets.top + 20 }]}>
+          <View style={styles.avatarContainer}>
+            <TouchableOpacity onPress={pickImage} style={styles.avatarWrapper}>
+              <Image
+                source={
+                  avatarUrl
+                    ? { uri: avatarUrl }
+                    : require("../../../../assets/aito.png")
+                }
+                style={styles.avatar}
+              />
+              <View style={styles.editIconContainer}>
+                <Feather name="camera" size={18} color="white" />
+              </View>
+            </TouchableOpacity>
           </View>
-        </LinearGradient>
+          <Text style={styles.username}>{userData?.username || "User"}</Text>
+          <Text style={styles.userRole}>
+            {userData?.yearLevel
+              ? `Year ${userData.yearLevel}`
+              : "Year Level Not Set"}
+          </Text>
+        </View>
 
         <Animated.View
           style={[
@@ -1168,7 +1194,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     marginBottom: 16,
-    marginHorizontal: 12,
+    marginHorizontal: 0,
+    width: "100%",
   },
   headerContent: {
     alignItems: "center",

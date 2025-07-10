@@ -48,6 +48,10 @@ import { useNavigation } from "@react-navigation/native";
 import { useAuth } from "../../../../context/AuthContext";
 import NetInfo from "@react-native-community/netinfo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 // Import Haptics conditionally to prevent crashes
 let Haptics;
@@ -865,6 +869,8 @@ const People = ({
   showLogoutModal,
 }) => {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const headerColor = "#ffffff";
   // Initialize with preloaded data immediately, filtering out users without names
   const [users, setUsers] = useState(() => {
     if (isDataPreloaded) {
@@ -1434,11 +1440,30 @@ const People = ({
   });
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView
+      style={{
+        flex: 1,
+        backgroundColor: "transparent",
+        paddingTop: insets.top,
+      }}
+      edges={["top", "left", "right"]}
+    >
+      {/* Extend header background behind status bar */}
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top + 80, // Adjust 80 to your header height
+          backgroundColor: headerColor,
+          zIndex: 0,
+        }}
+      />
       <StatusBar
-        barStyle={showLogoutModal ? "dark-content" : "light-content"}
-        backgroundColor={showLogoutModal ? "transparent" : "#ffffff"}
-        translucent={!!showLogoutModal}
+        barStyle="light-content"
+        backgroundColor={headerColor}
+        translucent={false}
       />
 
       <FlatList
@@ -1551,7 +1576,7 @@ const People = ({
           students={getGroupedUsers().students}
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 };
 

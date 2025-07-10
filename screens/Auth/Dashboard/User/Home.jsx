@@ -39,8 +39,12 @@ import {
   Calendar,
   Clock,
 } from "lucide-react-native";
-import { StatusBar } from "expo-status-bar";
+import { StatusBar } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import Icon from "react-native-vector-icons/Ionicons";
 
@@ -92,6 +96,8 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
   const [scrollY] = useState(new Animated.Value(0));
   //upcoming
   const [upcomingEvents, setUpcomingEvents] = useState([]);
+
+  const insets = useSafeAreaInsets();
 
   const fetchData = async () => {
     try {
@@ -856,314 +862,338 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
   });
 
   return (
-    <ScrollView style={styles.mainContainer}>
-      <StatusBar
-        barStyle={showLogoutModal ? "light-content" : "dark-content"}
-        backgroundColor={showLogoutModal ? "transparent" : "#ffffff"}
-        translucent={!!showLogoutModal}
+    <View style={{ flex: 1 }}>
+      {/* Extend header background behind status bar */}
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top + 80, // 80 = header height, adjust if needed
+          backgroundColor: "#003161",
+          zIndex: 0,
+        }}
       />
-      <View style={styles.header}>
-        <View style={styles.leftContent}>
+      <ScrollView style={styles.mainContainer}>
+        <StatusBar
+          barStyle="light-content"
+          backgroundColor="#003161"
+          translucent={false}
+        />
+        <View style={styles.header}>
+          <View style={styles.leftContent}>
+            <Icon
+              name="wallet-outline"
+              size={24}
+              color="#FFD700"
+              style={styles.icon}
+            />
+            <Text style={styles.greeting}>{getGreeting()}</Text>
+          </View>
+          <View style={styles.rightContent}>
+            <Text style={styles.username}>
+              {username ? username.split(" ")[0] : "User"}
+            </Text>
+          </View>
+        </View>
+
+        {/* Current Date Display */}
+        <View style={styles.dateHeader}>
           <Icon
-            name="wallet-outline"
-            size={24}
-            color="#FFD700"
-            style={styles.icon}
+            name="calendar-outline"
+            size={18}
+            color="#024CAA"
+            style={styles.calendarIcon}
           />
-          <Text style={styles.greeting}>{getGreeting()}</Text>
-        </View>
-        <View style={styles.rightContent}>
-          <Text style={styles.username}>
-            {username ? username.split(" ")[0] : "User"}
-          </Text>
-        </View>
-      </View>
-
-      {/* Current Date Display */}
-      <View style={styles.dateHeader}>
-        <Icon
-          name="calendar-outline"
-          size={18}
-          color="#024CAA"
-          style={styles.calendarIcon}
-        />
-        <Text style={styles.currentDate}>
-          {format(selectedDate, "d MMMM yyyy")}
-        </Text>
-      </View>
-
-      {/* Calendar Navigation Controls */}
-      <View style={styles.calendarControls}>
-        <TouchableOpacity
-          style={styles.controlButton}
-          onPress={handlePreviousWeek}
-        >
-          <Icon name="chevron-back-outline" size={20} color="#024CAA" />
-        </TouchableOpacity>
-
-        <Text style={{ color: "#666", fontWeight: "500" }}>
-          Week of {format(weekStart, "MMM d")}
-        </Text>
-
-        <TouchableOpacity style={styles.controlButton} onPress={handleNextWeek}>
-          <Icon name="chevron-forward-outline" size={20} color="#024CAA" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Week Row with Days */}
-      <View style={styles.weekRow}>
-        {weekDays.map((day, index) => {
-          return (
-            <TouchableOpacity
-              key={index}
-              style={[
-                styles.dayColumn,
-                day.isSelected && styles.selectedColumn,
-                day.isToday && !day.isSelected && styles.todayColumn,
-              ]}
-              onPress={() => handleDateSelect(day.date)}
-            >
-              {day.hasEvents && <View style={styles.eventDot} />}
-              <Text
-                style={[
-                  styles.dateText,
-                  day.isSelected && styles.selectedText,
-                  day.isToday && !day.isSelected && styles.todayText,
-                ]}
-              >
-                {day.dayNumber}
-              </Text>
-              <Text
-                style={[
-                  styles.dayText,
-                  day.isSelected && styles.selectedText,
-                  day.isToday && !day.isSelected && styles.todayText,
-                ]}
-              >
-                {day.dayName}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {/* Section Title */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{getSectionTitle()}</Text>
-        <Icon
-          name="calendar-outline"
-          size={20}
-          color="#024CAA"
-          style={styles.sectionIcon}
-        />
-      </View>
-      <Text style={styles.sectionDescription}>
-        All events scheduled for this day
-      </Text>
-
-      {/* Timeline and Events */}
-      <View style={styles.timelineContainer}>
-        <View style={styles.timelineDateBanner}>
-          <Icon name="calendar-outline" size={16} color="#424242" />
-          <Text style={styles.timelineDateText}>
-            {format(selectedDate, "EEEE, MMMM d")}
+          <Text style={styles.currentDate}>
+            {format(selectedDate, "d MMMM yyyy")}
           </Text>
         </View>
 
-        {/* Events Column */}
-        <View style={styles.eventsContainer}>
-          {events.length > 0 ? (
-            events
-              .sort((a, b) => {
-                const convertToTimeValue = (time) => {
-                  const [hour, minute, period] = time
-                    .match(/(\d+):(\d+)\s?(AM|PM)/i)
-                    .slice(1);
-                  let hours = parseInt(hour, 10);
-                  const minutes = parseInt(minute, 10);
-                  if (period.toUpperCase() === "PM" && hours !== 12)
-                    hours += 12;
-                  if (period.toUpperCase() === "AM" && hours === 12) hours = 0;
-                  return hours * 60 + minutes;
-                };
-                return (
-                  convertToTimeValue(a.timeframe) -
-                  convertToTimeValue(b.timeframe)
-                );
-              })
-              .map((event, index) => {
-                // Create a solid color from the semi-transparent color
-                const baseColor = event.color
-                  .replace(/rgba?\(/, "")
-                  .replace(/\)/, "")
-                  .split(",");
-                const solidColor = `rgba(${baseColor[0]},${baseColor[1]},${baseColor[2]},1)`;
+        {/* Calendar Navigation Controls */}
+        <View style={styles.calendarControls}>
+          <TouchableOpacity
+            style={styles.controlButton}
+            onPress={handlePreviousWeek}
+          >
+            <Icon name="chevron-back-outline" size={20} color="#024CAA" />
+          </TouchableOpacity>
 
-                // Get time for badge
-                const timeMatch = event.timeframe.match(/(\d+:\d+)\s?(AM|PM)/i);
-                const time = timeMatch ? timeMatch[0] : event.timeframe;
+          <Text style={{ color: "#666", fontWeight: "500" }}>
+            Week of {format(weekStart, "MMM d")}
+          </Text>
 
-                // Determine a badge type based on index for variety
-                const badgeTypes = ["Event", "Meeting", "Task", "Reminder"];
-                const badgeType = badgeTypes[index % badgeTypes.length];
-
-                return (
-                  <View key={event.id} style={styles.eventCard}>
-                    <View style={styles.eventCardInner}>
-                      {/* Solid background */}
-                      <View
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          backgroundColor: event.color,
-                          zIndex: 1,
-                        }}
-                      />
-
-                      {/* Pattern overlay for added dimension */}
-                      <View
-                        style={[
-                          styles.patternOverlay,
-                          { backgroundColor: "transparent" },
-                        ]}
-                      >
-                        {/* Pattern would be implemented here */}
-                      </View>
-
-                      {/* Card accent */}
-                      <View
-                        style={[
-                          styles.eventCardAccent,
-                          { backgroundColor: solidColor },
-                        ]}
-                      />
-
-                      {/* Badge indicator */}
-                      <View style={styles.eventBadge}>
-                        <Icon
-                          name={
-                            badgeType === "Event"
-                              ? "calendar-outline"
-                              : badgeType === "Meeting"
-                              ? "people-outline"
-                              : badgeType === "Task"
-                              ? "checkmark-circle-outline"
-                              : "alert-circle-outline"
-                          }
-                          size={10}
-                          color="#fff"
-                        />
-                        <Text style={styles.eventBadgeText}>{badgeType}</Text>
-                      </View>
-
-                      {/* Main content */}
-                      <View style={styles.eventCardContent}>
-                        <View style={styles.eventRow}>
-                          <View style={styles.eventIcon}>
-                            <Icon
-                              name="calendar-outline"
-                              size={22}
-                              color="#FFFFFF"
-                            />
-                          </View>
-                          <View style={styles.eventContent}>
-                            <Text style={styles.eventTitle}>{event.title}</Text>
-                            <View style={styles.eventTimeContainer}>
-                              <Icon
-                                name="time-outline"
-                                size={12}
-                                color="rgba(255,255,255,0.95)"
-                              />
-                              <Text style={styles.eventTime}>
-                                {event.timeframe}
-                              </Text>
-                            </View>
-                          </View>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                );
-              })
-          ) : (
-            <View style={styles.noEventsContainer}>
-              <Image
-                source={{
-                  uri: "https://cdn-icons-png.flaticon.com/512/6195/6195678.png",
-                }}
-                style={styles.noEventsImage}
-              />
-              <Text style={styles.noEventsText}>
-                No events scheduled for today
-              </Text>
-            </View>
-          )}
+          <TouchableOpacity
+            style={styles.controlButton}
+            onPress={handleNextWeek}
+          >
+            <Icon name="chevron-forward-outline" size={20} color="#024CAA" />
+          </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Upcoming Events Section */}
-      <View style={styles.ReminderContainer}>
+        {/* Week Row with Days */}
+        <View style={styles.weekRow}>
+          {weekDays.map((day, index) => {
+            return (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.dayColumn,
+                  day.isSelected && styles.selectedColumn,
+                  day.isToday && !day.isSelected && styles.todayColumn,
+                ]}
+                onPress={() => handleDateSelect(day.date)}
+              >
+                {day.hasEvents && <View style={styles.eventDot} />}
+                <Text
+                  style={[
+                    styles.dateText,
+                    day.isSelected && styles.selectedText,
+                    day.isToday && !day.isSelected && styles.todayText,
+                  ]}
+                >
+                  {day.dayNumber}
+                </Text>
+                <Text
+                  style={[
+                    styles.dayText,
+                    day.isSelected && styles.selectedText,
+                    day.isToday && !day.isSelected && styles.todayText,
+                  ]}
+                >
+                  {day.dayName}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Section Title */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Upcoming Events</Text>
+          <Text style={styles.sectionTitle}>{getSectionTitle()}</Text>
           <Icon
-            name="time-outline"
+            name="calendar-outline"
             size={20}
             color="#024CAA"
             style={styles.sectionIcon}
           />
         </View>
         <Text style={styles.sectionDescription}>
-          Be prepared for your scheduled events ahead
+          All events scheduled for this day
         </Text>
-        <ScrollView>
-          {upcomingEvents.length > 0 ? (
-            upcomingEvents.map((event) => {
-              const eventDate = event.dueDate?.toDate() || new Date();
-              return (
-                <View key={event.id} style={styles.ReminderCardContainer}>
-                  <View style={styles.ReminderCard}>
-                    <View style={styles.ReminderCardContent}>
-                      <View style={styles.ReminderDateTimeContainer}>
-                        <Text style={styles.ReminderDateText}>
-                          {format(eventDate, "d")}
-                        </Text>
-                        <Text style={styles.ReminderDayText}>
-                          {format(eventDate, "MMM")}
-                        </Text>
-                      </View>
-                      <View style={styles.ReminderEventDetails}>
-                        <Text style={styles.ReminderEventTitle}>
-                          {event.title}
-                        </Text>
+
+        {/* Timeline and Events */}
+        <View style={styles.timelineContainer}>
+          <View style={styles.timelineDateBanner}>
+            <Icon name="calendar-outline" size={16} color="#424242" />
+            <Text style={styles.timelineDateText}>
+              {format(selectedDate, "EEEE, MMMM d")}
+            </Text>
+          </View>
+
+          {/* Events Column */}
+          <View style={styles.eventsContainer}>
+            {events.length > 0 ? (
+              events
+                .sort((a, b) => {
+                  const convertToTimeValue = (time) => {
+                    const [hour, minute, period] = time
+                      .match(/(\d+):(\d+)\s?(AM|PM)/i)
+                      .slice(1);
+                    let hours = parseInt(hour, 10);
+                    const minutes = parseInt(minute, 10);
+                    if (period.toUpperCase() === "PM" && hours !== 12)
+                      hours += 12;
+                    if (period.toUpperCase() === "AM" && hours === 12)
+                      hours = 0;
+                    return hours * 60 + minutes;
+                  };
+                  return (
+                    convertToTimeValue(a.timeframe) -
+                    convertToTimeValue(b.timeframe)
+                  );
+                })
+                .map((event, index) => {
+                  // Create a solid color from the semi-transparent color
+                  const baseColor = event.color
+                    .replace(/rgba?\(/, "")
+                    .replace(/\)/, "")
+                    .split(",");
+                  const solidColor = `rgba(${baseColor[0]},${baseColor[1]},${baseColor[2]},1)`;
+
+                  // Get time for badge
+                  const timeMatch =
+                    event.timeframe.match(/(\d+:\d+)\s?(AM|PM)/i);
+                  const time = timeMatch ? timeMatch[0] : event.timeframe;
+
+                  // Determine a badge type based on index for variety
+                  const badgeTypes = ["Event", "Meeting", "Task", "Reminder"];
+                  const badgeType = badgeTypes[index % badgeTypes.length];
+
+                  return (
+                    <View key={event.id} style={styles.eventCard}>
+                      <View style={styles.eventCardInner}>
+                        {/* Solid background */}
                         <View
-                          style={{ flexDirection: "row", alignItems: "center" }}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: event.color,
+                            zIndex: 1,
+                          }}
+                        />
+
+                        {/* Pattern overlay for added dimension */}
+                        <View
+                          style={[
+                            styles.patternOverlay,
+                            { backgroundColor: "transparent" },
+                          ]}
                         >
+                          {/* Pattern would be implemented here */}
+                        </View>
+
+                        {/* Card accent */}
+                        <View
+                          style={[
+                            styles.eventCardAccent,
+                            { backgroundColor: solidColor },
+                          ]}
+                        />
+
+                        {/* Badge indicator */}
+                        <View style={styles.eventBadge}>
                           <Icon
-                            name="time-outline"
-                            size={16}
-                            color="#666"
-                            style={styles.ReminderEventTimeIcon}
+                            name={
+                              badgeType === "Event"
+                                ? "calendar-outline"
+                                : badgeType === "Meeting"
+                                ? "people-outline"
+                                : badgeType === "Task"
+                                ? "checkmark-circle-outline"
+                                : "alert-circle-outline"
+                            }
+                            size={10}
+                            color="#fff"
                           />
-                          <Text style={styles.ReminderEventTimeframe}>
-                            {format(eventDate, "h:mm a")} -{" "}
-                            {format(eventDate, "EEEE")}
+                          <Text style={styles.eventBadgeText}>{badgeType}</Text>
+                        </View>
+
+                        {/* Main content */}
+                        <View style={styles.eventCardContent}>
+                          <View style={styles.eventRow}>
+                            <View style={styles.eventIcon}>
+                              <Icon
+                                name="calendar-outline"
+                                size={22}
+                                color="#FFFFFF"
+                              />
+                            </View>
+                            <View style={styles.eventContent}>
+                              <Text style={styles.eventTitle}>
+                                {event.title}
+                              </Text>
+                              <View style={styles.eventTimeContainer}>
+                                <Icon
+                                  name="time-outline"
+                                  size={12}
+                                  color="rgba(255,255,255,0.95)"
+                                />
+                                <Text style={styles.eventTime}>
+                                  {event.timeframe}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })
+            ) : (
+              <View style={styles.noEventsContainer}>
+                <Image
+                  source={{
+                    uri: "https://cdn-icons-png.flaticon.com/512/6195/6195678.png",
+                  }}
+                  style={styles.noEventsImage}
+                />
+                <Text style={styles.noEventsText}>
+                  No events scheduled for today
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Upcoming Events Section */}
+        <View style={styles.ReminderContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Upcoming Events</Text>
+            <Icon
+              name="time-outline"
+              size={20}
+              color="#024CAA"
+              style={styles.sectionIcon}
+            />
+          </View>
+          <Text style={styles.sectionDescription}>
+            Be prepared for your scheduled events ahead
+          </Text>
+          <ScrollView>
+            {upcomingEvents.length > 0 ? (
+              upcomingEvents.map((event) => {
+                const eventDate = event.dueDate?.toDate() || new Date();
+                return (
+                  <View key={event.id} style={styles.ReminderCardContainer}>
+                    <View style={styles.ReminderCard}>
+                      <View style={styles.ReminderCardContent}>
+                        <View style={styles.ReminderDateTimeContainer}>
+                          <Text style={styles.ReminderDateText}>
+                            {format(eventDate, "d")}
                           </Text>
+                          <Text style={styles.ReminderDayText}>
+                            {format(eventDate, "MMM")}
+                          </Text>
+                        </View>
+                        <View style={styles.ReminderEventDetails}>
+                          <Text style={styles.ReminderEventTitle}>
+                            {event.title}
+                          </Text>
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Icon
+                              name="time-outline"
+                              size={16}
+                              color="#666"
+                              style={styles.ReminderEventTimeIcon}
+                            />
+                            <Text style={styles.ReminderEventTimeframe}>
+                              {format(eventDate, "h:mm a")} -{" "}
+                              {format(eventDate, "EEEE")}
+                            </Text>
+                          </View>
                         </View>
                       </View>
                     </View>
                   </View>
-                </View>
-              );
-            })
-          ) : (
-            <Text style={styles.ReminderNoEvent}>No upcoming events</Text>
-          )}
-        </ScrollView>
-      </View>
-    </ScrollView>
+                );
+              })
+            ) : (
+              <Text style={styles.ReminderNoEvent}>No upcoming events</Text>
+            )}
+          </ScrollView>
+        </View>
+      </ScrollView>
+    </View>
   );
 };
 export default Home;

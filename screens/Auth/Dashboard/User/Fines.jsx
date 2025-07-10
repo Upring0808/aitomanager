@@ -21,6 +21,10 @@ import {
 } from "firebase/firestore";
 import Icon from "react-native-vector-icons/Ionicons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 const { width, height } = Dimensions.get("window");
 
@@ -33,6 +37,8 @@ const Fines = ({
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [filteredFines, setFilteredFines] = useState(initialData);
+  const insets = useSafeAreaInsets();
+  const headerColor = "#ffffff";
 
   useEffect(() => {
     let unsubscribe;
@@ -256,29 +262,24 @@ const Fines = ({
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar
-        barStyle={showLogoutModal ? "light-content" : "dark-content"}
-        backgroundColor={showLogoutModal ? "transparent" : "#ffffff"}
-        translucent={!!showLogoutModal}
+    <View style={{ flex: 1 }}>
+      {/* Extend header background behind status bar */}
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top + 80, // Adjust 80 to your header height
+          backgroundColor: headerColor,
+          zIndex: 0,
+        }}
       />
-      <View style={styles.headerContainer}>
-        <View style={styles.headerContent}>
-          <Icon
-            name="wallet-outline"
-            size={30}
-            color="white"
-            style={styles.icon}
-          />
-          <View style={styles.headerTextContainer}>
-            <Text style={styles.title}>My Fines</Text>
-            <Text style={styles.subtitleText}>
-              Current Fines Balance: ₱{calculateTotalFines().toFixed(2)}
-            </Text>
-          </View>
-        </View>
-      </View>
-
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor={headerColor}
+        translucent={false}
+      />
       {renderTabNavigation()}
 
       <FlatList

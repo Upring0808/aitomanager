@@ -26,6 +26,7 @@ import { collection, doc, setDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckCircle } from "lucide-react-native";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 
 const initialState = {
   name: "",
@@ -158,10 +159,18 @@ const CreateOrganizationScreen = () => {
         created_at: new Date().toISOString(),
       });
       // 3. Create admin user in Firebase Auth
-      await auth.createUserWithEmailAndPassword(
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
         fields.email.trim(),
         fields.password
       );
+      // Add admin to org's admins subcollection
+      const adminUid = userCredential.user.uid;
+      const adminDocRef = doc(db, "organizations", orgId, "admins", adminUid);
+      await setDoc(adminDocRef, {
+        email: fields.email.trim(),
+        created_at: new Date().toISOString(),
+      });
       setShowSuccess(true);
       Animated.timing(fadeAnim, {
         toValue: 1,
