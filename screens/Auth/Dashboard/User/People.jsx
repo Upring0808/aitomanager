@@ -1440,143 +1440,146 @@ const People = ({
   });
 
   return (
-    <SafeAreaView
-      style={{
-        flex: 1,
-        backgroundColor: "transparent",
-        paddingTop: insets.top,
-      }}
-      edges={["top", "left", "right"]}
-    >
-      {/* Extend header background behind status bar */}
-      <View
+    <>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      <SafeAreaView
         style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          height: insets.top + 80, // Adjust 80 to your header height
-          backgroundColor: headerColor,
-          zIndex: 0,
+          flex: 1,
+          backgroundColor: "transparent",
+          paddingTop: insets.top,
         }}
-      />
-      <StatusBar
-        barStyle="light-content"
-        backgroundColor={headerColor}
-        translucent={false}
-      />
-
-      <FlatList
-        ref={scrollViewRef}
-        data={[]}
-        renderItem={null}
-        ListHeaderComponent={() => {
-          return (
-            <View>
-              {officers.length > 0 && (
-                <View style={styles.sectionContainer}>
-                  {renderSectionHeader("Officers", officers.length)}
-                  {officers.map((item) => (
-                    <View key={item.id || item.uid}>
-                      {renderUserCard(item)}
-                    </View>
-                  ))}
-                </View>
-              )}
-              {students.length > 0 && (
-                <View style={styles.sectionContainer}>
-                  {renderSectionHeader("Students", students.length)}
-                  {students.map((item) => (
-                    <View key={item.id || item.uid}>
-                      {renderUserCard(item)}
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Empty state when no users */}
-              {officers.length === 0 && students.length === 0 && !loading && (
-                <View style={styles.emptyContainer}>
-                  <Ionicons
-                    name="people-outline"
-                    size={60}
-                    color="#CBD5E1"
-                    style={{ marginBottom: 16 }}
-                  />
-                  <Text style={styles.emptyTitle}>No People Found</Text>
-                  <Text style={styles.emptySubtitle}>
-                    {loading
-                      ? "Loading people..."
-                      : "No users have registered in this organization yet."}
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.refreshButton}
-                    onPress={handleRefresh}
-                    disabled={refreshing}
-                  >
-                    <Ionicons
-                      name="refresh"
-                      size={20}
-                      color="#FFFFFF"
-                      style={{ marginRight: 8 }}
-                    />
-                    <Text style={styles.refreshButtonText}>
-                      {refreshing ? "Refreshing..." : "Refresh"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          );
-        }}
-        contentContainerStyle={[
-          styles.contentContainer,
-          !isOnline && styles.contentContainerOffline,
-        ]}
-        showsVerticalScrollIndicator={true}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-        overScrollMode="always"
-        bounces={true}
-        scrollEnabled={!showSearchModal}
-        removeClippedSubviews={false}
-        initialNumToRender={20}
-        maxToRenderPerBatch={30}
-        windowSize={15}
-        updateCellsBatchingPeriod={50}
-        onEndReachedThreshold={0.5}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing || checkingConnection}
-            onRefresh={handleRefresh}
-            colors={[THEME_COLOR]}
-            tintColor={THEME_COLOR}
-          />
-        }
-      />
-
-      <Animated.View style={[styles.searchFAB, { opacity: fabOpacity }]}>
-        <TouchableOpacity
-          onPress={toggleSearchModal}
-          activeOpacity={0.8}
-          style={styles.searchFABTouchable}
-        >
-          <Ionicons name="search" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </Animated.View>
-
-      {showSearchModal && (
-        <SearchBar
-          visible={showSearchModal}
-          onClose={toggleSearchModal}
-          onSearch={setSearchQuery}
-          searchQuery={searchQuery}
-          onClear={clearSearch}
-          officers={getGroupedUsers().officers}
-          students={getGroupedUsers().students}
+        edges={["top", "left", "right"]}
+      >
+        {/* Extend header background behind status bar */}
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: insets.top + 80, // Adjust 80 to your header height
+            backgroundColor: headerColor,
+            zIndex: 0,
+          }}
         />
-      )}
-    </SafeAreaView>
+        <StatusBar
+          barStyle="light-content"
+          backgroundColor={headerColor}
+          translucent={false}
+        />
+
+        <FlatList
+          ref={scrollViewRef}
+          data={[]}
+          renderItem={null}
+          ListHeaderComponent={() => {
+            return (
+              <View>
+                {officers.length > 0 && (
+                  <View style={styles.sectionContainer}>
+                    {renderSectionHeader("Officers", officers.length)}
+                    {officers.map((item) => (
+                      <View key={item.id || item.uid}>
+                        {renderUserCard(item)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {students.length > 0 && (
+                  <View style={styles.sectionContainer}>
+                    {renderSectionHeader("Students", students.length)}
+                    {students.map((item) => (
+                      <View key={item.id || item.uid}>
+                        {renderUserCard(item)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Empty state when no users */}
+                {officers.length === 0 && students.length === 0 && !loading && (
+                  <View style={styles.emptyContainer}>
+                    <Ionicons
+                      name="people-outline"
+                      size={60}
+                      color="#CBD5E1"
+                      style={{ marginBottom: 16 }}
+                    />
+                    <Text style={styles.emptyTitle}>No People Found</Text>
+                    <Text style={styles.emptySubtitle}>
+                      {loading
+                        ? "Loading people..."
+                        : "No users have registered in this organization yet."}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.refreshButton}
+                      onPress={handleRefresh}
+                      disabled={refreshing}
+                    >
+                      <Ionicons
+                        name="refresh"
+                        size={20}
+                        color="#FFFFFF"
+                        style={{ marginRight: 8 }}
+                      />
+                      <Text style={styles.refreshButtonText}>
+                        {refreshing ? "Refreshing..." : "Refresh"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            );
+          }}
+          contentContainerStyle={[
+            styles.contentContainer,
+            !isOnline && styles.contentContainerOffline,
+          ]}
+          showsVerticalScrollIndicator={true}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          overScrollMode="always"
+          bounces={true}
+          scrollEnabled={!showSearchModal}
+          removeClippedSubviews={false}
+          initialNumToRender={20}
+          maxToRenderPerBatch={30}
+          windowSize={15}
+          updateCellsBatchingPeriod={50}
+          onEndReachedThreshold={0.5}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing || checkingConnection}
+              onRefresh={handleRefresh}
+              colors={[THEME_COLOR]}
+              tintColor={THEME_COLOR}
+            />
+          }
+        />
+
+        <Animated.View style={[styles.searchFAB, { opacity: fabOpacity }]}>
+          <TouchableOpacity
+            onPress={toggleSearchModal}
+            activeOpacity={0.8}
+            style={styles.searchFABTouchable}
+          >
+            <Ionicons name="search" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </Animated.View>
+
+        {showSearchModal && (
+          <SearchBar
+            visible={showSearchModal}
+            onClose={toggleSearchModal}
+            onSearch={setSearchQuery}
+            searchQuery={searchQuery}
+            onClear={clearSearch}
+            officers={getGroupedUsers().officers}
+            students={getGroupedUsers().students}
+          />
+        )}
+      </SafeAreaView>
+    </>
   );
 };
 

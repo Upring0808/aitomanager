@@ -7,8 +7,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   Animated,
+  StatusBar,
 } from "react-native";
-import { StatusBar } from "expo-status-bar";
 import { db, auth } from "../../../../config/firebaseconfig";
 import {
   collection,

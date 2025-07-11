@@ -8,8 +8,8 @@ import {
   ActivityIndicator,
   Dimensions,
   Platform,
+  StatusBar,
 } from "react-native";
-import { StatusBar } from "expo-status-bar";
 import { auth, db } from "../../../../config/firebaseconfig";
 import {
   collection,
@@ -262,44 +262,42 @@ const Fines = ({
   }
 
   return (
-    <View style={{ flex: 1 }}>
-      {/* Extend header background behind status bar */}
-      <View
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          height: insets.top + 80, // Adjust 80 to your header height
-          backgroundColor: headerColor,
-          zIndex: 0,
-        }}
-      />
-      <StatusBar
-        barStyle="light-content"
-        backgroundColor={headerColor}
-        translucent={false}
-      />
-      {renderTabNavigation()}
+    <>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      <View style={{ flex: 1 }}>
+        {/* Extend header background behind status bar */}
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: insets.top + 80, // Adjust 80 to your header height
+            backgroundColor: headerColor,
+            zIndex: 0,
+          }}
+        />
+        {renderTabNavigation()}
 
-      <FlatList
-        data={filteredFines}
-        keyExtractor={(item) => item.id}
-        renderItem={renderFineItem}
-        contentContainerStyle={styles.listContainer}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Icon name="document-text-outline" size={64} color="#E0E0E0" />
-            <Text style={styles.emptyText}>
-              {activeTab === "all"
-                ? "No fines found"
-                : `No ${activeTab} fines found`}
-            </Text>
-          </View>
-        }
-      />
-    </View>
+        <FlatList
+          data={filteredFines}
+          keyExtractor={(item) => item.id}
+          renderItem={renderFineItem}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Icon name="document-text-outline" size={64} color="#E0E0E0" />
+              <Text style={styles.emptyText}>
+                {activeTab === "all"
+                  ? "No fines found"
+                  : `No ${activeTab} fines found`}
+              </Text>
+            </View>
+          }
+        />
+      </View>
+    </>
   );
 };
 
