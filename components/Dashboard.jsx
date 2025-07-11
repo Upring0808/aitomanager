@@ -204,6 +204,9 @@ const Dashboard = ({ navigation, route }) => {
     Events: 0,
     Profile: 0,
   });
+  // Animation and loading state for smooth tab transitions
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [isTabLoading, setIsTabLoading] = useState(false);
   const [lastViewed, setLastViewed] = useState({
     Fines: new Date(0),
     Events: new Date(0),
@@ -245,6 +248,15 @@ const Dashboard = ({ navigation, route }) => {
   const tabWidth = screenWidth / 5;
   const underlineWidth = tabWidth * 0.8; // Make underline 80% of tab width
   const underlineOffset = (tabWidth - underlineWidth) / 2; // Center the underline
+
+  // Add this mapping at the top of the Dashboard component (after useState declarations)
+  const statusBarConfig = {
+    Home: { barStyle: "dark-content", backgroundColor: "#fff" },
+    Events: { barStyle: "dark-content", backgroundColor: "#fff" },
+    Fines: { barStyle: "dark-content", backgroundColor: "#fff" },
+    People: { barStyle: "dark-content", backgroundColor: "#fff" },
+    Profile: { barStyle: "light-content", backgroundColor: "transparent" },
+  };
 
   // Check if navigation is ready
   useEffect(() => {
@@ -455,16 +467,16 @@ const Dashboard = ({ navigation, route }) => {
   // Tab press handler
   const handleTabPress = useCallback(
     async (name, index) => {
+      setIsTabLoading(true);
       setActiveTab(name);
       setActiveTabIndex(index);
-
-      // Animate the underline with proper offset
       Animated.spring(translateX, {
         toValue: index * tabWidth + underlineOffset,
         useNativeDriver: true,
         tension: 50,
         friction: 7,
       }).start();
+      setTimeout(() => setIsTabLoading(false), 300);
 
       // Update last viewed timestamp for Fines and Events tabs
       if ((name === "Fines" || name === "Events") && user) {
@@ -702,6 +714,8 @@ const Dashboard = ({ navigation, route }) => {
   }
 
   // Normal dashboard rendering when user is logged in
+  const { barStyle, backgroundColor: statusBarBg } =
+    statusBarConfig[activeTab] || statusBarConfig.Home;
   return (
     <SafeAreaView
       style={[
@@ -714,15 +728,9 @@ const Dashboard = ({ navigation, route }) => {
       edges={["top", "right", "left"]}
     >
       <StatusBar
-        barStyle={
-          showLogoutModal
-            ? "light-content"
-            : isDarkMode
-            ? "light-content"
-            : "dark-content"
-        }
-        backgroundColor="transparent"
-        translucent={true}
+        barStyle={barStyle}
+        backgroundColor={statusBarBg}
+        translucent={statusBarBg === "transparent"}
       />
       <View
         style={[styles.statusBarBackground, { backgroundColor: "transparent" }]}
@@ -735,8 +743,20 @@ const Dashboard = ({ navigation, route }) => {
             : { backgroundColor: theme.background, paddingTop: insets.top },
         ]}
       >
-        {renderContent()}
-
+        {isTabLoading ? (
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: statusBarBg,
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <ActivityIndicator size="large" color={theme.tabActiveColor} />
+          </View>
+        ) : (
+          renderContent()
+        )}
         <View
           style={[
             dashboardStyles.footer,
@@ -759,7 +779,6 @@ const Dashboard = ({ navigation, route }) => {
           {ADMIN_TABS.map(renderTab)}
         </View>
       </View>
-
       {showLogoutModal && (
         <Logout
           visible={showLogoutModal}

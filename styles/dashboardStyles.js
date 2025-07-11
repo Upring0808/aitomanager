@@ -8,11 +8,12 @@ const underlineWidth = tabWidth * 0.8;
 export const dashboardStyles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "red",
   },
   container: {
     flex: 1,
     justifyContent: "space-between",
+    backgroundColor: "red",
   },
   footer: {
     flexDirection: "row",
