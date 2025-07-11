@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -96,19 +96,26 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
   const [scrollY] = useState(new Animated.Value(0));
   //upcoming
   const [upcomingEvents, setUpcomingEvents] = useState([]);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const isFirstMount = useRef(true);
 
   const insets = useSafeAreaInsets();
 
   const fetchData = async () => {
+    if (hasLoaded) return;
     try {
       await Promise.all([fetchEvents()]);
+      setHasLoaded(true);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    if (isFirstMount.current) {
+      fetchData();
+      isFirstMount.current = false;
+    }
   }, []);
 
   useEffect(() => {
@@ -876,11 +883,6 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
         }}
       />
       <ScrollView style={styles.mainContainer}>
-        <StatusBar
-          barStyle="light-content"
-          backgroundColor="#003161"
-          translucent={false}
-        />
         <View style={styles.header}>
           <View style={styles.leftContent}>
             <Icon

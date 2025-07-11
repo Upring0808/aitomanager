@@ -40,8 +40,10 @@ const Events = ({
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const unsubscribeRef = useRef(null);
   const isInitialMount = useRef(true);
+  const isFirstMount = useRef(true);
   const insets = useSafeAreaInsets();
   const headerColor = "#ffffff";
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   const fetchEvents = useCallback(async () => {
     try {
@@ -85,6 +87,17 @@ const Events = ({
     });
     setUserAttendance(attendance);
   };
+
+  const fetchEventsOnce = useCallback(async () => {
+    if (hasLoaded) return;
+    setLoading(true);
+    try {
+      await fetchEvents();
+      setHasLoaded(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [hasLoaded, fetchEvents]);
 
   // Set up real-time listener for events
   useEffect(() => {
@@ -136,6 +149,20 @@ const Events = ({
     };
   }, [initialData]);
 
+  useEffect(() => {
+    if (isFirstMount.current) {
+      fetchEventsOnce();
+      isFirstMount.current = false;
+    }
+  }, []);
+
+  // Add a manual refresh handler if needed
+  const handleManualRefresh = async () => {
+    setHasLoaded(false);
+    setLoading(true);
+    await fetchEventsOnce();
+  };
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await fetchEvents();
@@ -185,18 +212,8 @@ const Events = ({
     animateEventsEntrance();
   }, [filter]);
 
-  if (loading) {
-    return (
-      <View style={Styles.loader}>
-        <ActivityIndicator size="large" color="#203562" />
-        <Text style={Styles.loadingText}>Loading Events...</Text>
-      </View>
-    );
-  }
-
   return (
     <>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <View style={{ flex: 1 }}>
         {/* Extend header background behind status bar */}
         <View

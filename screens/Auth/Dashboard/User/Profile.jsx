@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -45,11 +45,12 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-const Profile = ({
+const Profile = React.memo(({
   initialData,
   onAvatarUpdate,
   isDataPreloaded = false,
   showLogoutModal,
+  isActive = true,
 }) => {
   const navigation = useNavigation();
   const [userData, setUserData] = useState(initialData || null);
@@ -84,10 +85,7 @@ const Profile = ({
     confirmPassword: "",
   });
   const isLoggingOut = useRef(false);
-
-  // Animation values
-  const [fadeAnim] = useState(new Animated.Value(isDataPreloaded ? 1 : 0));
-  const [slideAnim] = useState(new Animated.Value(isDataPreloaded ? 0 : 50));
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   // Use refs to prevent unnecessary re-renders
   const userDataRef = useRef(initialData);
@@ -103,12 +101,9 @@ const Profile = ({
     };
   }, []);
 
-  // Handle data updates when new initialData is passed
+  // 1. MAIN ISSUE: Only set userData if not already set
   useEffect(() => {
-    if (
-      initialData &&
-      JSON.stringify(initialData) !== JSON.stringify(userData)
-    ) {
+    if (initialData && !userData) {
       setUserData(initialData);
       userDataRef.current = initialData;
       setDocId(initialData.id);
@@ -119,28 +114,12 @@ const Profile = ({
       });
       setAvatarUrl(initialData.avatarUrl);
       avatarUrlRef.current = initialData.avatarUrl;
-
-      // If data is preloaded, no need to show loading
-      if (isDataPreloaded) {
-        setLoading(false);
-        // Start animations immediately for preloaded data
-        Animated.parallel([
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-          Animated.timing(slideAnim, {
-            toValue: 0,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      }
     }
-  }, [initialData, isDataPreloaded]);
+  }, [initialData]);
 
+  // 2. Fix the fetch effect dependencies
   useEffect(() => {
+    if (isDataPreloaded || initialData) return;
     // Always fetch data from Firestore on mount for latest info
     const fetchUserData = async () => {
       const currentUser = auth.currentUser;
@@ -261,20 +240,21 @@ const Profile = ({
         if (isMounted.current) {
           setLoading(false);
           // Start animations when data is loaded
-          Animated.parallel([
-            Animated.timing(fadeAnim, {
-              toValue: 1,
-              duration: 800,
-              useNativeDriver: true,
-            }),
-            Animated.timing(slideAnim, {
-              toValue: 0,
-              duration: 600,
-              useNativeDriver: true,
-            }),
-          ]).start();
+          // Animated.parallel([
+          //   Animated.timing(fadeAnim, {
+          //     toValue: 1,
+          //     duration: 800,
+          //     useNativeDriver: true,
+          //   }),
+          //   Animated.timing(slideAnim, {
+          //     toValue: 0,
+          //     duration: 600,
+          //     useNativeDriver: true,
+          //   }),
+          // ]).start();
         }
       }
+      setHasLoaded(true);
     };
     fetchUserData();
     // Cleanup subscription when component unmounts
@@ -283,7 +263,7 @@ const Profile = ({
         unsubscribeAvatar();
       }
     };
-  }, [initialData, isDataPreloaded]);
+  }, [isDataPreloaded, initialData]);
 
   // Add a global error boundary for debugging
   useEffect(() => {
@@ -300,25 +280,16 @@ const Profile = ({
     };
   }, []);
 
+  // 3. Optimize the handleSave function
   const handleSave = useCallback(
     async (field) => {
       try {
         const currentUser = auth.currentUser;
-        if (!currentUser) {
-          console.error("[DEBUG] No current user found");
-          return;
-        }
+        if (!currentUser) return;
         const orgId = await AsyncStorage.getItem("selectedOrgId");
         if (!orgId) return;
-        const userDocRef = doc(
-          db,
-          "organizations",
-          orgId,
-          "users",
-          currentUser.uid
-        );
+        const userDocRef = doc(db, "organizations", orgId, "users", currentUser.uid);
         await updateDoc(userDocRef, { [field]: tempData[field] });
-
         if (isMounted.current) {
           setUserData((prevState) => {
             const newState = { ...prevState, [field]: tempData[field] };
@@ -333,7 +304,7 @@ const Profile = ({
           });
         }
       } catch (error) {
-        console.error("[DEBUG] Error updating user profile:", error);
+        console.error("Error updating user profile:", error);
         Toast.show({ type: "error", text1: "Error", text2: "Update failed." });
       }
     },
@@ -656,13 +627,13 @@ const Profile = ({
       statusBarTranslucent={true}
     >
       <View style={styles.modalContainer}>
-        <Animated.View
+        <View
           style={[
             styles.modalContent,
-            {
-              transform: [{ scale: fadeAnim }],
-              opacity: fadeAnim,
-            },
+            // {
+            //   transform: [{ scale: fadeAnim }],
+            //   opacity: fadeAnim,
+            // },
           ]}
         >
           <View style={styles.modalHeader}>
@@ -735,7 +706,7 @@ const Profile = ({
               <Text style={styles.modalSaveButtonText}>Save Changes</Text>
             </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
       </View>
     </Modal>
   );
@@ -980,22 +951,81 @@ const Profile = ({
   }, [showLogoutModal]);
 
   useEffect(() => {
-    StatusBar.setBarStyle("light-content", true);
-    if (Platform.OS === "android") {
-      StatusBar.setBackgroundColor("transparent", true);
-      StatusBar.setTranslucent(true);
-    }
+    // StatusBar.setBarStyle("light-content", true);
+    // if (Platform.OS === "android") {
+    //   StatusBar.setBackgroundColor("transparent", true);
+    //   StatusBar.setTranslucent(true);
+    // }
   }, []);
 
-  if (loading) {
+  // 4. Memoize the profile fields
+  const renderProfileFields = useMemo(() => {
+    const fields = [
+      { field: "username", icon: "user", placeholder: "Add username" },
+      { field: "email", icon: "mail", placeholder: "Add email" },
+      { field: "phone", icon: "phone", placeholder: "Add phone number" },
+    ];
+    return fields.map(({ field, icon, placeholder }) => (
+      <TouchableOpacity
+        key={field}
+        onPress={() => {
+          setEditingField(field);
+          setModalVisible(true);
+        }}
+        style={styles.fieldContainer}
+      >
+        <View style={styles.fieldIconContainer}>
+          <Feather name={icon} size={20} color="#203562" />
+        </View>
+        <View style={styles.fieldContent}>
+          <Text style={styles.label}>
+            {field.charAt(0).toUpperCase() + field.slice(1)}
+          </Text>
+          <Text
+            style={[
+              styles.value,
+              !userData?.[field] && styles.placeholderText,
+            ]}
+          >
+            {typeof userData?.[field] === "string" ? userData[field] : ""}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.editButton}
+          onPress={() => {
+            setEditingField(field);
+            setModalVisible(true);
+          }}
+        >
+          <Feather name="edit-2" size={16} color="#203562" />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    ));
+  }, [userData]);
+
+  // 5. Memoize the avatar rendering
+  const renderAvatar = useMemo(() => (
+    <View style={styles.avatarContainer}>
+      <TouchableOpacity onPress={pickImage} style={styles.avatarWrapper}>
+        <Image
+          source={
+            avatarUrl
+              ? { uri: avatarUrl }
+              : require("../../../../assets/aito.png")
+          }
+          style={styles.avatar}
+        />
+        <View style={styles.editIconContainer}>
+          <Feather name="camera" size={18} color="white" />
+        </View>
+      </TouchableOpacity>
+    </View>
+  ), [avatarUrl, pickImage]);
+
+  // 6. Main render
+  if (!userData) {
     return (
       <View style={styles.loadingContainer}>
-        <StatusBar
-          barStyle="light-content"
-          backgroundColor="transparent"
-          translucent={true}
-          hidden={false}
-        />
         <ActivityIndicator size="large" color="#203562" />
         <Text style={styles.loadingTextNeutral}>Loading Profile...</Text>
       </View>
@@ -1004,24 +1034,19 @@ const Profile = ({
 
   return (
     <View style={{ flex: 1, backgroundColor: "transparent" }}>
-      <StatusBar
-        barStyle="light-content"
-        backgroundColor="transparent"
-        translucent={true}
-        hidden={false}
-      />
-      {/* Absolutely positioned gradient behind header */}
-      <LinearGradient
-        colors={["#203562", "#ffffff"]}
-        style={{
-          position: "absolute",
-          top: -50, // Extend above the screen
-          left: 0,
-          right: 0,
-          height: 310, // Increased height to ensure full coverage
-          zIndex: 0,
-        }}
-      />
+      {isActive && (
+        <LinearGradient
+          colors={["#203562", "#ffffff"]}
+          style={{
+            position: "absolute",
+            top: -50,
+            left: 0,
+            right: 0,
+            height: 310,
+            zIndex: 0,
+          }}
+        />
+      )}
       <ScrollView
         style={{ flex: 1, backgroundColor: "transparent" }}
         contentContainerStyle={[
@@ -1029,25 +1054,11 @@ const Profile = ({
           { backgroundColor: "transparent" },
         ]}
         showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true}
         bounces={true}
       >
-        {/* Add marginTop if needed to avoid overlap with status bar */}
-        <View style={[styles.headerContent, { paddingTop: insets.top + 20 }]}>
-          <View style={styles.avatarContainer}>
-            <TouchableOpacity onPress={pickImage} style={styles.avatarWrapper}>
-              <Image
-                source={
-                  avatarUrl
-                    ? { uri: avatarUrl }
-                    : require("../../../../assets/aito.png")
-                }
-                style={styles.avatar}
-              />
-              <View style={styles.editIconContainer}>
-                <Feather name="camera" size={18} color="white" />
-              </View>
-            </TouchableOpacity>
-          </View>
+        <View style={[styles.headerContent, { paddingTop: 20 }]}> 
+          {renderAvatar}
           <Text style={styles.username}>{userData?.username || "User"}</Text>
           <Text style={styles.userRole}>
             {userData?.yearLevel
@@ -1055,75 +1066,10 @@ const Profile = ({
               : "Year Level Not Set"}
           </Text>
         </View>
-
-        <Animated.View
-          style={[
-            styles.profileCard,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
-        >
+        <View style={styles.profileCard}>
           <Text style={styles.sectionTitle}>Personal Information</Text>
-
-          {[
-            {
-              field: "username",
-              icon: "user",
-              placeholder: "Add username",
-            },
-            { field: "email", icon: "mail", placeholder: "Add email" },
-            {
-              field: "phone",
-              icon: "phone",
-              placeholder: "Add phone number",
-            },
-          ].map(({ field, icon, placeholder }) => (
-            <TouchableOpacity
-              key={field}
-              onPress={() => {
-                setEditingField(field);
-                setModalVisible(true);
-              }}
-              style={styles.fieldContainer}
-            >
-              <View style={styles.fieldIconContainer}>
-                <Feather name={icon} size={20} color="#203562" />
-              </View>
-              <View style={styles.fieldContent}>
-                <Text style={styles.label}>
-                  {field.charAt(0).toUpperCase() + field.slice(1)}
-                </Text>
-                <Text
-                  style={[
-                    styles.value,
-                    !userData?.[field] && styles.placeholderText,
-                  ]}
-                >
-                  {typeof userData?.[field] === "string"
-                    ? userData[field]
-                    : (console.warn(
-                        `[DEBUG] userData.${field} is not a string:`,
-                        userData?.[field]
-                      ),
-                      "")}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.editButton}
-                onPress={() => {
-                  setEditingField(field);
-                  setModalVisible(true);
-                }}
-              >
-                <Feather name="edit-2" size={16} color="#203562" />
-              </TouchableOpacity>
-            </TouchableOpacity>
-          ))}
-
+          {renderProfileFields}
           <View style={styles.divider} />
-
           <TouchableOpacity
             style={[styles.logoutButton, { marginBottom: 10 }]}
             onPress={() => setPasswordModalVisible(true)}
@@ -1136,7 +1082,6 @@ const Profile = ({
             />
             <Text style={styles.logoutButtonText}>Change Password</Text>
           </TouchableOpacity>
-
           <TouchableOpacity
             style={styles.logoutButton}
             onPress={showLogoutModal}
@@ -1150,15 +1095,14 @@ const Profile = ({
             />
             <Text style={styles.logoutButtonText}>Logout</Text>
           </TouchableOpacity>
-        </Animated.View>
+        </View>
       </ScrollView>
-
       {renderFieldEditModal()}
       {renderPasswordChangeModal()}
       <Toast />
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   // Main container styles
@@ -1504,4 +1448,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default React.memo(Profile);
+export default Profile;

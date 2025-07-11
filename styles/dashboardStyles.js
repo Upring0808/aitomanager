@@ -12,8 +12,7 @@ export const dashboardStyles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    justifyContent: "space-between",
-    backgroundColor: "red",
+    // Removed justifyContent: 'space-between' and backgroundColor to prevent layout jumps
   },
   footer: {
     flexDirection: "row",
@@ -22,8 +21,11 @@ export const dashboardStyles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: "#e0e0e0",
     elevation: 8,
-    position: "relative",
-    paddingVertical: -12,
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    // Removed position: 'relative' and negative padding to keep footer fixed
   },
   underline: {
     height: 2,

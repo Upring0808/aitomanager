@@ -342,7 +342,6 @@ const SearchBar = memo(
         onRequestClose={handleClose}
       >
         <View style={styles.modalContainer}>
-          <StatusBar barStyle="light-content" backgroundColor="transparent" />
           <BlurView
             intensity={Platform.OS === "ios" ? 40 : 30}
             style={styles.blurContainer}
@@ -863,11 +862,7 @@ const checkDirectNetworkStatus = async () => {
   }
 };
 
-const People = ({
-  initialData = { officers: [], students: [] },
-  isDataPreloaded = false,
-  showLogoutModal,
-}) => {
+const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded = false, showLogoutModal }) => {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const headerColor = "#ffffff";
@@ -935,10 +930,11 @@ const People = ({
   const [checkingConnection, setCheckingConnection] = useState(false);
   const [appActive, setAppActive] = useState(true);
   const appStateRef = useRef(AppState.currentState);
-  const isInitialMount = useRef(true);
+  const isFirstMount = useRef(true);
   const unsubscribeRef = useRef(null);
   const isMounted = useRef(true);
   const defaultAvatarUri = require("../../../../assets/aito.png");
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   const { isOnline, refreshStatus, getIsUserOnline, forceConnectionCheck } =
     useOnlineStatus();
@@ -1141,13 +1137,27 @@ const People = ({
     };
   }, []);
 
-  // Manual fetch on mount if no data is loaded
   useEffect(() => {
-    if (!isDataPreloaded && users.length === 0 && !loading) {
-      console.log("[People] No data loaded, triggering manual fetch");
-      fetchPeople();
+    if (isFirstMount.current) {
+      if (!isDataPreloaded) {
+        setLoading(true);
+        fetchPeople().then(() => {
+          setHasLoaded(true);
+          setLoading(false);
+        });
+      }
+      isFirstMount.current = false;
     }
-  }, [isDataPreloaded, users.length, loading, fetchPeople]);
+  }, [isDataPreloaded, fetchPeople]);
+
+  // Add a manual refresh handler if needed
+  const handleManualRefresh = async () => {
+    setHasLoaded(false);
+    setLoading(true);
+    await fetchPeople();
+    setHasLoaded(true);
+    setLoading(false);
+  };
 
   const getGroupedUsers = useCallback(() => {
     console.log("[People] getGroupedUsers called with:", {
@@ -1426,15 +1436,15 @@ const People = ({
     // }
   }, []);
 
+  useEffect(() => {
+    return () => {
+      setLoading(false); // Ensure loading overlay is removed on unmount
+    };
+  }, []);
+
   if (loading) {
     return (
       <View style={styles.loader}>
-        <StatusBar
-          barStyle="light-content"
-          backgroundColor="transparent"
-          translucent={true}
-          hidden={false}
-        />
         <ActivityIndicator size="large" color={THEME_COLOR} />
         <Text style={styles.loadingText}>Loading People...</Text>
       </View>
@@ -1454,12 +1464,6 @@ const People = ({
 
   return (
     <View style={{ flex: 1, backgroundColor: "#ffff" }}>
-      {/* <StatusBar
-        barStyle="dark-content"
-        backgroundColor="transparent"
-        translucent={true}
-        hidden={false}
-      /> */}
       <LinearGradient
         colors={["#ffff", "#ffff"]}
         style={{
@@ -1559,7 +1563,10 @@ const People = ({
           />
         }
       />
-      <Animated.View style={[styles.searchFAB, { opacity: fabOpacity }]}>
+      <Animated.View style={[
+        styles.searchFAB,
+        { opacity: fabOpacity, bottom: insets.bottom + 80 }
+      ]}>
         <TouchableOpacity
           onPress={toggleSearchModal}
           activeOpacity={0.8}
@@ -1676,9 +1683,14 @@ const styles = StyleSheet.create({
   },
   searchFAB: {
     position: "absolute",
-    bottom: SPACING,
-    right: SPACING,
+    right: 24,
+    // Remove static bottom, now set dynamically
     zIndex: 100,
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   searchFABTouchable: {
     width: 60,

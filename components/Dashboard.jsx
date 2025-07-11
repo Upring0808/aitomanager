@@ -211,6 +211,10 @@ const Dashboard = ({ navigation, route }) => {
     Fines: new Date(0),
     Events: new Date(0),
   });
+  const [mountedTabs, setMountedTabs] = useState(["Home"]); // Track which tabs have been visited
+  const [preloadLoading, setPreloadLoading] = useState(true);
+  const [preloadedHome, setPreloadedHome] = useState(null);
+  const [preloadedProfile, setPreloadedProfile] = useState(null);
 
   // Data storage - using refs to prevent rerenders
   const dashboardData = useRef({
@@ -464,6 +468,13 @@ const Dashboard = ({ navigation, route }) => {
     }
   }, [route.params?.screen, user, translateX, tabWidth, underlineOffset]);
 
+  // Update mountedTabs when switching tabs
+  useEffect(() => {
+    if (!mountedTabs.includes(activeTab)) {
+      setMountedTabs((prev) => [...prev, activeTab]);
+    }
+  }, [activeTab, mountedTabs]);
+
   // Tab press handler
   const handleTabPress = useCallback(
     async (name, index) => {
@@ -569,53 +580,71 @@ const Dashboard = ({ navigation, route }) => {
     return () => subscription.remove();
   }, [showLogoutModal]);
 
-  // Render content - always render the full dashboard structure
-  const renderContent = useCallback(() => {
+  // Hybrid preload: fetch Home and Profile data before showing dashboard
+  useEffect(() => {
+    let isMounted = true;
+    async function preloadCriticalTabs() {
+      setPreloadLoading(true);
+      try {
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId || !user) return;
+        // Fetch Home/Profile user data
+        const usersRef = collection(db, "organizations", orgId, "users");
+        const q = query(usersRef, where("uid", "==", user.uid));
+        const querySnapshot = await getDocs(q);
+        let userData = null;
+        if (!querySnapshot.empty) {
+          userData = { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() };
+        }
+        setPreloadedHome(userData);
+        setPreloadedProfile(userData);
+      } catch (e) {
+        setPreloadedHome(null);
+        setPreloadedProfile(null);
+      } finally {
+        if (isMounted) setPreloadLoading(false);
+      }
+    }
+    if (user) preloadCriticalTabs();
+    return () => { isMounted = false; };
+  }, [user]);
+
+  // Replace renderAllTabs with renderActiveTab
+  const renderActiveTab = () => {
     switch (activeTab) {
       case "Home":
         return (
           <Home
-            initialData={dashboardData.current.user}
-            isDataPreloaded={!!user}
+            initialData={preloadedHome}
+            isDataPreloaded={!!preloadedHome}
             showLogoutModal={() => setShowLogoutModal(true)}
           />
         );
       case "Events":
-        return (
-          <Events
-            initialData={dashboardData.current.events}
-            isDataPreloaded={!!user}
-            showLogoutModal={() => setShowLogoutModal(true)}
-          />
-        );
+        return <Events showLogoutModal={() => setShowLogoutModal(true)} />;
       case "Fines":
-        return (
-          <Fines
-            initialData={dashboardData.current.fines}
-            isDataPreloaded={!!user}
-            showLogoutModal={() => setShowLogoutModal(true)}
-          />
-        );
+        return <Fines showLogoutModal={() => setShowLogoutModal(true)} />;
       case "People":
         return <People showLogoutModal={() => setShowLogoutModal(true)} />;
       case "Profile":
         return (
           <Profile
-            initialData={dashboardData.current.user}
-            isDataPreloaded={!!user}
+            initialData={preloadedProfile}
+            isDataPreloaded={!!preloadedProfile}
             onAvatarUpdate={(newAvatarUrl) => {
               setAvatarUrl(newAvatarUrl);
-              if (dashboardData.current.user) {
-                dashboardData.current.user.avatarUrl = newAvatarUrl;
+              if (preloadedProfile) {
+                setPreloadedProfile((prev) => ({ ...prev, avatarUrl: newAvatarUrl }));
               }
             }}
             showLogoutModal={() => setShowLogoutModal(true)}
+            isActive={true}
           />
         );
       default:
-        return <View style={{ flex: 1 }} />;
+        return null;
     }
-  }, [activeTab, user]);
+  };
 
   // Render avatar
   const renderAvatar = useCallback(() => {
@@ -713,7 +742,17 @@ const Dashboard = ({ navigation, route }) => {
     );
   }
 
-  // Normal dashboard rendering when user is logged in
+  // Show a full-screen loading overlay while preloading
+  if (preloadLoading) {
+    return (
+      <View style={[styles.loadingOverlay, { zIndex: 9999 }]}>
+        <ActivityIndicator size="large" color="#203562" />
+        <Text style={styles.loadingTextNeutral}>Loading Dashboard...</Text>
+      </View>
+    );
+  }
+
+  // Normal dashboard rendering when user is logged in and preloading is done
   const { barStyle, backgroundColor: statusBarBg } =
     statusBarConfig[activeTab] || statusBarConfig.Home;
   return (
@@ -738,25 +777,11 @@ const Dashboard = ({ navigation, route }) => {
       <View
         style={[
           dashboardStyles.container,
-          activeTab === "Profile"
-            ? { backgroundColor: "transparent", paddingTop: 0 }
-            : { backgroundColor: theme.background, paddingTop: insets.top },
+          // Always use paddingTop: insets.top for all tabs to prevent jumps
+          { backgroundColor: activeTab === "Profile" ? "transparent" : theme.background, paddingTop: insets.top, flex: 1 },
         ]}
       >
-        {isTabLoading ? (
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: statusBarBg,
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
-            <ActivityIndicator size="large" color={theme.tabActiveColor} />
-          </View>
-        ) : (
-          renderContent()
-        )}
+        {renderActiveTab()}
         <View
           style={[
             dashboardStyles.footer,
@@ -790,4 +815,4 @@ const Dashboard = ({ navigation, route }) => {
   );
 };
 
-export default React.memo(Dashboard);
+export default Dashboard;

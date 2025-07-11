@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -37,81 +37,96 @@ const Fines = ({
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [filteredFines, setFilteredFines] = useState(initialData);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const insets = useSafeAreaInsets();
   const headerColor = "#ffffff";
+  const isFirstMount = useRef(true);
 
   useEffect(() => {
-    let unsubscribe;
-    const fetchUserFines = async () => {
-      try {
-        const currentUser = auth.currentUser;
+    if (isFirstMount.current) {
+      let unsubscribe;
+      const fetchUserFines = async () => {
+        try {
+          const currentUser = auth.currentUser;
 
-        if (!currentUser) {
-          console.error("No user is currently logged in.");
-          setLoading(false);
-          return;
-        }
-
-        const orgId = await AsyncStorage.getItem("selectedOrgId");
-        if (!orgId) return;
-        const userQuery = query(
-          collection(db, "organizations", orgId, "users"),
-          where("uid", "==", currentUser.uid)
-        );
-
-        const userSnapshot = await getDocs(userQuery);
-
-        if (userSnapshot.empty) {
-          console.error("User document not found");
-          setLoading(false);
-          return;
-        }
-
-        const userDoc = userSnapshot.docs[0];
-        const userDocId = userDoc.id;
-
-        // Query fines collection with userId
-        const finesRef = collection(db, "organizations", orgId, "fines");
-        const finesQuery = query(
-          finesRef,
-          where("userId", "==", userDocId),
-          orderBy("createdAt", "desc")
-        );
-
-        // Set up real-time listener for fines
-        unsubscribe = onSnapshot(
-          finesQuery,
-          (snapshot) => {
-            const userFines = snapshot.docs.map((doc) => {
-              const data = doc.data();
-              return {
-                id: doc.id,
-                ...data,
-                createdAt: data.createdAt?.toDate(),
-                paidAt: data.paidAt?.toDate(),
-              };
-            });
-            setFines(userFines);
+          if (!currentUser) {
+            console.error("No user is currently logged in.");
             setLoading(false);
-          },
-          (error) => {
-            console.error("Error in fines listener:", error);
-            setLoading(false);
+            return;
           }
-        );
-      } catch (error) {
-        console.error("Error fetching fines:", error);
-        setLoading(false);
-      }
-    };
 
-    fetchUserFines();
+          const orgId = await AsyncStorage.getItem("selectedOrgId");
+          if (!orgId) return;
+          const userQuery = query(
+            collection(db, "organizations", orgId, "users"),
+            where("uid", "==", currentUser.uid)
+          );
 
-    // Cleanup subscription on component unmount
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
+          const userSnapshot = await getDocs(userQuery);
+
+          if (userSnapshot.empty) {
+            console.error("User document not found");
+            setLoading(false);
+            return;
+          }
+
+          const userDoc = userSnapshot.docs[0];
+          const userDocId = userDoc.id;
+
+          // Query fines collection with userId
+          const finesRef = collection(db, "organizations", orgId, "fines");
+          const finesQuery = query(
+            finesRef,
+            where("userId", "==", userDocId),
+            orderBy("createdAt", "desc")
+          );
+
+          // Set up real-time listener for fines
+          unsubscribe = onSnapshot(
+            finesQuery,
+            (snapshot) => {
+              const userFines = snapshot.docs.map((doc) => {
+                const data = doc.data();
+                return {
+                  id: doc.id,
+                  ...data,
+                  createdAt: data.createdAt?.toDate(),
+                  paidAt: data.paidAt?.toDate(),
+                };
+              });
+              setFines(userFines);
+              setLoading(false);
+              setHasLoaded(true);
+            },
+            (error) => {
+              console.error("Error in fines listener:", error);
+              setLoading(false);
+              setHasLoaded(true);
+            }
+          );
+        } catch (error) {
+          console.error("Error fetching fines:", error);
+          setLoading(false);
+          setHasLoaded(true);
+        }
+      };
+
+      fetchUserFines();
+      isFirstMount.current = false;
+
+      // Cleanup subscription on component unmount
+      return () => {
+        if (unsubscribe) unsubscribe();
+      };
+    }
   }, []);
+
+  // Add a manual refresh handler if needed
+  const handleManualRefresh = async () => {
+    setHasLoaded(false);
+    setLoading(true);
+    // ... call fetchUserFines again ...
+  };
 
   // Filter fines based on active tab
   useEffect(() => {
@@ -252,18 +267,8 @@ const Fines = ({
     </View>
   );
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007BFF" />
-        <Text style={styles.loadingText}>Loading Fines...</Text>
-      </View>
-    );
-  }
-
   return (
     <>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <View style={{ flex: 1 }}>
         {/* Extend header background behind status bar */}
         <View
