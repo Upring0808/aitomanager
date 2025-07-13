@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   Animated,
-  StatusBar,
 } from "react-native";
 import { db, auth } from "../../../../config/firebaseconfig";
 import {
@@ -24,6 +23,7 @@ import QRScanner from "../../../../components/QRScanner";
 import { Styles } from "../../../../styles/Styles";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import cacheService from "../../../../services/CacheService";
 
 const Events = ({
   initialData = [],
@@ -44,19 +44,46 @@ const Events = ({
   const insets = useSafeAreaInsets();
   const headerColor = "#ffffff";
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [isDataReady, setIsDataReady] = useState(false);
 
   const fetchEvents = useCallback(async () => {
     try {
       const orgId = await AsyncStorage.getItem("selectedOrgId");
       if (!orgId) return;
+      
+      // Try to get cached events first
+      const cachedEvents = await cacheService.getCachedEvents(orgId);
+      if (cachedEvents) {
+        console.log("[Events] Using cached events data");
+        const eventsData = cachedEvents.map((event) => ({
+          ...event,
+          // Convert cached date string back to Date object
+          dueDate: event.dueDate ? new Date(event.dueDate) : new Date(),
+        }));
+        setEvents(eventsData);
+        updateUserAttendance(eventsData);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      
       const eventsRef = collection(db, "organizations", orgId, "events");
       const q = query(eventsRef, orderBy("dueDate", "asc"));
       const snapshot = await getDocs(q);
       const eventsData = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
-        dueDate: doc.data().dueDate?.toDate(),
+        dueDate: doc.data().dueDate?.toDate?.() ? doc.data().dueDate.toDate() : new Date(),
       }));
+      
+      // Cache the events data with proper date conversion
+      const eventsForCache = eventsData.map(event => ({
+        ...event,
+        // Convert Date objects to ISO strings for caching
+        dueDate: event.dueDate ? event.dueDate.toISOString() : new Date().toISOString(),
+      }));
+      await cacheService.cacheEvents(orgId, eventsForCache);
+      
       setEvents(eventsData);
 
       // Update user attendance status
@@ -90,10 +117,37 @@ const Events = ({
 
   const fetchEventsOnce = useCallback(async () => {
     if (hasLoaded) return;
+    
+    // Check if we have cached data first
+    const orgId = await AsyncStorage.getItem("selectedOrgId");
+    if (orgId) {
+      const hasCachedEvents = await cacheService.hasCache(cacheService.generateKey("events", orgId));
+      if (hasCachedEvents) {
+        console.log("[Events] Found cached data, loading immediately");
+        // Load cached data immediately without showing loading state
+        const cachedEvents = await cacheService.getCachedEvents(orgId);
+        if (cachedEvents) {
+          const eventsData = cachedEvents.map((event) => ({
+            ...event,
+            // Convert cached date string back to Date object
+            dueDate: event.dueDate ? new Date(event.dueDate) : new Date(),
+          }));
+          setEvents(eventsData);
+          updateUserAttendance(eventsData);
+          setHasLoaded(true);
+          setLoading(false);
+          setIsDataReady(true);
+          return;
+        }
+      }
+    }
+    
+    // Only show loading if no cached data
     setLoading(true);
     try {
       await fetchEvents();
       setHasLoaded(true);
+      setIsDataReady(true);
     } finally {
       setLoading(false);
     }
@@ -107,19 +161,30 @@ const Events = ({
       return;
     }
 
+    // Only set up real-time listener if we don't have data ready
+    if (isDataReady) return;
+
     (async () => {
       const orgId = await AsyncStorage.getItem("selectedOrgId");
       if (!orgId) return;
       const eventsRef = collection(db, "organizations", orgId, "events");
       const q = query(eventsRef, orderBy("dueDate", "asc"));
       unsubscribeRef.current = onSnapshot(
-        q,
         (snapshot) => {
           const eventsData = snapshot.docs.map((doc) => ({
             id: doc.id,
             ...doc.data(),
-            dueDate: doc.data().dueDate?.toDate(),
+            dueDate: doc.data().dueDate?.toDate?.() ? doc.data().dueDate.toDate() : new Date(),
           }));
+          
+          // Cache the events data with proper date conversion
+          const eventsForCache = eventsData.map(event => ({
+            ...event,
+            // Convert Date objects to ISO strings for caching
+            dueDate: event.dueDate ? event.dueDate.toISOString() : new Date().toISOString(),
+          }));
+          cacheService.cacheEvents(orgId, eventsForCache);
+          
           setEvents(eventsData);
 
           // Update user attendance status
@@ -127,6 +192,7 @@ const Events = ({
 
           setLoading(false);
           setRefreshing(false);
+          setIsDataReady(true);
         },
         (error) => {
           console.error("[Events] Error in snapshot listener:", error);
@@ -147,7 +213,7 @@ const Events = ({
         unsubscribeRef.current();
       }
     };
-  }, [initialData]);
+  }, [initialData, isDataReady]);
 
   useEffect(() => {
     if (isFirstMount.current) {
@@ -230,44 +296,51 @@ const Events = ({
         <SafeAreaView
           style={{
             flex: 1,
-            backgroundColor: "transparent",
-            paddingTop: insets.top,
+            backgroundColor: "#ffffff",
+            
           }}
           edges={["top", "left", "right"]}
         >
           <View style={Styles.mainContainer}>
-            <ScrollView
-              contentContainerStyle={Styles.scrollContainer}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={onRefresh}
-                  colors={["#203562"]}
-                  tintColor="#203562"
-                />
-              }
-            >
-              <View style={Styles.filterContainer}>
-                <DropdownPicker
-                  options={["All", "Current", "Upcoming", "Past"]}
-                  selectedValue={filter}
-                  onValueChange={setFilter}
-                />
+            {loading && !isDataReady ? (
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#203562" />
+                <Text style={{ marginTop: 10, color: '#666' }}>Loading events...</Text>
               </View>
-
-              {filteredEvents.length > 0 ? (
-                filteredEvents.map((event) => (
-                  <EventDetailsCard
-                    event={event}
-                    key={event.id}
-                    onScanQR={handleScanQR}
-                    hasAttended={userAttendance[event.id] || false}
+            ) : (
+              <ScrollView
+                contentContainerStyle={Styles.scrollContainer}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    colors={["#203562"]}
+                    tintColor="#203562"
                   />
-                ))
-              ) : (
-                <Text style={Styles.noEvent}>No events available.</Text>
-              )}
-            </ScrollView>
+                }
+              >
+                <View style={Styles.filterContainer}>
+                  <DropdownPicker
+                    options={["All", "Current", "Upcoming", "Past"]}
+                    selectedValue={filter}
+                    onValueChange={setFilter}
+                  />
+                </View>
+
+                {filteredEvents.length > 0 ? (
+                  filteredEvents.map((event, index) => (
+                    <EventDetailsCard
+                      event={event}
+                      key={event.id || `event-${index}`}
+                      onScanQR={handleScanQR}
+                      hasAttended={userAttendance[event.id] || false}
+                    />
+                  ))
+                ) : (
+                  <Text style={Styles.noEvent}>No events available.</Text>
+                )}
+              </ScrollView>
+            )}
             <Toast />
           </View>
 

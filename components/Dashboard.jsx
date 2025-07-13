@@ -41,6 +41,7 @@ import {
 import { useFocusEffect } from "@react-navigation/native";
 import { dashboardServices } from "../services/dashboardServices";
 import userPresenceService from "../services/UserPresenceService";
+import studentStatusService from "../services/StudentStatusService";
 import { auth, db } from "../config/firebaseconfig";
 import Logout from "../components/Logout";
 
@@ -64,6 +65,7 @@ import {
   orderBy,
 } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext";
+import { useCacheInvalidation } from "../hooks/useCacheInvalidation";
 
 // Create a stack navigator for nested screens
 const DashboardStack = createStackNavigator();
@@ -175,19 +177,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "bold",
   },
-  statusBarBackground: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: Platform.OS === "ios" ? 44 : StatusBar.currentHeight,
-    zIndex: 1,
-  },
 });
 
 // Main Dashboard component that contains the nested navigator
 const Dashboard = ({ navigation, route }) => {
   const { user } = useAuth();
+  const { invalidateAllCache, invalidateOrgCache } = useCacheInvalidation();
   const [activeTab, setActiveTab] = useState("Home");
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [translateX] = useState(new Animated.Value(0));
@@ -252,15 +247,6 @@ const Dashboard = ({ navigation, route }) => {
   const tabWidth = screenWidth / 5;
   const underlineWidth = tabWidth * 0.8; // Make underline 80% of tab width
   const underlineOffset = (tabWidth - underlineWidth) / 2; // Center the underline
-
-  // Add this mapping at the top of the Dashboard component (after useState declarations)
-  const statusBarConfig = {
-    Home: { barStyle: "dark-content", backgroundColor: "#fff" },
-    Events: { barStyle: "dark-content", backgroundColor: "#fff" },
-    Fines: { barStyle: "dark-content", backgroundColor: "#fff" },
-    People: { barStyle: "dark-content", backgroundColor: "#fff" },
-    Profile: { barStyle: "light-content", backgroundColor: "transparent" },
-  };
 
   // Check if navigation is ready
   useEffect(() => {
@@ -413,6 +399,9 @@ const Dashboard = ({ navigation, route }) => {
           dashboardData.current = {};
         }
 
+        // Initialize presence service
+        await userPresenceService.initialize();
+
         // Set up real-time listeners
         await setupRealtimeListeners(preloadedData?.user?.id);
 
@@ -529,6 +518,15 @@ const Dashboard = ({ navigation, route }) => {
   // Logout handler
   const handleLogout = useCallback(async () => {
     try {
+      console.log("[Dashboard] Starting logout process");
+      
+      // Close the modal first
+      setShowLogoutModal(false);
+      
+      // Force student offline immediately before any other cleanup
+      console.log("[Dashboard] Forcing student offline immediately");
+      await studentStatusService.forceOffline();
+      
       // Clean up listeners first
       Object.values(unsubscribersRef.current).forEach((unsub) => {
         if (unsub && typeof unsub === "function") {
@@ -544,21 +542,29 @@ const Dashboard = ({ navigation, route }) => {
       });
 
       // Clean up presence service
+      console.log("[Dashboard] Cleaning up presence service");
       await userPresenceService.cleanup();
 
       // Sign out from Firebase
+      console.log("[Dashboard] Signing out from Firebase");
       await auth.signOut();
 
-      // Navigate to login screen with a small delay to ensure cleanup is complete
+      // Navigate to login screen
       if (isNavigationReady && navigation) {
-        setTimeout(() => {
-          navigation.replace("LoginScreen");
-        }, 100);
+        console.log("[Dashboard] Navigating to login screen");
+        navigation.setParams({ isLoggingOut: true });
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "LoginScreen" }],
+        });
       }
     } catch (error) {
       console.error("[Dashboard] Error during logout:", error);
       if (isNavigationReady && navigation) {
-        navigation.replace("LoginScreen");
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "LoginScreen" }],
+        });
       }
     }
   }, [navigation, isNavigationReady]);
@@ -721,23 +727,25 @@ const Dashboard = ({ navigation, route }) => {
     [activeTab, renderAvatar, handleTabPress, notifications, theme]
   );
 
-  // Handle session expiry
+  // Handle session expiry - redirect to LoginScreen instead of showing message
+  useEffect(() => {
+    if (!user && isNavigationReady && navigation) {
+      console.log("[Dashboard] User is null, redirecting to LoginScreen");
+      // Set a flag to prevent auth state conflicts
+      navigation.setParams({ isLoggingOut: true });
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "LoginScreen" }],
+      });
+    }
+  }, [user, isNavigationReady, navigation]);
+
   if (!user) {
+    // Return loading while redirecting
     return (
       <View style={styles.sessionExpiredContainer}>
-        <Text style={styles.sessionExpiredText}>
-          Session expired. Please log in again.
-        </Text>
-        <TouchableOpacity
-          style={styles.loginButton}
-          onPress={() => {
-            if (isNavigationReady && navigation) {
-              navigation.replace("Index");
-            }
-          }}
-        >
-          <Text style={styles.loginButtonText}>Return to Login</Text>
-        </TouchableOpacity>
+        <ActivityIndicator size="large" color="#203562" />
+        <Text style={styles.sessionExpiredText}>Redirecting...</Text>
       </View>
     );
   }
@@ -753,32 +761,24 @@ const Dashboard = ({ navigation, route }) => {
   }
 
   // Normal dashboard rendering when user is logged in and preloading is done
-  const { barStyle, backgroundColor: statusBarBg } =
-    statusBarConfig[activeTab] || statusBarConfig.Home;
   return (
     <SafeAreaView
       style={[
         dashboardStyles.safeArea,
         {
-          backgroundColor:
-            activeTab === "Profile" ? "transparent" : theme.background,
+          backgroundColor: theme.background,
         },
       ]}
-      edges={["top", "right", "left"]}
+      edges={["right", "left"]}
     >
-      <StatusBar
-        barStyle={barStyle}
-        backgroundColor={statusBarBg}
-        translucent={statusBarBg === "transparent"}
-      />
-      <View
-        style={[styles.statusBarBackground, { backgroundColor: "transparent" }]}
-      />
+     
       <View
         style={[
           dashboardStyles.container,
-          // Always use paddingTop: insets.top for all tabs to prevent jumps
-          { backgroundColor: activeTab === "Profile" ? "transparent" : theme.background, paddingTop: insets.top, flex: 1 },
+          { 
+            backgroundColor: theme.background, 
+            flex: 1 
+          },
         ]}
       >
         {renderActiveTab()}
@@ -809,6 +809,7 @@ const Dashboard = ({ navigation, route }) => {
           visible={showLogoutModal}
           onCancel={() => setShowLogoutModal(false)}
           onConfirm={handleLogout}
+          isAdmin={false}
         />
       )}
     </SafeAreaView>

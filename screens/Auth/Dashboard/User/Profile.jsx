@@ -28,7 +28,7 @@ import {
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Toast from "react-native-toast-message";
 import * as ImagePicker from "expo-image-picker";
-import { Feather, MaterialIcons, Ionicons } from "@expo/vector-icons";
+import { Feather, MaterialIcons, Ionicons, Entypo } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { dashboardServices } from "../../../../services/dashboardServices";
@@ -54,7 +54,7 @@ const Profile = React.memo(({
 }) => {
   const navigation = useNavigation();
   const [userData, setUserData] = useState(initialData || null);
-  const [loading, setLoading] = useState(!isDataPreloaded && !initialData);
+  const [loading, setLoading] = useState(!isDataPreloaded && !initialData && !userData);
   const [docId, setDocId] = useState(initialData?.id || null);
   const [avatarUrl, setAvatarUrl] = useState(initialData?.avatarUrl || null);
   const [editingField, setEditingField] = useState(null);
@@ -62,6 +62,9 @@ const Profile = React.memo(({
     username: initialData?.username || "",
     email: initialData?.email || "",
     phone: initialData?.phone || "",
+    yearLevel: initialData?.yearLevel || "",
+    studentId: initialData?.studentId || "",
+    address: initialData?.address || "",
   });
   const [modalVisible, setModalVisible] = useState(false);
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
@@ -86,6 +89,7 @@ const Profile = React.memo(({
   });
   const isLoggingOut = useRef(false);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
 
   // Use refs to prevent unnecessary re-renders
   const userDataRef = useRef(initialData);
@@ -101,124 +105,101 @@ const Profile = React.memo(({
     };
   }, []);
 
-  // 1. MAIN ISSUE: Only set userData if not already set
+  // 1. Set initial data immediately to prevent jittering
   useEffect(() => {
     if (initialData && !userData) {
-      setUserData(initialData);
-      userDataRef.current = initialData;
-      setDocId(initialData.id);
-      setTempData({
+      // Set all data at once to prevent multiple re-renders
+      const data = {
+        ...initialData,
         username: initialData.username || "",
         email: initialData.email || "",
         phone: initialData.phone || "",
+      };
+      
+      setUserData(data);
+      userDataRef.current = data;
+      setDocId(initialData.id);
+      setTempData({
+        username: data.username,
+        email: data.email,
+        phone: data.phone,
+        yearLevel: data.yearLevel,
+        studentId: data.studentId,
+        address: data.address,
       });
       setAvatarUrl(initialData.avatarUrl);
       avatarUrlRef.current = initialData.avatarUrl;
+      setLoading(false); // Immediately stop loading when we have initial data
     }
-  }, [initialData]);
+  }, [initialData, userData]);
 
-  // 2. Fix the fetch effect dependencies
+  // 2. Fix the fetch effect dependencies - prevent unnecessary re-fetching
   useEffect(() => {
-    if (isDataPreloaded || initialData) return;
-    // Always fetch data from Firestore on mount for latest info
+    if (isDataPreloaded || initialData || userData) return;
+    
     const fetchUserData = async () => {
       const currentUser = auth.currentUser;
       if (!currentUser) {
         setLoading(false);
         return;
       }
+      
       try {
         const orgId = await AsyncStorage.getItem("selectedOrgId");
         if (!orgId) return;
-        console.log(
-          "[DEBUG] Querying for user with orgId:",
-          orgId,
-          "uid:",
-          currentUser.uid
-        );
-        // Query users collection with uid
+        
         const usersQuery = query(
           collection(db, "organizations", orgId, "users"),
           where("uid", "==", currentUser.uid)
         );
-        let userSnapshot;
-        try {
-          userSnapshot = await getDocs(usersQuery);
-        } catch (fetchError) {
-          console.error("[DEBUG] Error in getDocs:", fetchError);
-          throw fetchError;
-        }
-        console.log(
-          "[DEBUG] Query result - empty:",
-          userSnapshot.empty,
-          "size:",
-          userSnapshot.size
-        );
+        
+        const userSnapshot = await getDocs(usersQuery);
+        
         if (!userSnapshot.empty) {
           const userDoc = userSnapshot.docs[0];
-          console.log("[DEBUG] Found user document with ID:", userDoc.id);
-          console.log("[DEBUG] User document data:", userDoc.data());
           const userData = userDoc.data();
-          // Defensive logging for all userData fields
-          Object.entries(userData).forEach(([key, value]) => {
-            if (
-              typeof value !== "string" &&
-              typeof value !== "number" &&
-              value !== undefined &&
-              value !== null
-            ) {
-              console.warn(
-                `[DEBUG] userData field '${key}' is not a string/number:`,
-                value
-              );
-            }
-          });
-          // Defensive fix: ensure username, email, phone are always strings
-          userData.username =
-            typeof userData.username === "string" ? userData.username : "";
-          userData.email =
-            typeof userData.email === "string" ? userData.email : "";
-          userData.phone =
-            typeof userData.phone === "string" ? userData.phone : "";
+          
+          // Ensure data types are correct
+          userData.username = typeof userData.username === "string" ? userData.username : "";
+          userData.email = typeof userData.email === "string" ? userData.email : "";
+          userData.phone = typeof userData.phone === "string" ? userData.phone : "";
+          
           if (!isMounted.current) return;
-          // Set all user data
+          
+          // Set all user data at once to prevent multiple re-renders
           setUserData(userData);
           userDataRef.current = userData;
-          console.log("[DEBUG] Setting docId:", userDoc.id);
           setDocId(userDoc.id);
           setTempData({
             username: userData.username,
             email: userData.email,
             phone: userData.phone,
+            yearLevel: userData.yearLevel,
+            studentId: userData.studentId,
+            address: userData.address,
           });
           setAvatarUrl(userData.avatarUrl);
           avatarUrlRef.current = userData.avatarUrl;
+          
           // Set up real-time avatar subscription
           try {
-            const orgId = await AsyncStorage.getItem("selectedOrgId");
-            if (orgId) {
-              const unsubscribe = dashboardServices.subscribeToAvatarUpdates(
-                currentUser,
-                orgId,
-                (newAvatarUrl) => {
-                  if (isMounted.current) {
-                    setAvatarUrl(newAvatarUrl);
-                    avatarUrlRef.current = newAvatarUrl;
-                    if (onAvatarUpdate) {
-                      onAvatarUpdate(newAvatarUrl);
-                    }
+            const unsubscribe = dashboardServices.subscribeToAvatarUpdates(
+              currentUser,
+              orgId,
+              (newAvatarUrl) => {
+                if (isMounted.current) {
+                  setAvatarUrl(newAvatarUrl);
+                  avatarUrlRef.current = newAvatarUrl;
+                  if (onAvatarUpdate) {
+                    onAvatarUpdate(newAvatarUrl);
                   }
                 }
-              );
-              setUnsubscribeAvatar(() => unsubscribe);
-            }
-          } catch (subError) {
-            console.error(
-              "[DEBUG] Error in subscribeToAvatarUpdates:",
-              subError
+              }
             );
+            setUnsubscribeAvatar(() => unsubscribe);
+          } catch (subError) {
+            console.error("[DEBUG] Error in subscribeToAvatarUpdates:", subError);
           }
-          console.log("[DEBUG] Successfully set userData:", userData);
         } else {
           Toast.show({
             type: "error",
@@ -228,7 +209,6 @@ const Profile = React.memo(({
         }
       } catch (error) {
         console.error("[DEBUG] Error fetching user data:", error);
-        // Only show toast if userData is not set
         if (!userDataRef.current) {
           Toast.show({
             type: "error",
@@ -239,31 +219,19 @@ const Profile = React.memo(({
       } finally {
         if (isMounted.current) {
           setLoading(false);
-          // Start animations when data is loaded
-          // Animated.parallel([
-          //   Animated.timing(fadeAnim, {
-          //     toValue: 1,
-          //     duration: 800,
-          //     useNativeDriver: true,
-          //   }),
-          //   Animated.timing(slideAnim, {
-          //     toValue: 0,
-          //     duration: 600,
-          //     useNativeDriver: true,
-          //   }),
-          // ]).start();
         }
       }
       setHasLoaded(true);
     };
+    
     fetchUserData();
-    // Cleanup subscription when component unmounts
+    
     return () => {
       if (unsubscribeAvatar) {
         unsubscribeAvatar();
       }
     };
-  }, [isDataPreloaded, initialData]);
+  }, [isDataPreloaded, initialData, userData]);
 
   // Add a global error boundary for debugging
   useEffect(() => {
@@ -482,37 +450,9 @@ const Profile = React.memo(({
   );
 
   const handleLogout = async () => {
-    if (isLoggingOut.current) return;
-
-    try {
-      isLoggingOut.current = true;
-      // First clean up presence service
-      await userPresenceService.cleanup();
-
-      // Then sign out from Firebase
-      await auth.signOut();
-
-      // Use navigation.reset instead of navigate to prevent double navigation
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "LoginScreen" }],
-      });
-
-      Toast.show({
-        type: "success",
-        text1: "Logged out",
-        text2: "You have been logged out.",
-      });
-    } catch (error) {
-      console.error("Error logging out:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "Failed to log out. Please try again.",
-      });
-    } finally {
-      isLoggingOut.current = false;
-    }
+    // Logout is now handled by Dashboard through showLogoutModal
+    // This function is kept for compatibility but should not be used
+    console.log("[Profile] Logout should be handled by Dashboard");
   };
 
   const validatePassword = useCallback((password) => {
@@ -626,7 +566,10 @@ const Profile = React.memo(({
       animationType="fade"
       statusBarTranslucent={true}
     >
-      <View style={styles.modalContainer}>
+      <View style={[styles.modalContainer, { 
+        paddingTop: Platform.OS === 'ios' ? 0 : StatusBar.currentHeight || 0,
+        backgroundColor: "rgba(0,0,0,0.4)",
+      }]}>
         <View
           style={[
             styles.modalContent,
@@ -664,7 +607,13 @@ const Profile = React.memo(({
                   ? "user"
                   : editingField === "email"
                   ? "mail"
-                  : "phone"
+                  : editingField === "phone"
+                  ? "phone"
+                  : editingField === "yearLevel"
+                  ? "book"
+                  : editingField === "studentId"
+                  ? "hash"
+                  : "map-pin"
               }
               size={20}
               color="#203562"
@@ -676,7 +625,8 @@ const Profile = React.memo(({
               onChangeText={(text) =>
                 setTempData((prev) => ({ ...prev, [editingField]: text }))
               }
-              placeholder={`Enter your ${editingField}`}
+              placeholder={`Enter your ${editingField === "yearLevel" ? "year level" : 
+                          editingField === "studentId" ? "student ID" : editingField}`}
               placeholderTextColor="#94A3B8"
               autoCapitalize={editingField === "email" ? "none" : "words"}
               keyboardType={
@@ -684,6 +634,8 @@ const Profile = React.memo(({
                   ? "email-address"
                   : editingField === "phone"
                   ? "phone-pad"
+                  : editingField === "yearLevel" || editingField === "studentId"
+                  ? "numeric"
                   : "default"
               }
             />
@@ -718,7 +670,10 @@ const Profile = React.memo(({
       animationType="fade"
       statusBarTranslucent={true}
     >
-      <View style={styles.modalContainer}>
+      <View style={[styles.modalContainer, { 
+        paddingTop: Platform.OS === 'ios' ? 0 : StatusBar.currentHeight || 0,
+        backgroundColor: "rgba(0,0,0,0.4)",
+      }]}>
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Change Password</Text>
@@ -950,13 +905,7 @@ const Profile = React.memo(({
     };
   }, [showLogoutModal]);
 
-  useEffect(() => {
-    // StatusBar.setBarStyle("light-content", true);
-    // if (Platform.OS === "android") {
-    //   StatusBar.setBackgroundColor("transparent", true);
-    //   StatusBar.setTranslucent(true);
-    // }
-  }, []);
+  // Remove StatusBar configuration from Profile component - let Dashboard handle it
 
   // 4. Memoize the profile fields
   const renderProfileFields = useMemo(() => {
@@ -964,6 +913,9 @@ const Profile = React.memo(({
       { field: "username", icon: "user", placeholder: "Add username" },
       { field: "email", icon: "mail", placeholder: "Add email" },
       { field: "phone", icon: "phone", placeholder: "Add phone number" },
+      { field: "yearLevel", icon: "book", placeholder: "Add year level" },
+      { field: "studentId", icon: "hash", placeholder: "Add student ID" },
+      { field: "address", icon: "map-pin", placeholder: "Add address" },
     ];
     return fields.map(({ field, icon, placeholder }) => (
       <TouchableOpacity
@@ -979,7 +931,9 @@ const Profile = React.memo(({
         </View>
         <View style={styles.fieldContent}>
           <Text style={styles.label}>
-            {field.charAt(0).toUpperCase() + field.slice(1)}
+            {field === "yearLevel" ? "Year Level" : 
+             field === "studentId" ? "Student ID" :
+             field.charAt(0).toUpperCase() + field.slice(1)}
           </Text>
           <Text
             style={[
@@ -1016,85 +970,166 @@ const Profile = React.memo(({
           style={styles.avatar}
         />
         <View style={styles.editIconContainer}>
-          <Feather name="camera" size={18} color="white" />
+          <Feather name="camera" size={16} color="white" />
         </View>
       </TouchableOpacity>
     </View>
   ), [avatarUrl, pickImage]);
 
   // 6. Main render
-  if (!userData) {
+  if (loading || !userData) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: "#f8fafc" }]}>
         <ActivityIndicator size="large" color="#203562" />
-        <Text style={styles.loadingTextNeutral}>Loading Profile...</Text>
+        <Text style={[styles.loadingTextNeutral, { color: "#64748b" }]}>Loading Profile...</Text>
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: "transparent" }}>
-      {isActive && (
-        <LinearGradient
-          colors={["#203562", "#ffffff"]}
-          style={{
-            position: "absolute",
-            top: -50,
-            left: 0,
-            right: 0,
-            height: 310,
-            zIndex: 0,
-          }}
-        />
-      )}
-      <ScrollView
-        style={{ flex: 1, backgroundColor: "transparent" }}
-        contentContainerStyle={[
-          styles.scrollContainer,
-          { backgroundColor: "transparent" },
-        ]}
-        showsVerticalScrollIndicator={false}
-        removeClippedSubviews={true}
-        bounces={true}
+    <View style={{ flex: 1, backgroundColor: "#f8fafc", minHeight: "100%" }}>
+      {/* Dropdown menu modal */}
+      <Modal
+        transparent
+        visible={menuVisible}
+        animationType="fade"
+        statusBarTranslucent={true}
+        onRequestClose={() => setMenuVisible(false)}
       >
-        <View style={[styles.headerContent, { paddingTop: 20 }]}> 
+        <TouchableOpacity
+          style={{ 
+            flex: 1, 
+            backgroundColor: "rgba(0,0,0,0.1)",
+            paddingTop: Platform.OS === 'ios' ? 0 : StatusBar.currentHeight || 0,
+          }}
+          activeOpacity={1}
+          onPressOut={() => setMenuVisible(false)}
+        >
+          <View style={{ 
+            position: "absolute", 
+            top: Platform.OS === 'ios' ? insets.top + 60 : (StatusBar.currentHeight || 0) + 60, 
+            right: 28, 
+            backgroundColor: "#fff", 
+            borderRadius: 12, 
+            shadowColor: "#000", 
+            shadowOpacity: 0.15, 
+            shadowRadius: 16, 
+            elevation: 8, 
+            minWidth: 180,
+            zIndex: 1000,
+          }}>
+            <TouchableOpacity
+              style={{ padding: 18, flexDirection: "row", alignItems: "center" }}
+              onPress={() => {
+                setMenuVisible(false);
+                setPasswordModalVisible(true);
+              }}
+            >
+              <Feather name="lock" size={20} color="#203562" style={{ marginRight: 12 }} />
+              <Text style={{ color: "#203562", fontWeight: "500", fontSize: 16 }}>Reset Password</Text>
+            </TouchableOpacity>
+            <View style={{ height: 1, backgroundColor: "#f0f0f0" }} />
+            <TouchableOpacity
+              style={{ padding: 18, flexDirection: "row", alignItems: "center" }}
+              onPress={() => {
+                setMenuVisible(false);
+                showLogoutModal();
+              }}
+            >
+              <Feather name="log-out" size={20} color="#EF4444" style={{ marginRight: 12 }} />
+              <Text style={{ color: "#EF4444", fontWeight: "500", fontSize: 16 }}>Logout</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+      
+      {/* Modern profile content with integrated menu */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ 
+          paddingTop: 20, 
+          paddingBottom: 80, 
+          alignItems: "center",
+          paddingHorizontal: 20,
+        }}
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews={false}
+        bounces={false}
+      >
+                {/* Header with menu button */}
+        <View style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          width: "100%",
+          paddingBottom: 24,
+          backgroundColor: "transparent",
+        }}>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity 
+            onPress={() => setMenuVisible(true)} 
+            style={{ 
+              padding: 12,
+              borderRadius: 12,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.1,
+              shadowRadius: 8,
+            }}
+          >
+            <Entypo name="dots-three-vertical" size={20} color="#203562" />
+          </TouchableOpacity>
+        </View>
+        {/* Avatar section */}
+        <View style={{ 
+          alignItems: "center", 
+          marginTop: 8, 
+          marginBottom: 24,
+          width: "100%",
+        }}>
           {renderAvatar}
-          <Text style={styles.username}>{userData?.username || "User"}</Text>
-          <Text style={styles.userRole}>
-            {userData?.yearLevel
-              ? `Year ${userData.yearLevel}`
-              : "Year Level Not Set"}
+          <Text style={{ 
+            fontSize: 22, 
+            fontWeight: "700", 
+            color: "#1e293b", 
+            marginTop: 12, 
+            letterSpacing: 0.2 
+          }}>
+            {userData?.username || "User"}
+          </Text>
+          <Text style={{ 
+            fontSize: 15, 
+            color: "#64748b", 
+            marginTop: 2, 
+            fontWeight: "500", 
+            letterSpacing: 0.2 
+          }}>
+            {userData?.yearLevel ? `Year ${userData.yearLevel}` : "Year Level Not Set"}
           </Text>
         </View>
-        <View style={styles.profileCard}>
-          <Text style={styles.sectionTitle}>Personal Information</Text>
+        
+        {/* Profile card */}
+        <View style={{
+          backgroundColor: "#ffffff",
+          borderRadius: 16,
+          padding: 24,
+          width: "100%",
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.06,
+          shadowRadius: 8,
+          elevation: 3,
+        }}> 
+          <Text style={{
+            fontSize: 18,
+            fontWeight: "700",
+            color: "#1e293b",
+            marginBottom: 20,
+            letterSpacing: 0.2,
+          }}>
+            Personal Information
+          </Text>
           {renderProfileFields}
-          <View style={styles.divider} />
-          <TouchableOpacity
-            style={[styles.logoutButton, { marginBottom: 10 }]}
-            onPress={() => setPasswordModalVisible(true)}
-          >
-            <Feather
-              name="lock"
-              size={18}
-              color="white"
-              style={styles.logoutIcon}
-            />
-            <Text style={styles.logoutButtonText}>Change Password</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.logoutButton}
-            onPress={showLogoutModal}
-            activeOpacity={0.7}
-          >
-            <Feather
-              name="log-out"
-              size={18}
-              color="white"
-              style={styles.logoutIcon}
-            />
-            <Text style={styles.logoutButtonText}>Logout</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
       {renderFieldEditModal()}
@@ -1158,13 +1193,13 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: "#ffffff",
   },
   editIconContainer: {
     position: "absolute",
-    right: 0,
-    bottom: 0,
+    right: 2,
+    bottom: 2,
     backgroundColor: "#203562",
     borderRadius: 16,
     width: 32,
@@ -1221,16 +1256,16 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomColor: "#f1f5f9",
   },
   fieldIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: "#f0f4ff",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 16,
+    marginRight: 14,
   },
   fieldContent: {
     flex: 1,
@@ -1239,12 +1274,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#64748B",
     marginBottom: 4,
-    fontWeight: "500",
+    fontWeight: "600",
     letterSpacing: 0.2,
   },
   value: {
     fontSize: 15,
-    fontWeight: "500",
+    fontWeight: "600",
     color: "#1E293B",
     letterSpacing: 0.2,
   },
@@ -1291,7 +1326,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
     position: "absolute",
     top: 0,
     left: 0,
@@ -1395,7 +1430,7 @@ const styles = StyleSheet.create({
 
   placeholderText: {
     color: "#94A3B8",
-    fontWeight: "400",
+    fontWeight: "500",
   },
   modalSaveButtonDisabled: {
     opacity: 0.7,

@@ -1,34 +1,101 @@
-import React from "react";
-import { TouchableOpacity, Text, View, StyleSheet } from "react-native";
-import { auth } from "../config/firebaseconfig";
+import React, { useState } from "react";
+import { TouchableOpacity, Text, View, StyleSheet, Platform, StatusBar } from "react-native";
+import { auth, db } from "../config/firebaseconfig";
 import { useNavigation } from "@react-navigation/native";
 import Toast from "react-native-toast-message";
 import { Feather } from "@expo/vector-icons";
+import studentStatusService from "../services/StudentStatusService";
+import adminStatusService from "../services/AdminStatusService";
+import userPresenceService from "../services/UserPresenceService";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 const Logout = ({
   visible = false,
   onCancel,
   onConfirm,
   standalone = false,
+  isAdmin = false,
 }) => {
   const navigation = useNavigation();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = async () => {
+    // Prevent multiple simultaneous logout attempts
+    if (isLoggingOut) {
+      console.log("[Logout] Logout already in progress, ignoring duplicate request");
+      return;
+    }
+
+    setIsLoggingOut(true);
+    
     try {
-      await auth.signOut();
+      // Use the onConfirm callback if provided, otherwise use default logout
+      if (onConfirm) {
+        console.log("[Logout] Using provided onConfirm callback");
+        await onConfirm();
+      } else {
+        console.log("[Logout] Using default logout flow");
+        // Optimized cleanup sequence
+        const user = auth.currentUser;
+        
+        // Step 1: Force offline status immediately
+        if (isAdmin) {
+          console.log("[Logout] Forcing admin offline immediately");
+          await adminStatusService.forceOffline();
+        } else {
+          console.log("[Logout] Forcing student offline immediately");
+          await studentStatusService.forceOffline();
+          
+          // Direct Firestore update for immediate effect
+          if (user) {
+            try {
+              const studentStatusRef = doc(db, 'studentStatus', user.uid);
+              await setDoc(studentStatusRef, {
+                isOnline: false,
+                lastActive: serverTimestamp(),
+                studentId: user.uid,
+                studentName: user.displayName || 'Student',
+                updatedAt: serverTimestamp()
+              }, { merge: true });
+              console.log("[Logout] Direct Firestore update completed for user:", user.uid);
+            } catch (error) {
+              console.error("[Logout] Error in direct Firestore update:", error);
+            }
+          }
+        }
+        
+        // Step 2: Sign out from Firebase Auth
+        console.log("[Logout] Signing out from Firebase Auth");
+        await auth.signOut();
+        
+        // Step 3: Clean up services
+        try {
+          console.log("[Logout] Cleaning up services");
+          if (isAdmin) {
+            await adminStatusService.cleanup();
+          } else {
+            await studentStatusService.cleanup();
+          }
+          await userPresenceService.cleanup();
+        } catch (error) {
+          console.error("[Logout] Error cleaning up services:", error);
+        }
+        
+        // Step 4: Navigate to LoginScreen with fresh state
+        console.log("[Logout] Navigating to LoginScreen");
+        // Set a flag to prevent auth state conflicts during navigation reset
+        navigation.setParams({ isLoggingOut: true });
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "LoginScreen" }],
+        });
 
-      // Reset the navigation stack to LoginScreen
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "LoginScreen" }],
-      });
-
-      Toast.show({
-        type: "success",
-        text1: "Logged out",
-        text2: "You have been logged out.",
-      });
-      if (onConfirm) onConfirm();
+        Toast.show({
+          type: "success",
+          text1: "Logged out",
+          text2: "You have been logged out.",
+        });
+      }
     } catch (error) {
       console.error("Error logging out:", error);
       Toast.show({
@@ -36,6 +103,8 @@ const Logout = ({
         text1: "Error",
         text2: "Failed to log out. Please try again.",
       });
+    } finally {
+      setIsLoggingOut(false);
     }
   };
 
@@ -64,10 +133,13 @@ const Logout = ({
                 <Text style={styles.modalCancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.logoutConfirmButton}
+                style={[styles.logoutConfirmButton, isLoggingOut && styles.logoutConfirmButtonDisabled]}
                 onPress={handleLogout}
+                disabled={isLoggingOut}
               >
-                <Text style={styles.logoutConfirmButtonText}>Logout</Text>
+                <Text style={styles.logoutConfirmButtonText}>
+                  {isLoggingOut ? "Logging out..." : "Logout"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -102,6 +174,7 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     zIndex: 9999,
+    paddingTop: Platform.OS === 'ios' ? 0 : StatusBar.currentHeight || 0,
   },
   fullScreenModalOverlay: {
     width: "100%",
@@ -190,6 +263,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+  },
+  logoutConfirmButtonDisabled: {
+    opacity: 0.7,
+    backgroundColor: "#E0E0E0",
+    shadowColor: "#A0A0A0",
   },
   logoutConfirmButtonText: {
     fontSize: 15,

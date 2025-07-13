@@ -20,6 +20,7 @@ import {
   Timestamp,
   doc,
   getDoc,
+  orderBy,
 } from "firebase/firestore";
 import { auth, db } from "../../../../config/firebaseconfig";
 import {
@@ -98,6 +99,8 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
   const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [hasLoaded, setHasLoaded] = useState(false);
   const isFirstMount = useRef(true);
+  const [fines, setFines] = useState([]);
+  const [loadingFines, setLoadingFines] = useState(true);
 
   const insets = useSafeAreaInsets();
 
@@ -461,6 +464,61 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
     }
   }, [weekStart, allEvents, updateWeekDaysWithEvents]);
 
+  // Fetch fines for the user (unpaid only)
+  useEffect(() => {
+    let unsubscribe;
+    const fetchUserFines = async () => {
+      try {
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          setFines([]);
+          setLoadingFines(false);
+          return;
+        }
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) return;
+        const userQuery = query(
+          collection(db, "organizations", orgId, "users"),
+          where("uid", "==", currentUser.uid)
+        );
+        const userSnapshot = await getDocs(userQuery);
+        if (userSnapshot.empty) {
+          setFines([]);
+          setLoadingFines(false);
+          return;
+        }
+        const userDoc = userSnapshot.docs[0];
+        const userDocId = userDoc.id;
+        const finesRef = collection(db, "organizations", orgId, "fines");
+        const finesQuery = query(
+          finesRef,
+          where("userId", "==", userDocId),
+          where("status", "!=", "paid"),
+          orderBy("status"),
+          orderBy("createdAt", "desc")
+        );
+        unsubscribe = onSnapshot(finesQuery, (snapshot) => {
+          const userFines = snapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              createdAt: data.createdAt?.toDate(),
+              paidAt: data.paidAt?.toDate(),
+            };
+          });
+          setFines(userFines);
+          setLoadingFines(false);
+        });
+      } catch (error) {
+        setFines([]);
+        setLoadingFines(false);
+      }
+    };
+    fetchUserFines();
+    return () => unsubscribe && unsubscribe();
+  }, []);
+
   const styles = StyleSheet.create({
     sectionHeader: {
       flexDirection: "row",
@@ -472,6 +530,9 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
     mainContainer: {
       flex: 1,
       backgroundColor: "#fff",
+    },
+    scrollContentContainer: {
+      paddingBottom: 40,
     },
     container: {
       flex: 1,
@@ -866,6 +927,205 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
     calendarIcon: {
       marginRight: 8,
     },
+    finesSectionContainer: {
+      marginHorizontal: 20,
+      marginBottom: 20,
+      borderRadius: 20,
+      backgroundColor: "#FFFFFF",
+      shadowColor: Platform.OS === "ios" ? "#1a1a1a" : "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      elevation: Platform.OS === "android" ? 3 : 0,
+      overflow: "hidden",
+    },
+    finesSectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingVertical: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: "#EAEAEA",
+    },
+    finesSectionTitle: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: "#333",
+      fontFamily: "Lato-Bold",
+    },
+    finesCardList: {
+      paddingHorizontal: 10,
+      paddingBottom: 10,
+    },
+    fineCard: {
+      width: 280,
+      height: 120,
+      borderRadius: 16,
+      marginHorizontal: 10,
+      padding: 16,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+      borderWidth: 1,
+      borderColor: "#e2e8f0",
+    },
+    fineCardIconWrap: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: "#FFEBEB",
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 10,
+    },
+    fineCardTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: "#333",
+      marginBottom: 4,
+      fontFamily: "Lato-Regular",
+    },
+    fineCardAmount: {
+      fontSize: 24,
+      fontWeight: "700",
+      color: "#D92626",
+      marginBottom: 4,
+      fontFamily: "Lato-Bold",
+    },
+    fineCardDesc: {
+      fontSize: 13,
+      color: "#666",
+      marginBottom: 8,
+      fontFamily: "Lato-Regular",
+    },
+    fineCardDate: {
+      fontSize: 12,
+      color: "#888",
+      fontFamily: "Lato-Regular",
+    },
+    fineCardStatusRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    fineCardStatusText: {
+      fontSize: 13,
+      color: "#888",
+      fontFamily: "Lato-Regular",
+    },
+    noFinesContainer: {
+      padding: 30,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    noFinesText: {
+      textAlign: "center",
+      color: "#94A3B8",
+      fontSize: 16,
+      fontStyle: "italic",
+    },
+    finesSectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingVertical: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: "#EAEAEA",
+    },
+    seeAllBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginLeft: 'auto',
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 8,
+      backgroundColor: '#E6F2FF',
+    },
+    seeAllText: {
+      color: '#024CAA',
+      fontWeight: '700',
+      fontSize: 13,
+      marginRight: 2,
+    },
+    fineCardModern: {
+      width: 260,
+      minHeight: 140,
+      borderRadius: 18,
+      marginHorizontal: 10,
+      padding: 18,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.10,
+      shadowRadius: 10,
+      elevation: 4,
+      borderWidth: 1,
+      borderColor: '#e2e8f0',
+      backgroundColor: '#fff',
+    },
+    fineCardIconModern: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: '#fff1f2',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 14,
+      marginTop: 2,
+      shadowColor: '#D92626',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.10,
+      shadowRadius: 6,
+      elevation: 2,
+    },
+    fineCardContentModern: {
+      flex: 1,
+      flexDirection: 'column',
+    },
+    fineCardTitleModern: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: '#22223b',
+      marginBottom: 2,
+      fontFamily: 'Lato-Bold',
+    },
+    fineCardAmountModern: {
+      fontSize: 22,
+      fontWeight: '700',
+      color: '#D92626',
+      marginBottom: 2,
+      fontFamily: 'Lato-Bold',
+    },
+    fineCardDescModern: {
+      fontSize: 13,
+      color: '#666',
+      marginBottom: 6,
+      fontFamily: 'Lato-Regular',
+    },
+    fineCardMetaModern: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 2,
+    },
+    fineCardDateModern: {
+      fontSize: 12,
+      color: '#888',
+      fontFamily: 'Lato-Regular',
+    },
+    fineCardStatusRowModern: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginLeft: 8,
+    },
+    fineCardStatusTextModern: {
+      fontSize: 12,
+      color: '#888',
+      fontFamily: 'Lato-Regular',
+    },
   });
 
   return (
@@ -882,7 +1142,11 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
           zIndex: 0,
         }}
       />
-      <ScrollView style={styles.mainContainer}>
+      <ScrollView 
+        style={styles.mainContainer}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContentContainer}
+      >
         <View style={styles.header}>
           <View style={styles.leftContent}>
             <Icon
@@ -969,6 +1233,51 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
               </TouchableOpacity>
             );
           })}
+        </View>
+
+        {/* Fines Card Section (Firestore index required for this query! See error message for link) */}
+        <View style={styles.finesSectionContainer}>
+          <View style={styles.finesSectionHeader}>
+            <Text style={styles.finesSectionTitle}>Current Fines</Text>
+            <Icon name="alert-circle-outline" size={18} color="#D92626" style={{marginLeft: 6}} />
+            {fines.length > 3 && (
+              <TouchableOpacity style={styles.seeAllBtn} onPress={() => {/* TODO: navigate to fines tab */}}>
+                <Text style={styles.seeAllText}>See all</Text>
+                <Icon name="chevron-forward-outline" size={16} color="#024CAA" />
+              </TouchableOpacity>
+            )}
+          </View>
+          {loadingFines ? (
+            <ActivityIndicator size="small" color="#D92626" style={{marginVertical: 20}} />
+          ) : fines.length === 0 ? (
+            <View style={styles.noFinesContainer}>
+              <Icon name="happy-outline" size={40} color="#4CAF50" style={{marginBottom: 8}} />
+              <Text style={styles.noFinesText}>You have no fines, keep it up!</Text>
+            </View>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.finesCardList}>
+              {fines.slice(0, 6).map((fine, idx) => (
+                <View key={fine.id} style={[styles.fineCardModern, {backgroundColor: idx % 2 === 0 ? '#f8fafc' : '#f3e8ff'}]}>
+                  <View style={styles.fineCardIconModern}>
+                    <Icon name="alert-circle" size={32} color="#D92626" />
+                  </View>
+                  <View style={styles.fineCardContentModern}>
+                    <Text style={styles.fineCardTitleModern} numberOfLines={1}>{fine.eventTitle || 'Fine'}</Text>
+                    <Text style={styles.fineCardAmountModern}>₱{fine.amount?.toFixed(2) || '0.00'}</Text>
+                    <Text style={styles.fineCardDescModern} numberOfLines={2}>{fine.description || 'No description'}</Text>
+                    <View style={styles.fineCardMetaModern}>
+                      <Icon name="calendar-outline" size={13} color="#888" style={{marginRight: 2}} />
+                      <Text style={styles.fineCardDateModern}>{fine.createdAt ? format(fine.createdAt, 'MMM d, yyyy') : ''}</Text>
+                      <View style={styles.fineCardStatusRowModern}>
+                        <Icon name="time-outline" size={13} color="#888" style={{marginLeft: 8, marginRight: 2}} />
+                        <Text style={styles.fineCardStatusTextModern}>{fine.status ? fine.status.charAt(0).toUpperCase() + fine.status.slice(1) : 'Unpaid'}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          )}
         </View>
 
         {/* Section Title */}
@@ -1146,7 +1455,7 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
           <Text style={styles.sectionDescription}>
             Be prepared for your scheduled events ahead
           </Text>
-          <ScrollView>
+          <View>
             {upcomingEvents.length > 0 ? (
               upcomingEvents.map((event) => {
                 const eventDate = event.dueDate?.toDate() || new Date();
@@ -1192,7 +1501,7 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
             ) : (
               <Text style={styles.ReminderNoEvent}>No upcoming events</Text>
             )}
-          </ScrollView>
+          </View>
         </View>
       </ScrollView>
     </View>

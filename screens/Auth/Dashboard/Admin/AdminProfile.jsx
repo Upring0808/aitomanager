@@ -267,33 +267,9 @@ const AdminProfile = ({
   };
 
   const handleLogout = async () => {
-    try {
-      if (
-        userPresenceService &&
-        typeof userPresenceService.cleanup === "function"
-      ) {
-        try {
-          await userPresenceService.cleanup();
-        } catch (e) {}
-      }
-      if (unsubscribeAvatar) {
-        try {
-          unsubscribeAvatar();
-        } catch (e) {}
-      }
-      await auth.signOut();
-      Toast.show({
-        type: "success",
-        text1: "Logged out",
-        text2: "You have been logged out.",
-      });
-    } catch (error) {
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "Failed to log out. Please try again.",
-      });
-    }
+    // Logout is now handled by AdminDashboard through onShowLogoutModal
+    // This function is kept for compatibility but should not be used
+    console.log("[AdminProfile] Logout should be handled by AdminDashboard");
   };
 
   // Add back button handler

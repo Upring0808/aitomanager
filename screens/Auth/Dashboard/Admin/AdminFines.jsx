@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,9 @@ import {
   Dimensions,
   Animated,
   Platform,
+  Easing,
+  SafeAreaView,
+  StatusBar,
 } from "react-native";
 import { db } from "../../../../config/firebaseconfig";
 import {
@@ -28,16 +31,19 @@ import {
   query,
   where,
   getDoc,
+  setDoc,
 } from "firebase/firestore";
 import { MaterialIcons } from "@expo/vector-icons";
 import DropdownPicker from "../../../../components/DropdownPicker";
 import Toast from "react-native-toast-message";
 import { auth } from "../../../../config/firebaseconfig";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useNavigation } from "@react-navigation/native";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 
 const AdminFines = () => {
+  const navigation = useNavigation();
   const [users, setUsers] = useState([]);
   const [officers, setOfficers] = useState([]);
   const [events, setEvents] = useState([]);
@@ -64,6 +70,9 @@ const AdminFines = () => {
   const popupOpacity = new Animated.Value(0);
 
   const [operationLoading, setOperationLoading] = useState(false); // New loading state for specific operations
+  const [defaultStudentFine, setDefaultStudentFine] = useState("");
+  const [defaultOfficerFine, setDefaultOfficerFine] = useState("");
+  const [fineSettingsLoading, setFineSettingsLoading] = useState(false);
 
   const calculateUnpaidFines = (userId, finesData) => {
     return finesData
@@ -160,6 +169,44 @@ const AdminFines = () => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Load fine settings on mount
+  useEffect(() => {
+    const fetchFineSettings = async () => {
+      setFineSettingsLoading(true);
+      try {
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) return;
+        const fineSettingsRef = doc(db, "organizations", orgId, "settings", "fineSettings");
+        const fineSettingsSnap = await getDoc(fineSettingsRef);
+        if (fineSettingsSnap.exists()) {
+          const data = fineSettingsSnap.data();
+          setDefaultStudentFine(data.studentFine?.toString() || "");
+          setDefaultOfficerFine(data.officerFine?.toString() || "");
+        }
+      } catch (e) {}
+      setFineSettingsLoading(false);
+    };
+    fetchFineSettings();
+  }, []);
+
+  // Save fine settings to Firestore
+  const saveFineSettings = async () => {
+    setFineSettingsLoading(true);
+    try {
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) return;
+      const fineSettingsRef = doc(db, "organizations", orgId, "settings", "fineSettings");
+      await setDoc(fineSettingsRef, {
+        studentFine: parseFloat(defaultStudentFine) || 50,
+        officerFine: parseFloat(defaultOfficerFine) || 100,
+      });
+      Toast.show({ type: "success", text1: "Fine settings saved!" });
+    } catch (error) {
+      Toast.show({ type: "error", text1: "Failed to save fine settings" });
+    }
+    setFineSettingsLoading(false);
+  };
 
   const showSuccessMessage = (message) => {
     setSuccessMessage(message);
@@ -966,6 +1013,33 @@ const AdminFines = () => {
     </Animated.View>
   );
 
+  const fabOpacity = useRef(new Animated.Value(1)).current;
+  const fadeTimeout = useRef(null);
+
+  // Helper to show FABs
+  const showFABs = () => {
+    Animated.timing(fabOpacity, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: true,
+      easing: Easing.linear,
+    }).start();
+    if (fadeTimeout.current) clearTimeout(fadeTimeout.current);
+    fadeTimeout.current = setTimeout(() => {
+      Animated.timing(fabOpacity, {
+        toValue: 0.4,
+        duration: 400,
+        useNativeDriver: true,
+        easing: Easing.linear,
+      }).start();
+    }, 2500);
+  };
+
+  useEffect(() => {
+    showFABs(); // Start with visible
+    return () => fadeTimeout.current && clearTimeout(fadeTimeout.current);
+  }, []);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -975,8 +1049,9 @@ const AdminFines = () => {
     );
   }
 
-  return (
-    <View style={styles.container}>
+  // Header and filter content for FlatList
+  const listHeader = (
+    <>
       <View style={styles.tabContainer}>
         <TouchableOpacity
           style={[styles.tab, activeTab === "students" && styles.activeTab]}
@@ -1015,7 +1090,6 @@ const AdminFines = () => {
           </Text>
         </TouchableOpacity>
       </View>
-
       <View style={styles.searchAndFilterContainer}>
         <View style={styles.searchContainer}>
           <MaterialIcons
@@ -1042,8 +1116,14 @@ const AdminFines = () => {
           </View>
         )}
       </View>
+    </>
+  );
 
-      <View style={styles.listContainer}>
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#f8f9fa" }}>
+      <StatusBar barStyle="light-content" />
+      <View style={styles.container}>
+        {/* Main FlatList for users */}
         <FlatList
           data={filteredUsers}
           keyExtractor={(item) => item.id}
@@ -1053,8 +1133,7 @@ const AdminFines = () => {
             <TouchableOpacity
               style={[
                 styles.card,
-                selectedUsers.some((u) => u.id === item.id) &&
-                  styles.selectedCard,
+                selectedUsers.some((u) => u.id === item.id) && styles.selectedCard,
               ]}
               onPress={() => toggleUserSelection(item)}
             >
@@ -1123,34 +1202,85 @@ const AdminFines = () => {
               <Text style={styles.emptyText}>No {activeTab} found</Text>
             </View>
           }
+          ListHeaderComponent={listHeader}
+          onScroll={showFABs}
+          scrollEventThrottle={16}
+          onTouchStart={showFABs}
         />
-      </View>
-
+        {/* Floating Settings FAB - fade with opacity, user style and placement */}
+        <Animated.View
+          style={{
+            position: "absolute",
+            bottom:168,
+            right: 29,
+            backgroundColor: "#003161",
+            borderRadius: 32,
+            width: 48,
+            height: 48,
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 20,
+            opacity: fabOpacity,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => {
+              showFABs();
+              navigation.navigate("FineSettingsScreen");
+            }}
+            activeOpacity={0.85}
+          >
+            <MaterialIcons name="settings" size={25} color="#fff" />
+          </TouchableOpacity>
+        </Animated.View>
+        {/* Floating Add FAB - fade with opacity, user style and placement */}
+       
+           <Animated.View
+          style={{
+            position: "absolute",
+            bottom: 103,
+            right: 25,
+            backgroundColor: "#003161",
+            borderRadius: 32,
+            width: 58,
+            height: 58,
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 20,
+            opacity: fabOpacity,
+          }}
+        >
       {selectedUsers.length === 0 ? (
         <TouchableOpacity
-          style={styles.fabButton}
-          onPress={() => alert("Select users to assign fines.")}
+              onPress={() => {
+                showFABs();
+                alert("Select users to assign fines.");
+              }}
         >
           <MaterialIcons name="add" size={28} color="#fff" />
         </TouchableOpacity>
       ) : (
         <TouchableOpacity
-          style={styles.assignButton}
-          onPress={() => setModalVisible(true)}
+              onPress={() => {
+                showFABs();
+                setModalVisible(true);
+              }}
         >
-          <MaterialIcons name="add" size={24} color="#fff" />
-          <Text style={styles.assignButtonText}>
-            Assign Fine ({selectedUsers.length})
-          </Text>
+              <MaterialIcons name="add" size={28} color="#fff" />
         </TouchableOpacity>
       )}
-
+        </Animated.View>
+        {/* Transparent View to catch touches at the bottom (for tab bar area) */}
+        <View
+          style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 60, zIndex: 1 }}
+          pointerEvents="box-none"
+          onTouchStart={showFABs}
+        />
       {renderAssignFineModal()}
-
       {renderHistoryModal()}
-
       {renderSuccessPopup()}
     </View>
+    </SafeAreaView>
   );
 };
 
@@ -1326,10 +1456,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
     zIndex: 100,
   },
   assignButton: {
@@ -1343,10 +1469,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 30,
     elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
     zIndex: 100,
   },
   assignButtonText: {

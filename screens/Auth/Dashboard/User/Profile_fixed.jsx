@@ -214,28 +214,9 @@ const Profile = () => {
   };
 
   const handleLogout = async () => {
-    try {
-      // First clean up presence service
-      await userPresenceService.cleanup();
-
-      // Then sign out from Firebase
-      await auth.signOut();
-
-      // Use navigation.navigate instead of reset to avoid navigation errors
-      // This will trigger the auth state change in App.js which will redirect to Index
-      Toast.show({
-        type: "success",
-        text1: "Logged out",
-        text2: "You have been logged out.",
-      });
-    } catch (error) {
-      console.error("Error logging out:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "Failed to log out. Please try again.",
-      });
-    }
+    // Logout is now handled by Dashboard through showLogoutModal
+    // This function is kept for compatibility but should not be used
+    console.log("[Profile_fixed] Logout should be handled by Dashboard");
   };
 
   const renderFieldEditModal = () => (

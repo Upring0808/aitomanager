@@ -25,6 +25,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import cacheService from "../../../../services/CacheService";
 
 const { width, height } = Dimensions.get("window");
 
@@ -57,6 +58,26 @@ const Fines = ({
 
           const orgId = await AsyncStorage.getItem("selectedOrgId");
           if (!orgId) return;
+
+          // Check if we have cached data first
+          const hasCachedFines = await cacheService.hasCache(cacheService.generateKey("fines", orgId, currentUser.uid));
+          if (hasCachedFines) {
+            console.log("[Fines] Found cached data, loading immediately");
+            const cachedFines = await cacheService.getCachedFines(orgId, currentUser.uid);
+            if (cachedFines) {
+              // Convert cached date strings back to Date objects
+              const finesWithDates = cachedFines.map(fine => ({
+                ...fine,
+                createdAt: fine.createdAt ? new Date(fine.createdAt) : new Date(),
+                paidAt: fine.paidAt ? new Date(fine.paidAt) : null,
+              }));
+              setFines(finesWithDates);
+              setLoading(false);
+              setHasLoaded(true);
+              return; // Exit early to avoid setting up real-time listener
+            }
+          }
+
           const userQuery = query(
             collection(db, "organizations", orgId, "users"),
             where("uid", "==", currentUser.uid)
@@ -90,10 +111,20 @@ const Fines = ({
                 return {
                   id: doc.id,
                   ...data,
-                  createdAt: data.createdAt?.toDate(),
-                  paidAt: data.paidAt?.toDate(),
+                  createdAt: data.createdAt?.toDate?.() ? data.createdAt.toDate() : new Date(),
+                  paidAt: data.paidAt?.toDate?.() ? data.paidAt.toDate() : null,
                 };
               });
+              
+              // Cache the fines data with proper date conversion
+              const finesForCache = userFines.map(fine => ({
+                ...fine,
+                // Convert Date objects to ISO strings for caching
+                createdAt: fine.createdAt ? fine.createdAt.toISOString() : new Date().toISOString(),
+                paidAt: fine.paidAt ? fine.paidAt.toISOString() : null,
+              }));
+              cacheService.cacheFines(orgId, currentUser.uid, finesForCache);
+              
               setFines(userFines);
               setLoading(false);
               setHasLoaded(true);

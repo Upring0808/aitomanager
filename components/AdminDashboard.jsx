@@ -26,10 +26,9 @@ import {
 import { useFocusEffect } from "@react-navigation/native";
 import { dashboardServices } from "../services/dashboardServices";
 import userPresenceService from "../services/UserPresenceService";
+import adminStatusService from "../services/AdminStatusService";
 import { auth } from "../config/firebaseconfig";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
-import { db } from "../config/firebaseconfig";
 
 import { constants, dashboardStyles } from "../styles/dashboardStyles";
 import Header from "./Header";
@@ -64,6 +63,9 @@ const AdminDashboard = ({ navigation, route }) => {
   const [showLogoutModal, setShowLogoutModal] = useState(false); // Logout modal state
   const insets = useSafeAreaInsets();
   const [orgLogoUrl, setOrgLogoUrl] = useState(null);
+
+  // Admin status is now managed entirely by App.js
+  // This prevents conflicts when navigating between admin screens
 
   // Handle hardware back button press
   useFocusEffect(
@@ -189,20 +191,33 @@ const AdminDashboard = ({ navigation, route }) => {
 
   const handleLogout = useCallback(async () => {
     try {
-      // First clean up presence service
+      console.log("[AdminDashboard] Starting logout process");
+      
+      // Close the modal first
+      setShowLogoutModal(false);
+      
+      // Clean up presence service
+      console.log("[AdminDashboard] Cleaning up presence service");
       await userPresenceService.cleanup();
 
-      // Then sign out from Firebase
-      const { error } = await dashboardServices.logout();
+      // Force admin offline
+      console.log("[AdminDashboard] Forcing admin offline");
+      await adminStatusService.forceOffline();
 
-      // Use a more reliable approach with a single reset call
+      // Then sign out from Firebase
+      console.log("[AdminDashboard] Signing out from Firebase");
+      await auth.signOut();
+
+      // Navigate to LoginScreen
+      console.log("[AdminDashboard] Navigating to LoginScreen");
+      navigation.setParams({ isLoggingOut: true });
       navigation.reset({
         index: 0,
         routes: [{ name: "LoginScreen" }],
       });
     } catch (error) {
       console.error("[AdminDashboard] Error during logout:", error);
-      // Attempt to navigate anyway with a single reset call
+      // Attempt to navigate anyway
       navigation.reset({
         index: 0,
         routes: [{ name: "LoginScreen" }],
@@ -313,33 +328,33 @@ const AdminDashboard = ({ navigation, route }) => {
         visible={showLogoutModal}
         onCancel={() => setShowLogoutModal(false)}
         onConfirm={handleLogout}
+        isAdmin={true}
       />
     );
   }, [showLogoutModal, handleLogout]);
 
   // Check if user is logged in before rendering the dashboard
+  useEffect(() => {
+    if (!auth.currentUser && navigation) {
+      console.log("[AdminDashboard] User is null, redirecting to LoginScreen");
+      // Set a flag to prevent auth state conflicts
+      navigation.setParams({ isLoggingOut: true });
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "LoginScreen" }],
+      });
+    }
+  }, [auth.currentUser, navigation]);
+
   if (!auth.currentUser) {
-    // If not logged in, render a loading state or redirect
+    // Return loading while redirecting
     return (
       <SafeAreaView style={dashboardStyles.safeArea} edges={["right", "left"]}>
         <View
           style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
         >
-          <Text>Session expired. Please log in again.</Text>
-          <TouchableOpacity
-            style={{
-              marginTop: 20,
-              backgroundColor: "#3652AD",
-              paddingVertical: 10,
-              paddingHorizontal: 20,
-              borderRadius: 5,
-            }}
-            onPress={() =>
-              navigation.reset({ index: 0, routes: [{ name: "Index" }] })
-            }
-          >
-            <Text style={{ color: "white" }}>Return to Login</Text>
-          </TouchableOpacity>
+          <ActivityIndicator size="large" color="#203562" />
+          <Text style={{ marginTop: 10, color: "#64748b" }}>Redirecting...</Text>
         </View>
       </SafeAreaView>
     );

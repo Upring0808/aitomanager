@@ -52,6 +52,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import cacheService from "../../../../services/CacheService";
 
 // Import Haptics conditionally to prevent crashes
 let Haptics;
@@ -868,42 +869,42 @@ const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded 
   const headerColor = "#ffffff";
   // Initialize with preloaded data immediately, filtering out users without names
   const [users, setUsers] = useState(() => {
-    if (isDataPreloaded) {
+    if (isDataPreloaded && initialData) {
       console.log("[People] Initial preloaded data:", {
-        totalOfficers: initialData.officers.length,
-        totalStudents: initialData.students.length,
-        officersWithoutNames: initialData.officers.filter(
+        totalOfficers: initialData.officers?.length || 0,
+        totalStudents: initialData.students?.length || 0,
+        officersWithoutNames: initialData.officers?.filter(
           (o) => !o.username || o.username.trim() === ""
-        ).length,
-        studentsWithoutNames: initialData.students.filter(
+        ).length || 0,
+        studentsWithoutNames: initialData.students?.filter(
           (s) => !s.username || s.username.trim() === ""
-        ).length,
+        ).length || 0,
       });
 
       // Strict filtering for valid users
-      const validOfficers = initialData.officers.filter(
+      const validOfficers = initialData.officers?.filter(
         (officer) =>
           officer.username &&
           officer.username.trim() !== "" &&
           officer.username !== "Unknown" &&
           officer.role &&
           officer.role !== "student"
-      );
+      ) || [];
 
-      const validStudents = initialData.students.filter(
+      const validStudents = initialData.students?.filter(
         (student) =>
           student.username &&
           student.username.trim() !== "" &&
           student.username !== "Unknown" &&
           (!student.role || student.role === "student")
-      );
+      ) || [];
 
       console.log("[People] Filtered preloaded data:", {
         validOfficers: validOfficers.length,
         validStudents: validStudents.length,
         totalValid: validOfficers.length + validStudents.length,
-        skippedOfficers: initialData.officers.length - validOfficers.length,
-        skippedStudents: initialData.students.length - validStudents.length,
+        skippedOfficers: (initialData.officers?.length || 0) - validOfficers.length,
+        skippedStudents: (initialData.students?.length || 0) - validStudents.length,
       });
 
       return [...validOfficers, ...validStudents];
@@ -911,13 +912,13 @@ const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded 
     return [];
   });
   const [filteredUsers, setFilteredUsers] = useState(() => {
-    if (isDataPreloaded) {
-      const validOfficers = initialData.officers.filter(
+    if (isDataPreloaded && initialData) {
+      const validOfficers = initialData.officers?.filter(
         (officer) => officer.username && officer.username.trim() !== ""
-      );
-      const validStudents = initialData.students.filter(
+      ) || [];
+      const validStudents = initialData.students?.filter(
         (student) => student.username && student.username.trim() !== ""
-      );
+      ) || [];
       return [...validOfficers, ...validStudents];
     }
     return [];
@@ -944,12 +945,24 @@ const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded 
   const fabOpacity = useRef(new Animated.Value(1)).current;
   const cleanupListeners = useRef([]);
 
-  const fetchPeople = useCallback(async () => {
+  const fetchPeople = useCallback(async (forceRefresh = false) => {
     try {
       const orgId = await AsyncStorage.getItem("selectedOrgId");
       if (!orgId) {
         console.log("[People] No organization selected in fetchPeople");
         return;
+      }
+
+      // Try to get cached data first (unless force refresh)
+      if (!forceRefresh) {
+        const cachedData = await cacheService.getCachedPeople(orgId);
+        if (cachedData) {
+          console.log("[People] Using cached people data");
+          setUsers(cachedData);
+          setFilteredUsers(cachedData);
+          setLoading(false);
+          return;
+        }
       }
 
       console.log("[People] Fetching people for organization:", orgId);
@@ -992,6 +1005,9 @@ const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded 
           user.username.trim() !== "" &&
           user.username !== "Unknown"
       );
+
+      // Cache the data
+      await cacheService.cachePeople(orgId, validUsers);
 
       setUsers(validUsers);
       setFilteredUsers(validUsers);
@@ -1140,11 +1156,40 @@ const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded 
   useEffect(() => {
     if (isFirstMount.current) {
       if (!isDataPreloaded) {
-        setLoading(true);
-        fetchPeople().then(() => {
-          setHasLoaded(true);
-          setLoading(false);
-        });
+        // Check if we have cached data first
+        const checkCache = async () => {
+          const orgId = await AsyncStorage.getItem("selectedOrgId");
+          if (orgId) {
+            const hasCachedPeople = await cacheService.hasCache(cacheService.generateKey("people", orgId));
+            if (hasCachedPeople) {
+              console.log("[People] Found cached data, loading immediately");
+              // Load cached data immediately without showing loading state
+              const cachedData = await cacheService.getCachedPeople(orgId);
+              if (cachedData) {
+                setUsers(cachedData);
+                setFilteredUsers(cachedData);
+                setHasLoaded(true);
+                setLoading(false);
+                return;
+              }
+            }
+          }
+          
+          // Only show loading if no cached data
+          setLoading(true);
+          try {
+            await fetchPeople();
+            setHasLoaded(true);
+          } finally {
+            setLoading(false);
+          }
+        };
+        
+        checkCache();
+      } else {
+        // If using preloaded data, set loading to false immediately
+        setLoading(false);
+        setHasLoaded(true);
       }
       isFirstMount.current = false;
     }
@@ -1163,28 +1208,28 @@ const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded 
     console.log("[People] getGroupedUsers called with:", {
       isDataPreloaded,
       initialDataLength:
-        initialData?.officers?.length + initialData?.students?.length,
+        (initialData?.officers?.length || 0) + (initialData?.students?.length || 0),
       filteredUsersLength: filteredUsers.length,
       usersLength: users.length,
     });
 
-    const grouped = isDataPreloaded
+    const grouped = isDataPreloaded && initialData
       ? {
-          officers: initialData.officers.filter(
+          officers: initialData.officers?.filter(
             (officer) =>
               officer.username &&
               officer.username.trim() !== "" &&
               officer.username !== "Unknown" &&
               officer.role &&
               officer.role !== "student"
-          ),
-          students: initialData.students.filter(
+          ) || [],
+          students: initialData.students?.filter(
             (student) =>
               student.username &&
               student.username.trim() !== "" &&
               student.username !== "Unknown" &&
               (!student.role || student.role === "student")
-          ),
+          ) || [],
         }
       : {
           officers: filteredUsers.filter(
@@ -1229,79 +1274,14 @@ const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded 
         setCheckingConnection(false);
       }
 
-      // Only fetch new data if not using preloaded data
-      if (!isDataPreloaded) {
-        console.log("[People] Fetching fresh data");
-
-        const orgId = await AsyncStorage.getItem("selectedOrgId");
-        if (!orgId) {
-          console.log("[People] No organization selected during refresh");
-          return;
-        }
-
-        const usersQuery = query(
-          collection(db, "organizations", orgId, "users"),
-          orderBy("username")
-        );
-        const querySnapshot = await getDocs(usersQuery);
-        console.log("[People] Fetched", querySnapshot.docs.length, "users");
-
-        const usersData = await Promise.all(
-          querySnapshot.docs.map(async (doc) => {
-            const data = doc.data();
-            // Strict validation for valid users
-            if (
-              !data.username ||
-              data.username.trim() === "" ||
-              data.username === "Unknown"
-            ) {
-              console.log("[People] Skipping invalid user during refresh:", {
-                id: doc.id,
-                data: { ...data, password: undefined }, // Exclude sensitive data
-              });
-              return null;
-            }
-            const avatarUrl = data.avatarUrl || (await getAvatarUrl(data.uid));
-            return {
-              id: doc.id,
-              ...data,
-              username: data.username,
-              avatarUrl,
-              yearLevel: data.yearLevel || "N/A",
-              bio: data.bio || null,
-              role: data.role || "student",
-              email: data.email || null,
-            };
-          })
-        );
-
-        if (isMounted.current) {
-          // Strict filtering for valid users
-          const validUsers = usersData.filter(
-            (user) =>
-              user !== null &&
-              user.username &&
-              user.username.trim() !== "" &&
-              user.username !== "Unknown"
-          );
-
-          console.log("[People] Processed refresh data:", {
-            total: usersData.length,
-            valid: validUsers.length,
-            invalid: usersData.length - validUsers.length,
-            byRole: {
-              officers: validUsers.filter((u) => u.role && u.role !== "student")
-                .length,
-              students: validUsers.filter(
-                (u) => !u.role || u.role === "student"
-              ).length,
-            },
-          });
-
-          setUsers(validUsers);
-          setFilteredUsers(validUsers);
-        }
+      // Invalidate cache and force refresh
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (orgId) {
+        await cacheService.invalidatePeopleCache(orgId);
       }
+
+      // Fetch fresh data with force refresh
+      await fetchPeople(true);
 
       if (refreshStatus) {
         await refreshStatus();
@@ -1442,7 +1422,8 @@ const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded 
     };
   }, []);
 
-  if (loading) {
+  // Only show loading if we don't have data and we're not using preloaded data
+  if (loading && !isDataPreloaded && users.length === 0) {
     return (
       <View style={styles.loader}>
         <ActivityIndicator size="large" color={THEME_COLOR} />
@@ -1503,38 +1484,7 @@ const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded 
                 </View>
               )}
 
-              {/* Empty state when no users */}
-              {officers.length === 0 && students.length === 0 && !loading && (
-                <View style={styles.emptyContainer}>
-                  <Ionicons
-                    name="people-outline"
-                    size={60}
-                    color="#CBD5E1"
-                    style={{ marginBottom: 16 }}
-                  />
-                  <Text style={styles.emptyTitle}>No People Found</Text>
-                  <Text style={styles.emptySubtitle}>
-                    {loading
-                      ? "Loading people..."
-                      : "No users have registered in this organization yet."}
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.refreshButton}
-                    onPress={handleRefresh}
-                    disabled={refreshing}
-                  >
-                    <Ionicons
-                      name="refresh"
-                      size={20}
-                      color="#FFFFFF"
-                      style={{ marginRight: 8 }}
-                    />
-                    <Text style={styles.refreshButtonText}>
-                      {refreshing ? "Refreshing..." : "Refresh"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+              {/* Empty state when no users - removed as requested */}
             </View>
           );
         }}
@@ -1843,9 +1793,9 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   avatar: {
-    width: 70,
-    height: 70,
-    borderRadius: 26,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: "#F3F4F6",
     borderWidth: 1,
     borderColor: "#E5E7EB",
@@ -1898,13 +1848,13 @@ const styles = StyleSheet.create({
   },
   statusIndicator: {
     position: "absolute",
-    width: 15, // Slightly larger
-    height: 15, // Slightly larger
-    borderRadius: 8,
-    borderWidth: 2.5, // Thicker border
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2.5,
     borderColor: "#FFFFFF",
-    bottom: 0,
-    right: 0,
+    bottom: 2,
+    right: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.3,

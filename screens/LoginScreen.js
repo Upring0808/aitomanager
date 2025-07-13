@@ -658,14 +658,16 @@ const styles = StyleSheet.create({
   },
   // Footer version style (match LandingScreen)
   footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 15,
     borderTopWidth: 1,
     borderTopColor: "#e5e7eb",
-    marginTop: 10,
-    marginHorizontal: 20,
-    borderRadius: 10,
+    backgroundColor: "#fff",
   },
   footerText: {
     color: "#16325B",
