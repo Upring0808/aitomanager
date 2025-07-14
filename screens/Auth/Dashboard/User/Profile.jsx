@@ -14,6 +14,7 @@ import {
   Dimensions,
   StatusBar,
   BackHandler,
+  ToastAndroid,
 } from "react-native";
 import { auth, db, storage } from "../../../../config/firebaseconfig";
 import {
@@ -44,6 +45,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { useOfficer } from "../../../../context/OfficerContext";
 
 const Profile = React.memo(({
   initialData,
@@ -90,6 +92,18 @@ const Profile = React.memo(({
   const isLoggingOut = useRef(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
+  const {
+    activeOfficerRole,
+    officerLoading,
+    signInAsOfficer,
+    setupOfficerCredential,
+    isOfficerCredentialSet,
+    signOutOfficer,
+  } = useOfficer();
+  const [officerModal, setOfficerModal] = useState({ visible: false, role: null, mode: null }); // mode: 'setup' or 'signin'
+  const [officerCredential, setOfficerCredential] = useState("");
+  const [officerError, setOfficerError] = useState("");
+  const [officerChecking, setOfficerChecking] = useState(false);
 
   // Use refs to prevent unnecessary re-renders
   const userDataRef = useRef(initialData);
@@ -98,6 +112,7 @@ const Profile = React.memo(({
 
   const insets = useSafeAreaInsets();
   const headerColor = "#203562";
+  const windowHeight = Dimensions.get("window").height;
 
   useEffect(() => {
     return () => {
@@ -976,6 +991,60 @@ const Profile = React.memo(({
     </View>
   ), [avatarUrl, pickImage]);
 
+  // Helper: get officer roles from userData
+  const officerRole = useMemo(() => {
+    if (!userData || !userData.role) return null;
+    return ["treasurer", "secretary", "governor", "vice_governor"].includes(userData.role) ? userData.role : null;
+  }, [userData]);
+
+  // Handler: open officer modal
+  const handleOfficerButton = async (role) => {
+    console.log('[DEBUG] handleOfficerButton called with role:', role);
+    setOfficerChecking(true);
+    const isSet = await isOfficerCredentialSet(role);
+    setOfficerChecking(false);
+    setOfficerModal({ visible: true, role, mode: isSet ? "signin" : "setup" });
+    setOfficerCredential("");
+    setOfficerError("");
+  };
+
+  // Handler: submit officer credential (setup or signin)
+  const handleOfficerSubmit = async () => {
+    setOfficerError("");
+    if (!officerCredential || officerCredential.length < 4) {
+      setOfficerError("Credential must be at least 4 characters.");
+      return;
+    }
+    let result;
+    if (officerModal.mode === "setup") {
+      result = await setupOfficerCredential(officerModal.role, officerCredential);
+    } else {
+      result = await signInAsOfficer(officerModal.role, officerCredential);
+    }
+    if (result.success) {
+      setOfficerModal({ visible: false, role: null, mode: null });
+      setOfficerCredential("");
+      setOfficerError("");
+      // Navigate to correct officer dashboard
+      if (["governor", "vice_governor"].includes(officerModal.role)) {
+        navigation.navigate("GovernorDashboard", { userData });
+      } else if (officerModal.role === "treasurer") {
+        navigation.navigate("AdminFines");
+      } else if (officerModal.role === "secretary") {
+        navigation.navigate("AdminEvents");
+      }
+    } else {
+      setOfficerError(result.error || "Failed. Try again.");
+    }
+  };
+
+  // Handler: close modal
+  const handleOfficerModalClose = () => {
+    setOfficerModal({ visible: false, role: null, mode: null });
+    setOfficerCredential("");
+    setOfficerError("");
+  };
+
   // 6. Main render
   if (loading || !userData) {
     return (
@@ -988,7 +1057,132 @@ const Profile = React.memo(({
 
   return (
     <View style={{ flex: 1, backgroundColor: "#f8fafc", minHeight: "100%" }}>
-      {/* Dropdown menu modal */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 43 + (insets.bottom || 24), alignItems: "center" }}
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews={false}
+        bounces={false}
+      >
+        {/* Navy header as part of scrollable content */}
+        <LinearGradient
+          colors={["#203562", "#254080", "#3E92CC"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            borderBottomLeftRadius: 36,
+            borderBottomRightRadius: 36,
+            paddingTop: Platform.OS === "ios" ? insets.top + 24 : (StatusBar.currentHeight || 0) + 24,
+            paddingBottom: 64,
+            alignItems: "center",
+            position: "relative",
+            width: "100%",
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.06,
+            shadowRadius: 8,
+          }}
+        >
+          {/* Three-dots menu button */}
+          <View style={{ position: "absolute", top: Platform.OS === "ios" ? insets.top + 8 : (StatusBar.currentHeight || 0) + 8, right: 24, zIndex: 10 }}>
+            <TouchableOpacity 
+              onPress={() => setMenuVisible(true)} 
+              style={{ padding: 10, borderRadius: 20 }}
+            >
+              <Entypo name="dots-three-vertical" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+        {/* Avatar, Name, Year Level block - floating at transition */}
+        <View style={{
+          alignItems: "center",
+          marginTop: -70,
+          marginBottom: 12,
+          zIndex: 11,
+        }}>
+          <View style={{
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: 0.18,
+            shadowRadius: 16,
+            borderRadius: 60,
+            backgroundColor: "#fff",
+            padding: 6,
+            elevation: 8,
+          }}>
+            <Image
+              source={avatarUrl ? { uri: avatarUrl } : require("../../../../assets/aito.png")}
+              style={{ width: 120, height: 120, borderRadius: 60, borderWidth: 4, borderColor: "#fff" }}
+            />
+            <TouchableOpacity
+              onPress={pickImage}
+              style={{
+                position: "absolute",
+                right: 8,
+                bottom: 8,
+                backgroundColor: "#3E92CC",
+                borderRadius: 16,
+                width: 34,
+                height: 34,
+                justifyContent: "center",
+                alignItems: "center",
+                borderWidth: 2,
+                borderColor: "#fff",
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.1,
+                shadowRadius: 2,
+              }}
+            >
+              <Feather name="camera" size={17} color="#fff" />
+            </TouchableOpacity>
+          </View>
+          {/* Name and year level below avatar */}
+          <Text style={{ fontSize: 24, fontWeight: "800", color: "#203562", letterSpacing: 0.2, marginTop: 18, marginBottom: 2 }}>{userData?.username || "User"}</Text>
+          <Text style={{ fontSize: 16, color: "#64748b", fontWeight: "600", letterSpacing: 0.2, marginBottom: 4 }}>{userData?.yearLevel ? `Year ${userData.yearLevel}` : "Year Level Not Set"}</Text>
+          {/* Officer Role Display */}
+          {userData?.role && userData.role !== "student" && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+              <Ionicons name="shield-checkmark" size={18} color="#203562" style={{ marginRight: 6 }} />
+              <Text style={{ fontSize: 15, color: '#203562', fontWeight: '600' }}>
+                {userData.role.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase())}
+              </Text>
+            </View>
+          )}
+        </View>
+        {/* White card for fields */}
+        <View style={{
+          backgroundColor: "#fff",
+          borderTopLeftRadius: 36,
+          borderTopRightRadius: 36,
+          padding: 28,
+          width: "92%",
+          minHeight: windowHeight * 0.65,
+          marginTop: 0,
+          marginBottom: 24,
+          borderBottomLeftRadius: 36,
+          borderBottomRightRadius: 36,
+          paddingBottom: 40,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.10,
+          shadowRadius: 8,
+          elevation: 3,
+          alignItems: "center",
+        }}>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: "#203562", marginBottom: 20, letterSpacing: 0.2, alignSelf: "flex-start" }}>Personal Information</Text>
+          {/* Profile fields with icons and dividers */}
+          {renderProfileFields}
+        </View>
+        {/* Gentle fade at the bottom for pro touch */}
+        <LinearGradient
+          colors={["rgba(248,250,252,0)", "#f8fafc"]}
+          style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 48, width: "100%" }}
+          pointerEvents="none"
+        />
+      </ScrollView>
+      {/* Officer Access FAB removed */}
+      {/* Dropdown menu modal for Reset Password, Logout, and Officer Access */}
       <Modal
         transparent
         visible={menuVisible}
@@ -1018,6 +1212,22 @@ const Profile = React.memo(({
             minWidth: 180,
             zIndex: 1000,
           }}>
+            {/* Officer Access Option */}
+            {userData && officerRole && (
+              <TouchableOpacity
+                style={{ padding: 18, flexDirection: "row", alignItems: "center" }}
+                onPress={() => {
+                  setMenuVisible(false);
+                  handleOfficerButton(officerRole);
+                }}
+              >
+                <Ionicons name="shield-checkmark" size={20} color="#203562" style={{ marginRight: 12 }} />
+                <Text style={{ color: "#203562", fontWeight: "500", fontSize: 16 }}>
+                  Sign in as {officerRole.charAt(0).toUpperCase() + officerRole.slice(1).replace("_", " ")}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {/* Reset Password Option */}
             <TouchableOpacity
               style={{ padding: 18, flexDirection: "row", alignItems: "center" }}
               onPress={() => {
@@ -1029,6 +1239,7 @@ const Profile = React.memo(({
               <Text style={{ color: "#203562", fontWeight: "500", fontSize: 16 }}>Reset Password</Text>
             </TouchableOpacity>
             <View style={{ height: 1, backgroundColor: "#f0f0f0" }} />
+            {/* Logout Option */}
             <TouchableOpacity
               style={{ padding: 18, flexDirection: "row", alignItems: "center" }}
               onPress={() => {
@@ -1042,98 +1253,57 @@ const Profile = React.memo(({
           </View>
         </TouchableOpacity>
       </Modal>
-      
-      {/* Modern profile content with integrated menu */}
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ 
-          paddingTop: 20, 
-          paddingBottom: 80, 
-          alignItems: "center",
-          paddingHorizontal: 20,
-        }}
-        showsVerticalScrollIndicator={false}
-        removeClippedSubviews={false}
-        bounces={false}
-      >
-                {/* Header with menu button */}
-        <View style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "flex-end",
-          width: "100%",
-          paddingBottom: 24,
-          backgroundColor: "transparent",
-        }}>
-          <View style={{ flex: 1 }} />
-          <TouchableOpacity 
-            onPress={() => setMenuVisible(true)} 
-            style={{ 
-              padding: 12,
-              borderRadius: 12,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.1,
-              shadowRadius: 8,
-            }}
-          >
-            <Entypo name="dots-three-vertical" size={20} color="#203562" />
-          </TouchableOpacity>
-        </View>
-        {/* Avatar section */}
-        <View style={{ 
-          alignItems: "center", 
-          marginTop: 8, 
-          marginBottom: 24,
-          width: "100%",
-        }}>
-          {renderAvatar}
-          <Text style={{ 
-            fontSize: 22, 
-            fontWeight: "700", 
-            color: "#1e293b", 
-            marginTop: 12, 
-            letterSpacing: 0.2 
-          }}>
-            {userData?.username || "User"}
-          </Text>
-          <Text style={{ 
-            fontSize: 15, 
-            color: "#64748b", 
-            marginTop: 2, 
-            fontWeight: "500", 
-            letterSpacing: 0.2 
-          }}>
-            {userData?.yearLevel ? `Year ${userData.yearLevel}` : "Year Level Not Set"}
-          </Text>
-        </View>
-        
-        {/* Profile card */}
-        <View style={{
-          backgroundColor: "#ffffff",
-          borderRadius: 16,
-          padding: 24,
-          width: "100%",
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.06,
-          shadowRadius: 8,
-          elevation: 3,
-        }}> 
-          <Text style={{
-            fontSize: 18,
-            fontWeight: "700",
-            color: "#1e293b",
-            marginBottom: 20,
-            letterSpacing: 0.2,
-          }}>
-            Personal Information
-          </Text>
-          {renderProfileFields}
-        </View>
-      </ScrollView>
       {renderFieldEditModal()}
       {renderPasswordChangeModal()}
+      {/* Officer credential modal moved to end for overlay priority */}
+      <Modal
+        visible={officerModal.visible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent={true}
+        onRequestClose={handleOfficerModalClose}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.officerModalContent}>
+            <Ionicons
+              name="shield-checkmark"
+              size={40}
+              color="#203562"
+              style={{ alignSelf: 'center', marginBottom: 8 }}
+            />
+            <Text style={styles.officerModalTitle}>
+              {officerModal.mode === "setup"
+                ? `Set up your ${officerModal.role ? officerModal.role.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase()) : "Officer"} credential`
+                : `Enter your ${officerModal.role ? officerModal.role.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase()) : "Officer"} credential`}
+            </Text>
+            <Text style={styles.officerModalLabel}>Officer Credential</Text>
+            <TextInput
+              value={officerCredential}
+              onChangeText={setOfficerCredential}
+              placeholder="Enter password or PIN"
+              secureTextEntry
+              style={styles.officerModalInput}
+              placeholderTextColor="#94A3B8"
+              autoFocus
+            />
+            {officerError ? <Text style={styles.errorText}>{officerError}</Text> : null}
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={handleOfficerModalClose} style={styles.modalCancelButton}>
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleOfficerSubmit}
+                style={[styles.modalSaveButton, officerLoading && styles.modalSaveButtonDisabled]}
+                disabled={officerLoading}
+              >
+                <Text style={styles.modalSaveButtonText}>
+                  {officerModal.mode === "setup" ? "Set Up" : "Sign In"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <Toast />
     </View>
   );
@@ -1480,6 +1650,79 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginLeft: 4,
     marginBottom: 8,
+  },
+  officerRoleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  officerRoleText: {
+    fontSize: 15,
+    color: '#203562',
+    fontWeight: '600',
+  },
+  fab: {
+    position: 'absolute',
+    right: 24,
+    bottom: 32,
+    backgroundColor: '#203562',
+    borderRadius: 32,
+    width: 56,
+    height: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#203562',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    zIndex: 100,
+  },
+  officerModalContent: {
+    width: '88%',
+    maxWidth: 320,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 18,
+    alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 12,
+    marginTop: 0,
+    marginBottom: 0,
+    zIndex: 1001,
+  },
+  officerModalTitle: {
+    fontWeight: 'bold',
+    fontSize: 17,
+    marginBottom: 8,
+    color: '#203562',
+    textAlign: 'center',
+  },
+  officerModalLabel: {
+    fontSize: 14,
+    color: '#64748B',
+    marginBottom: 6,
+    marginTop: 2,
+    textAlign: 'left',
+    alignSelf: 'flex-start',
+    fontWeight: '500',
+    letterSpacing: 0.1,
+  },
+  officerModalInput: {
+    width: '100%',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    color: '#1E293B',
+    marginBottom: 10,
+    backgroundColor: '#F8FAFC',
   },
 });
 

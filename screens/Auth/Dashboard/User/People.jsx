@@ -44,7 +44,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import userPresenceService from "../../../../services/UserPresenceService";
 import { useOnlineStatus } from "../../../../contexts/OnlineStatusContext";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../../../../context/AuthContext";
 import NetInfo from "@react-native-community/netinfo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -318,21 +318,21 @@ const SearchBar = memo(
     if (!visible && (!fadeAnim || fadeAnim._value === 0)) return null;
 
     // Add effect to hide header/tabs visibility
-    useEffect(() => {
-      if (visible) {
-        // Hide header and tabs when search is active
-        navigation.setOptions({
-          headerShown: false,
-          tabBarStyle: { display: "none" },
-        });
-      } else {
-        // Show header and tabs when search is closed
-        navigation.setOptions({
-          headerShown: true,
-          tabBarStyle: { display: "flex" },
-        });
-      }
-    }, [visible, navigation]);
+    // useEffect(() => {
+    //   if (visible) {
+    //     // Hide header and tabs when search is active
+    //     navigation.setOptions({
+    //       headerShown: false,
+    //       tabBarStyle: { display: "none" },
+    //     });
+    //   } else {
+    //     // Show header and tabs when search is closed
+    //     navigation.setOptions({
+    //       headerShown: true,
+    //       tabBarStyle: { display: "flex" },
+    //     });
+    //   }
+    // }, [visible, navigation]);
 
     return (
       <Modal
@@ -866,7 +866,7 @@ const checkDirectNetworkStatus = async () => {
 const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded = false, showLogoutModal }) => {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  const headerColor = "#ffffff";
+  const navigation = useNavigation();
   // Initialize with preloaded data immediately, filtering out users without names
   const [users, setUsers] = useState(() => {
     if (isDataPreloaded && initialData) {
@@ -1422,6 +1422,17 @@ const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded 
     };
   }, []);
 
+  // Always restore header and tab bar when this screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      navigation.setOptions({
+        headerShown: true,
+        tabBarStyle: { display: "flex" },
+      });
+      return () => {};
+    }, [navigation])
+  );
+
   // Only show loading if we don't have data and we're not using preloaded data
   if (loading && !isDataPreloaded && users.length === 0) {
     return (
@@ -1633,7 +1644,7 @@ const styles = StyleSheet.create({
   },
   searchFAB: {
     position: "absolute",
-    right: 24,
+    right: 10,
     // Remove static bottom, now set dynamically
     zIndex: 100,
     elevation: 10,

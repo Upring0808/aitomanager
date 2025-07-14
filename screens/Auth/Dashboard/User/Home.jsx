@@ -48,6 +48,7 @@ import {
 } from "react-native-safe-area-context";
 
 import Icon from "react-native-vector-icons/Ionicons";
+import { useNavigation } from "@react-navigation/native";
 
 const TIMELINE_HEIGHT = 660;
 const EVENT_COLORS = [
@@ -103,6 +104,7 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
   const [loadingFines, setLoadingFines] = useState(true);
 
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
 
   const fetchData = async () => {
     if (hasLoaded) return;
@@ -1235,50 +1237,71 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
           })}
         </View>
 
-        {/* Fines Card Section (Firestore index required for this query! See error message for link) */}
-        <View style={styles.finesSectionContainer}>
-          <View style={styles.finesSectionHeader}>
-            <Text style={styles.finesSectionTitle}>Current Fines</Text>
-            <Icon name="alert-circle-outline" size={18} color="#D92626" style={{marginLeft: 6}} />
-            {fines.length > 3 && (
-              <TouchableOpacity style={styles.seeAllBtn} onPress={() => {/* TODO: navigate to fines tab */}}>
-                <Text style={styles.seeAllText}>See all</Text>
-                <Icon name="chevron-forward-outline" size={16} color="#024CAA" />
-              </TouchableOpacity>
-            )}
+        {/* Fines Section - Modern Card Style, No Container, Title Aligned */}
+        <View style={{ marginHorizontal: 20, marginBottom: 10, marginTop: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+          <Text style={styles.sectionTitle}>Current Fines</Text>
+            <Icon name="cash-outline" size={22} color="#D92626" style={{ marginRight: 8 }} />
+           
           </View>
-          {loadingFines ? (
-            <ActivityIndicator size="small" color="#D92626" style={{marginVertical: 20}} />
-          ) : fines.length === 0 ? (
-            <View style={styles.noFinesContainer}>
-              <Icon name="happy-outline" size={40} color="#4CAF50" style={{marginBottom: 8}} />
-              <Text style={styles.noFinesText}>You have no fines, keep it up!</Text>
-            </View>
-          ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.finesCardList}>
-              {fines.slice(0, 6).map((fine, idx) => (
-                <View key={fine.id} style={[styles.fineCardModern, {backgroundColor: idx % 2 === 0 ? '#f8fafc' : '#f3e8ff'}]}>
-                  <View style={styles.fineCardIconModern}>
-                    <Icon name="alert-circle" size={32} color="#D92626" />
-                  </View>
-                  <View style={styles.fineCardContentModern}>
-                    <Text style={styles.fineCardTitleModern} numberOfLines={1}>{fine.eventTitle || 'Fine'}</Text>
-                    <Text style={styles.fineCardAmountModern}>₱{fine.amount?.toFixed(2) || '0.00'}</Text>
-                    <Text style={styles.fineCardDescModern} numberOfLines={2}>{fine.description || 'No description'}</Text>
-                    <View style={styles.fineCardMetaModern}>
-                      <Icon name="calendar-outline" size={13} color="#888" style={{marginRight: 2}} />
-                      <Text style={styles.fineCardDateModern}>{fine.createdAt ? format(fine.createdAt, 'MMM d, yyyy') : ''}</Text>
-                      <View style={styles.fineCardStatusRowModern}>
-                        <Icon name="time-outline" size={13} color="#888" style={{marginLeft: 8, marginRight: 2}} />
-                        <Text style={styles.fineCardStatusTextModern}>{fine.status ? fine.status.charAt(0).toUpperCase() + fine.status.slice(1) : 'Unpaid'}</Text>
-                      </View>
+      
+        </View>
+        {loadingFines ? (
+          <ActivityIndicator size="small" color="#D92626" style={{marginVertical: 20}} />
+        ) : fines.length === 0 ? (
+          <View style={styles.noFinesContainer}>
+            <Icon name="happy-outline" size={40} color="#4CAF50" style={{marginBottom: 8}} />
+            <Text style={styles.noFinesText}>You have no fines, keep it up!</Text>
+          </View>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingLeft: 20, paddingBottom: 10 }}>
+            {fines.slice(0, 6).map((fine, idx) => (
+              <TouchableOpacity
+                key={fine.id}
+                style={{
+                  width: 260,
+                  minHeight: 120,
+                  borderRadius: 18,
+                  marginRight: 16,
+                  padding: 18,
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  backgroundColor: '#fff',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.10,
+                  shadowRadius: 10,
+                  elevation: 4,
+                  borderWidth: 1,
+                  borderColor: '#e2e8f0',
+                  marginBottom:20,
+                }}
+                activeOpacity={0.8}
+                onPress={() => navigation.getParent()?.setParams?.({ screen: 'Fines' }) || navigation.navigate('Fines')}
+              >
+                <View style={{ alignItems: 'center', marginRight: 14 }}>
+                  <Icon name="cash" size={32} color="#D92626" style={{ backgroundColor: '#fff1f2', borderRadius: 24, padding: 8, marginBottom: 6 }} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#22223b', marginBottom: 2, fontFamily: 'Lato-Bold' }} numberOfLines={1}>{fine.eventTitle || 'Fine'}</Text>
+                  <Text style={{ fontSize: 22, fontWeight: '700', color: '#D92626', marginBottom: 2, fontFamily: 'Lato-Bold' }}>₱{fine.amount?.toFixed(2) || '0.00'}</Text>
+                  <Text style={{ fontSize: 13, color: '#666', marginBottom: 6, fontFamily: 'Lato-Regular' }} numberOfLines={2}>{fine.description || 'No description'}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                    <Icon name="calendar-outline" size={13} color="#888" style={{marginRight: 2}} />
+                    <Text style={{ fontSize: 12, color: '#888', fontFamily: 'Lato-Regular' }}>{fine.createdAt ? format(fine.createdAt, 'MMM d, yyyy') : ''}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}>
+                      <Icon name="time-outline" size={13} color="#888" style={{marginRight: 2}} />
+                      <Text style={{ fontSize: 12, color: '#888', fontFamily: 'Lato-Regular' }}>{fine.status ? fine.status.charAt(0).toUpperCase() + fine.status.slice(1) : 'Unpaid'}</Text>
                     </View>
                   </View>
                 </View>
-              ))}
-            </ScrollView>
-          )}
-        </View>
+                <View style={{ justifyContent: 'center', alignItems: 'center', marginLeft: 8 }}>
+                  <Icon name="chevron-forward-outline" size={22} color="#D92626" />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
         {/* Section Title */}
         <View style={styles.sectionHeader}>
@@ -1326,100 +1349,44 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
                   );
                 })
                 .map((event, index) => {
-                  // Create a solid color from the semi-transparent color
-                  const baseColor = event.color
-                    .replace(/rgba?\(/, "")
-                    .replace(/\)/, "")
-                    .split(",");
-                  const solidColor = `rgba(${baseColor[0]},${baseColor[1]},${baseColor[2]},1)`;
-
-                  // Get time for badge
-                  const timeMatch =
-                    event.timeframe.match(/(\d+:\d+)\s?(AM|PM)/i);
-                  const time = timeMatch ? timeMatch[0] : event.timeframe;
-
-                  // Determine a badge type based on index for variety
-                  const badgeTypes = ["Event", "Meeting", "Task", "Reminder"];
-                  const badgeType = badgeTypes[index % badgeTypes.length];
-
+                  // Use a minimalistic, neutral card background
+                  // Use accent color only for icon and dot
                   return (
-                    <View key={event.id} style={styles.eventCard}>
-                      <View style={styles.eventCardInner}>
-                        {/* Solid background */}
-                        <View
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            backgroundColor: event.color,
-                            zIndex: 1,
-                          }}
-                        />
-
-                        {/* Pattern overlay for added dimension */}
-                        <View
-                          style={[
-                            styles.patternOverlay,
-                            { backgroundColor: "transparent" },
-                          ]}
-                        >
-                          {/* Pattern would be implemented here */}
+                    <View key={event.id} style={{
+                      borderRadius: 16,
+                      marginBottom: 16,
+                      backgroundColor: '#f8fafc', // light neutral
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.06,
+                      shadowRadius: 4,
+                      elevation: 2,
+                      overflow: 'hidden',
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                    }}>
+                      <View style={{ padding: 16, flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 14,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          backgroundColor: '#e0e7ef', // subtle accent
+                          marginRight: 14,
+                        }}>
+                          <Icon name="calendar-outline" size={22} color="#024CAA" />
                         </View>
-
-                        {/* Card accent */}
-                        <View
-                          style={[
-                            styles.eventCardAccent,
-                            { backgroundColor: solidColor },
-                          ]}
-                        />
-
-                        {/* Badge indicator */}
-                        <View style={styles.eventBadge}>
-                          <Icon
-                            name={
-                              badgeType === "Event"
-                                ? "calendar-outline"
-                                : badgeType === "Meeting"
-                                ? "people-outline"
-                                : badgeType === "Task"
-                                ? "checkmark-circle-outline"
-                                : "alert-circle-outline"
-                            }
-                            size={10}
-                            color="#fff"
-                          />
-                          <Text style={styles.eventBadgeText}>{badgeType}</Text>
-                        </View>
-
-                        {/* Main content */}
-                        <View style={styles.eventCardContent}>
-                          <View style={styles.eventRow}>
-                            <View style={styles.eventIcon}>
-                              <Icon
-                                name="calendar-outline"
-                                size={22}
-                                color="#FFFFFF"
-                              />
-                            </View>
-                            <View style={styles.eventContent}>
-                              <Text style={styles.eventTitle}>
-                                {event.title}
-                              </Text>
-                              <View style={styles.eventTimeContainer}>
-                                <Icon
-                                  name="time-outline"
-                                  size={12}
-                                  color="rgba(255,255,255,0.95)"
-                                />
-                                <Text style={styles.eventTime}>
-                                  {event.timeframe}
-                                </Text>
-                              </View>
-                            </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 17, fontWeight: '700', color: '#22223b', marginBottom: 6, letterSpacing: 0.2, fontFamily: 'Lato-Bold' }}>{event.title}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                            <Icon name="time-outline" size={13} color="#888" style={{ marginRight: 4 }} />
+                            <Text style={{ fontSize: 13, color: '#666', fontWeight: '500' }}>{event.timeframe}</Text>
                           </View>
+                        </View>
+                        {/* Minimal badge/dot */}
+                        <View style={{ marginLeft: 10, justifyContent: 'center', alignItems: 'center' }}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#3E92CC' }} />
                         </View>
                       </View>
                     </View>

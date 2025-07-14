@@ -1558,7 +1558,7 @@ const NotificationCenter = React.memo(() => {
   );
 });
 
-const AdminHome = () => {
+const AdminHome = ({ userData }) => {
   const navigation = useNavigation();
   const [username, setUsername] = useState("");
   const [events, setEvents] = useState([]);
@@ -2325,12 +2325,16 @@ const AdminHome = () => {
   }, []);
 
   useEffect(() => {
-    (async () => {
-      const name = await AsyncStorage.getItem("selectedOrgName");
-      setOrgName(name || "");
-      setUsername(name ? name + " Admin" : "Admin");
-    })();
-  }, []);
+    if (userData && (userData.username || userData.fullName)) {
+      setUsername(userData.username || userData.fullName);
+    } else {
+      (async () => {
+        const name = await AsyncStorage.getItem("selectedOrgName");
+        setOrgName(name || "");
+        setUsername(name ? name + " Admin" : "Admin");
+      })();
+    }
+  }, [userData]);
 
   return (
     <View style={styles.mainContainer}>

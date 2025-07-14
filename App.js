@@ -51,6 +51,7 @@ import studentStatusService from "./services/StudentStatusService";
 // Import context providers
 import { OnlineStatusProvider } from "./contexts/OnlineStatusContext";
 import { AuthProvider } from "./context/AuthContext";
+import { OfficerProvider } from "./context/OfficerContext";
 
 // Import font patches
 try {
@@ -99,6 +100,7 @@ import QRLoginScreen from "./screens/QRLoginScreen";
 import FineSettingsScreen from "./screens/Auth/Dashboard/Admin/FineSettingsScreen";
 import AdminChatScreen from "./screens/Auth/Dashboard/Admin/AdminChatScreen";
 import { useNavigation } from '@react-navigation/native';
+import GovernorDashboard from "./screens/Auth/Dashboard/Admin/GovernorDashboard";
 
 // Override default Text component to use system fonts
 Text.defaultProps = Text.defaultProps || {};
@@ -512,7 +514,7 @@ const DashboardNavigator = () => {
           headerStyle: {
             backgroundColor: '#fff',
           },
-          headerTintColor: '#007BFF',
+          headerTintColor: '#0A2463',
           headerTitleStyle: {
             fontWeight: '600',
           },
@@ -524,7 +526,7 @@ const DashboardNavigator = () => {
           headerStyle: {
             backgroundColor: '#fff',
           },
-          headerTintColor: '#007BFF',
+          headerTintColor: '#0A2463',
           headerTitleStyle: {
             fontWeight: '600',
           },
@@ -867,6 +869,7 @@ const App = () => {
           name="AdminDashboard"
           component={AdminDashboardNavigator}
         />
+        <Stack.Screen name="GovernorDashboard" component={GovernorDashboard} />
         <Stack.Screen name="FineSettingsScreen" component={FineSettingsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="EventAttendance" component={EventAttendance} />
         <Stack.Screen
@@ -885,45 +888,47 @@ const App = () => {
   // Wrap the app content with FontLoader
   return (
     <AuthProvider>
-      <OnlineStatusProvider>
-        <NavigationContainer
-          ref={navigationRef}
-          onReady={handleNavigationReady}
-          fallback={<LoadingScreen />}
-        >
-          <StatusBar
-            barStyle="dark-content"
-            backgroundColor="transparent"
-            translucent={true}
-          />
-          <FontLoader>
-            <Stack.Navigator
-              screenOptions={{
-                headerShown: false,
-                gestureEnabled: true,
-                cardStyleInterpolator: ({ current, layouts }) => {
-                  return {
-                    cardStyle: {
-                      transform: [
-                        {
-                          translateX: current.progress.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [layouts.screen.width, 0],
-                          }),
-                        },
-                      ],
-                    },
-                  };
-                },
-              }}
-              initialRouteName="EntryScreen"
-            >
-              {renderNavigationContent()}
-            </Stack.Navigator>
-          </FontLoader>
-          <Toast />
-        </NavigationContainer>
-      </OnlineStatusProvider>
+      <OfficerProvider>
+        <OnlineStatusProvider>
+          <NavigationContainer
+            ref={navigationRef}
+            onReady={handleNavigationReady}
+            fallback={<LoadingScreen />}
+          >
+            <StatusBar
+              barStyle="dark-content"
+              backgroundColor="transparent"
+              translucent={true}
+            />
+            <FontLoader>
+              <Stack.Navigator
+                screenOptions={{
+                  headerShown: false,
+                  gestureEnabled: true,
+                  cardStyleInterpolator: ({ current, layouts }) => {
+                    return {
+                      cardStyle: {
+                        transform: [
+                          {
+                            translateX: current.progress.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [layouts.screen.width, 0],
+                            }),
+                          },
+                        ],
+                      },
+                    };
+                  },
+                }}
+                initialRouteName="EntryScreen"
+              >
+                {renderNavigationContent()}
+              </Stack.Navigator>
+            </FontLoader>
+            <Toast />
+          </NavigationContainer>
+        </OnlineStatusProvider>
+      </OfficerProvider>
     </AuthProvider>
   );
 };

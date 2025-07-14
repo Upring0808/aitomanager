@@ -289,7 +289,7 @@ const LoginScreen = () => {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <ScrollView
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: 60 }]}
             showsVerticalScrollIndicator={false}
           >
             <Animated.View

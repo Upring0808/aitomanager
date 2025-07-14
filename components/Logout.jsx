@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { TouchableOpacity, Text, View, StyleSheet, Platform, StatusBar } from "react-native";
+import { TouchableOpacity, Text, View, StyleSheet, Platform, StatusBar, Modal } from "react-native";
 import { auth, db } from "../config/firebaseconfig";
 import { useNavigation } from "@react-navigation/native";
 import Toast from "react-native-toast-message";
@@ -111,15 +111,15 @@ const Logout = ({
   // Render overlay instead of Modal
   const renderLogoutConfirmOverlay = () =>
     visible ? (
-      <View style={styles.fullScreenModalContainer}>
-        <View style={styles.fullScreenModalOverlay}>
+      <Modal visible transparent animationType="fade" statusBarTranslucent={true}>
+        <View style={styles.fullScreenModalOverlay} pointerEvents="auto">
           <View style={styles.modalContent}>
             <View style={styles.logoutModalIconContainer}>
               <View style={styles.logoutModalIcon}>
                 <Feather name="log-out" size={30} color="#203562" />
               </View>
             </View>
-            <Text style={[styles.modalTitle, { textAlign: "center" }]}>
+            <Text style={[styles.modalTitle, { textAlign: "center" }]}> 
               Confirm Logout
             </Text>
             <Text style={styles.modalText}>
@@ -144,7 +144,7 @@ const Logout = ({
             </View>
           </View>
         </View>
-      </View>
+      </Modal>
     ) : null;
 
   if (standalone) {
@@ -177,8 +177,14 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 0 : StatusBar.currentHeight || 0,
   },
   fullScreenModalOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     width: "100%",
     height: "100%",
+    zIndex: 9999,
     backgroundColor: "rgba(0, 0, 0, 0.7)",
     justifyContent: "center",
     alignItems: "center",
