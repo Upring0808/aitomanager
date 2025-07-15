@@ -836,6 +836,7 @@ const Home = ({ initialData, isDataPreloaded = false, showLogoutModal }) => {
     },
     ReminderContainer: {
       marginBottom: 30,
+      paddingBottom: 30,
     },
     ReminderCardContainer: {
       marginHorizontal: 20,

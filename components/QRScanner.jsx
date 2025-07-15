@@ -286,9 +286,14 @@ const QRScanner = ({ visible, onClose, onAttendanceMarked }) => {
   }
 
   return (
-    <Modal visible={visible} animationType="slide">
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#000" />
+    <Modal 
+      visible={visible} 
+      animationType="slide"
+      statusBarTranslucent={true}
+      presentationStyle="fullScreen"
+    >
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#000" translucent={true} />
 
         {/* Header */}
         <View style={styles.header}>
@@ -347,7 +352,7 @@ const QRScanner = ({ visible, onClose, onAttendanceMarked }) => {
             </TouchableOpacity>
           )}
         </View>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 };
@@ -356,14 +361,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000",
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingTop: 50, // Account for status bar
+    paddingBottom: 15,
     backgroundColor: "rgba(0,0,0,0.8)",
+    zIndex: 1000,
   },
   headerTitle: {
     color: "white",

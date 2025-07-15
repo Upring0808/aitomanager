@@ -203,7 +203,7 @@ const AdminProfile = ({
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'Images',
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.5,
@@ -299,7 +299,7 @@ const AdminProfile = ({
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'Images',
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.7,
@@ -337,8 +337,8 @@ const AdminProfile = ({
       const orgId = await AsyncStorage.getItem("selectedOrgId");
       const newOrgId = orgInfoEdit.name.trim().replace(/\s+/g, "_");
       if (orgId !== newOrgId) {
-        // Migrate all subcollections: info, admins (add more as needed)
-        // 1. Create the new org doc with a field to avoid italicized style
+        // Migrate all subcollections: info, admins, users, events (with comments), fines
+        // 1. Create the new org doc
         const newOrgDocRef = doc(db, "organizations", newOrgId);
         await setDoc(newOrgDocRef, {
           migrated: true,
@@ -346,45 +346,66 @@ const AdminProfile = ({
         });
         // 2. Copy info/details
         const oldInfoRef = doc(db, "organizations", orgId, "info", "details");
-        const newInfoRef = doc(
-          db,
-          "organizations",
-          newOrgId,
-          "info",
-          "details"
-        );
+        const newInfoRef = doc(db, "organizations", newOrgId, "info", "details");
         const infoSnap = await getDoc(oldInfoRef);
         if (infoSnap.exists()) {
           await setDoc(newInfoRef, infoSnap.data());
-          // Ensure the name field is updated to the new name
           await updateDoc(newInfoRef, { name: orgInfoEdit.name.trim() });
         }
         // 3. Copy admins subcollection
-        const adminsSnap = await getDocs(
-          collection(db, "organizations", orgId, "admins")
-        );
+        const adminsSnap = await getDocs(collection(db, "organizations", orgId, "admins"));
         for (const adminDoc of adminsSnap.docs) {
           await setDoc(
             doc(db, "organizations", newOrgId, "admins", adminDoc.id),
             adminDoc.data()
           );
         }
-        // 4. (Optional) Copy other subcollections (users, events, etc.)
-        // 5. Delete old org document (removes root doc, not subcollections)
+        // 4. Copy users subcollection
+        const usersSnap = await getDocs(collection(db, "organizations", orgId, "users"));
+        for (const userDoc of usersSnap.docs) {
+          await setDoc(
+            doc(db, "organizations", newOrgId, "users", userDoc.id),
+            userDoc.data()
+          );
+        }
+        // 5. Copy events subcollection (and comments)
+        const eventsSnap = await getDocs(collection(db, "organizations", orgId, "events"));
+        for (const eventDoc of eventsSnap.docs) {
+          await setDoc(
+            doc(db, "organizations", newOrgId, "events", eventDoc.id),
+            eventDoc.data()
+          );
+          // Copy comments subcollection for each event
+          const commentsSnap = await getDocs(collection(db, "organizations", orgId, "events", eventDoc.id, "comments"));
+          for (const commentDoc of commentsSnap.docs) {
+            await setDoc(
+              doc(db, "organizations", newOrgId, "events", eventDoc.id, "comments", commentDoc.id),
+              commentDoc.data()
+            );
+          }
+        }
+        // 6. Copy fines subcollection
+        const finesSnap = await getDocs(collection(db, "organizations", orgId, "fines"));
+        for (const fineDoc of finesSnap.docs) {
+          await setDoc(
+            doc(db, "organizations", newOrgId, "fines", fineDoc.id),
+            fineDoc.data()
+          );
+        }
+        // 7. Delete old org document (removes root doc, not subcollections)
         await deleteDoc(doc(db, "organizations", orgId));
-        // 6. Update AsyncStorage
+        // 8. Update AsyncStorage
         await AsyncStorage.setItem("selectedOrgId", newOrgId);
         Toast.show({
           type: "success",
           text1: "Organization ID updated!",
           text2: "App will reload.",
         });
-        // 7. Reload app or navigate to force context update
+        // 9. Reload app or navigate to force context update
         setTimeout(() => {
           if (navigation && navigation.reset) {
             navigation.reset({ index: 0, routes: [{ name: "LandingScreen" }] });
           } else {
-            // fallback: reload
             if (typeof window !== "undefined") window.location.reload();
           }
         }, 1200);
@@ -397,6 +418,7 @@ const AdminProfile = ({
         text1: "Error",
         text2: "Failed to update org info.",
       });
+      console.error("[Migration Error]", e);
     } finally {
       setOrgInfoLoading(false);
     }

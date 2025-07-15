@@ -18,6 +18,7 @@ import {
   KeyboardAvoidingView,
   Keyboard,
   ScrollView,
+  SectionList, // <-- add SectionList
 } from "react-native";
 import { db, storage, database, auth } from "../../../../config/firebaseconfig";
 import {
@@ -1460,45 +1461,30 @@ const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded 
         colors={["#ffff", "#ffff"]}
         style={{
           position: "absolute",
-          top: -100, // Extend above the screen
+          top: -100,
           left: 0,
           right: 0,
-          height: 310, // Increased height to ensure full coverage
+          height: 310,
           zIndex: 0,
         }}
       />
-      <FlatList
+      <SectionList
         ref={scrollViewRef}
-        data={[]}
-        renderItem={null}
-        ListHeaderComponent={() => {
-          return (
-            <View>
-              {officers.length > 0 && (
-                <View style={styles.sectionContainer}>
-                  {renderSectionHeader("Officers", officers.length)}
-                  {officers.map((item) => (
-                    <View key={item.id || item.uid}>
-                      {renderUserCard(item)}
-                    </View>
-                  ))}
-                </View>
-              )}
-              {students.length > 0 && (
-                <View style={styles.sectionContainer}>
-                  {renderSectionHeader("Students", students.length)}
-                  {students.map((item) => (
-                    <View key={item.id || item.uid}>
-                      {renderUserCard(item)}
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Empty state when no users - removed as requested */}
+        sections={[
+          { title: "Officers", data: officers },
+          { title: "Students", data: students },
+        ]}
+        keyExtractor={(item) => item.id || item.uid}
+        renderSectionHeader={({ section: { title, data } }) =>
+          data.length > 0 ? (
+            <View style={styles.sectionContainer}>
+              {renderSectionHeader(title, data.length)}
             </View>
-          );
-        }}
+          ) : null
+        }
+        renderItem={({ item }) => (
+          <View key={item.id || item.uid}>{renderUserCard(item)}</View>
+        )}
         contentContainerStyle={[
           styles.contentContainer,
           !isOnline && styles.contentContainerOffline,
@@ -1523,10 +1509,18 @@ const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded 
             tintColor={THEME_COLOR}
           />
         }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyTitle}>No people found</Text>
+            <Text style={styles.emptySubtitle}>
+              There are no officers or students to display.
+            </Text>
+          </View>
+        }
       />
       <Animated.View style={[
         styles.searchFAB,
-        { opacity: fabOpacity, bottom: insets.bottom + 80 }
+        { opacity: fabOpacity, bottom: insets.bottom + 50 }
       ]}>
         <TouchableOpacity
           onPress={toggleSearchModal}
@@ -1644,6 +1638,7 @@ const styles = StyleSheet.create({
   },
   searchFAB: {
     position: "absolute",
+
     right: 10,
     // Remove static bottom, now set dynamically
     zIndex: 100,

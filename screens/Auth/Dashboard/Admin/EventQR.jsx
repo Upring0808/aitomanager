@@ -16,6 +16,8 @@ import * as FileSystem from "expo-file-system";
 import * as MediaLibrary from "expo-media-library";
 import Toast from "react-native-toast-message";
 import ViewShot from "react-native-view-shot";
+import { db } from "../../../../config/firebaseconfig";
+import { collection, getDocs, getDoc, doc, query, where, addDoc, updateDoc } from "firebase/firestore";
 
 // Helper to parse timeframe and return [startDate, endDate] as Date objects
 function parseLocalDateTime(date, timeStr) {
@@ -188,6 +190,81 @@ const EventQR = ({ navigation, route }) => {
     }
   };
 
+  useEffect(() => {
+    const autoFineAbsentees = async () => {
+      if (!eventEnded || event.finesProcessed) return;
+      try {
+        // Get orgId and eventId
+        const orgId = organization?.id;
+        const eventId = event.id;
+        if (!orgId || !eventId) return;
+
+        // Fetch fine settings
+        const fineSettingsRef = doc(db, "organizations", orgId, "settings", "fineSettings");
+        const fineSettingsSnap = await getDoc(fineSettingsRef);
+        const fineSettings = fineSettingsSnap.exists()
+          ? fineSettingsSnap.data()
+          : { studentFine: 50, officerFine: 100 };
+
+        // Fetch all users
+        const usersRef = collection(db, "organizations", orgId, "users");
+        const usersSnapshot = await getDocs(usersRef);
+        const users = usersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+        // Get attendees
+        const attendees = event.attendees || [];
+
+        // Fine absentees
+        for (const user of users) {
+          if (attendees.includes(user.id)) continue;
+          // Check if already fined for this event
+          const finesRef = collection(db, "organizations", orgId, "fines");
+          const finesQuery = query(finesRef, where("userId", "==", user.id), where("eventId", "==", eventId));
+          const finesSnap = await getDocs(finesQuery);
+          if (!finesSnap.empty) continue;
+          // Determine fine amount
+          let amount = 0;
+          if (user.role && user.role !== "student") {
+            amount = fineSettings.officerFine || 100;
+          } else {
+            amount = fineSettings.studentFine || 50;
+          }
+          // Create fine
+          await addDoc(finesRef, {
+            userId: user.id,
+            userFullName: user.fullName || "Unknown User",
+            userStudentId: user.studentId || "No ID",
+            userRole: user.role || "student",
+            eventId: eventId,
+            eventTitle: event.title || "Unknown Event",
+            eventDueDate: event.dueDate || null,
+            eventTimeframe: event.timeframe || "No timeframe",
+            amount,
+            status: "unpaid",
+            createdAt: new Date(),
+            description: `Fine for missing ${event.title || "an event"}`,
+            issuedBy: {
+              uid: "system",
+              username: "System",
+              role: "system",
+            },
+          });
+        }
+
+        // Mark event as processed
+        const eventRef = doc(db, "organizations", orgId, "events", eventId);
+        await updateDoc(eventRef, { finesProcessed: true });
+      } catch (error) {
+        console.error("Auto-fine error:", error);
+      }
+    };
+
+    if (eventEnded) {
+      autoFineAbsentees();
+    }
+    // eslint-disable-next-line
+  }, [eventEnded]);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8f9fa" />
@@ -212,19 +289,7 @@ const EventQR = ({ navigation, route }) => {
         </Text>
       </View>
 
-      {/* Header with SafeAreaView */}
-      <SafeAreaView style={styles.safeAreaHeader}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-          >
-            <FontAwesome name="arrow-left" size={20} color="#203562" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Event QR Code</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-      </SafeAreaView>
+    
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Event Information */}

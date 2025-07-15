@@ -77,6 +77,7 @@ import Fines from "./screens/Auth/Dashboard/User/Fines";
 import People from "./screens/Auth/Dashboard/User/People";
 import Profile from "./screens/Auth/Dashboard/User/Profile";
 import Events from "./screens/Auth/Dashboard/User/Events";
+import EventCommentsScreen from "./screens/Auth/Dashboard/User/EventCommentsScreen";
 import ChatScreen from "./screens/Auth/Dashboard/User/ChatScreen";
 import HelpScreen from "./screens/Auth/Dashboard/User/HelpScreen";
 import NotificationsScreen from "./screens/Auth/Dashboard/User/NotificationsScreen";
@@ -502,6 +503,11 @@ const DashboardNavigator = () => {
         options={{
           headerRight: () => <UserHeaderRight />,
         }}
+      />
+      <DashboardStack.Screen
+        name="EventCommentsScreen"
+        component={EventCommentsScreen}
+        options={{ headerShown: true, title: 'Event Comments' }}
       />
       <DashboardStack.Screen name="Chat" component={ChatScreen} 
         options={{

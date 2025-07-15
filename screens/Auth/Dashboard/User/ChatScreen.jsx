@@ -10,9 +10,9 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-  SafeAreaView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db, auth } from '../../../../config/firebaseconfig';
 import {
   collection,
@@ -28,6 +28,7 @@ import {
   updateDoc,
   getDocs,
   writeBatch,
+  deleteDoc,
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { formatUTCTime } from '../../../../utils/timeUtils';
@@ -39,6 +40,7 @@ const ChatScreen = ({ navigation }) => {
   const [sending, setSending] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const flatListRef = useRef(null);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -218,12 +220,35 @@ const ChatScreen = ({ navigation }) => {
     }
   };
 
-  const renderMessageStatus = (message) => {
-    const isMyMessage = message.senderId === currentUser?.uid;
+  const handleDeleteMessage = async (messageId) => {
+    Alert.alert(
+      'Delete Message',
+      'Are you sure you want to delete this message for everyone?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, 'messages', messageId));
+              setMessages(prev => prev.filter(msg => msg.id !== messageId));
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete message.');
+              console.error('Error deleting message:', error);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const renderMessageStatus = (item) => {
+    const isMyMessage = item.senderId === currentUser?.uid;
     
     if (!isMyMessage) return null;
 
-    switch (message.status) {
+    switch (item.status) {
       case 'sending':
         return (
           <View style={styles.statusContainer}>
@@ -237,7 +262,7 @@ const ChatScreen = ({ navigation }) => {
             <MaterialIcons name="error" size={14} color="#ef4444" />
             <Text style={styles.statusText}>Failed</Text>
             <TouchableOpacity 
-              onPress={() => retryMessage(message.id)}
+              onPress={() => retryMessage(item.id)}
               style={styles.retryButton}
             >
               <MaterialIcons name="refresh" size={14} color="#007BFF" />
@@ -254,14 +279,21 @@ const ChatScreen = ({ navigation }) => {
     const isMyMessage = item.senderId === currentUser?.uid;
     
     return (
-      <View style={[
-        styles.messageContainer,
-        isMyMessage ? styles.myMessage : styles.otherMessage
-      ]}>
-        <View style={[
-          styles.messageBubble,
-          isMyMessage ? styles.myBubble : styles.otherBubble
-        ]}>
+      <View
+        style={[
+          styles.messageContainer,
+          isMyMessage ? styles.myMessage : styles.otherMessage
+        ]}
+      >
+        <TouchableOpacity
+          onLongPress={() => handleDeleteMessage(item.id)}
+          delayLongPress={300}
+          activeOpacity={0.8}
+          style={[
+            styles.messageBubble,
+            isMyMessage ? styles.myBubble : styles.otherBubble
+          ]}
+        >
           <Text style={[
             styles.messageText,
             isMyMessage ? styles.myMessageText : styles.otherMessageText
@@ -279,7 +311,7 @@ const ChatScreen = ({ navigation }) => {
               <MaterialIcons name="check" size={12} color="rgba(255, 255, 255, 0.7)" style={styles.checkmark} />
             )}
           </View>
-        </View>
+        </TouchableOpacity>
         {renderMessageStatus(item)}
       </View>
     );
@@ -296,35 +328,36 @@ const ChatScreen = ({ navigation }) => {
   );
 
   return (
-    <View style={styles.container}>
-      {/* Messages List */}
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007BFF" />
-          <Text style={styles.loadingText}>Loading messages...</Text>
-        </View>
-      ) : (
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.messagesList}
-          showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-          ListEmptyComponent={renderEmptyState}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          style={styles.messagesContainer}
-        />
-      )}
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0} // Adjust if you have a header
+    >
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        {/* Messages List */}
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#007BFF" />
+            <Text style={styles.loadingText}>Loading messages...</Text>
+          </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.messagesList}
+            showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            ListEmptyComponent={renderEmptyState}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            style={styles.messagesContainer}
+          />
+        )}
 
-      {/* Message Input */}
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      >
-        <View style={styles.inputContainer}>
+        {/* Message Input */}
+        <View style={[styles.inputContainer, { paddingBottom: insets.bottom }]}>
           <TextInput
             style={styles.textInput}
             placeholder="Type your message..."
@@ -347,8 +380,8 @@ const ChatScreen = ({ navigation }) => {
             <MaterialIcons name="send" size={20} color="#fff" />
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
-    </View>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -457,6 +490,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#e2e8f0',
     minHeight: 60,
+    // paddingBottom:55, // Removed to allow KeyboardAvoidingView to handle keyboard
   },
   textInput: {
     flex: 1,

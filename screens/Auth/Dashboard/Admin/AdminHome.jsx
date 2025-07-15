@@ -2230,7 +2230,7 @@ const AdminHome = ({ userData }) => {
           <Text style={styles.activityTitle}>Recent Activities</Text>
         </View>
         <View style={styles.activityList}>
-          {recentActivities.slice(0, 3).map((activity) => (
+          {(Array.isArray(recentActivities) ? recentActivities : []).slice(0, 3).map((activity) => (
             <View key={activity.id} style={styles.activityItem}>
               <View
                 style={[

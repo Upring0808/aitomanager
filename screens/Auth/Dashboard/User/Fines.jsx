@@ -209,20 +209,26 @@ const Fines = ({
         </View>
         <View style={styles.fineDetails}>
           <View style={styles.fineHeaderRow}>
-            <Text style={styles.fineTitle} numberOfLines={1}>
+            <Text
+              style={styles.fineTitle}
+              numberOfLines={2}
+              ellipsizeMode="tail"
+            >
               {item.eventTitle}
             </Text>
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: getStatusColor(item.status) },
-              ]}
-            >
-              <Icon name={getStatusIcon(item.status)} size={16} color="white" />
-              <Text style={styles.statusText}>
-                {item.status?.charAt(0).toUpperCase() +
-                  item.status?.slice(1).toLowerCase()}
-              </Text>
+            <View style={[styles.statusBadgeWrapper, { marginTop: 4 }]}> 
+              <View
+                style={[
+                  styles.statusBadge,
+                  { backgroundColor: getStatusColor(item.status) }
+                ]}
+              >
+                <Icon name={getStatusIcon(item.status)} size={16} color="white" />
+                <Text style={styles.statusText}>
+                  {item.status?.charAt(0).toUpperCase() +
+                    item.status?.slice(1).toLowerCase()}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -339,10 +345,10 @@ const Fines = ({
 
 const styles = StyleSheet.create({
   fineHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: "column",
+    alignItems: "flex-start",
     marginBottom: 4,
+    gap: 2,
   },
   fineDescription: {
     fontSize: 13,
@@ -353,8 +359,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 3,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     borderRadius: 12,
+    flexShrink: 0,
+    marginLeft: 0,
+    minWidth: 60,
+    minHeight: 24,
+    justifyContent: 'center',
   },
   statusText: {
     color: "white",
@@ -456,6 +467,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
     marginBottom: 2,
+    width: '100%',
   },
   fineSubtitle: {
     fontSize: 13,
@@ -516,6 +528,14 @@ const styles = StyleSheet.create({
     marginTop: 15,
     fontSize: 16,
     color: "#999",
+  },
+  statusBadgeWrapper: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 2,
   },
 
   //tab styles

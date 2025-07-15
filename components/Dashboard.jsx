@@ -627,7 +627,7 @@ const Dashboard = ({ navigation, route }) => {
           />
         );
       case "Events":
-        return <Events showLogoutModal={() => setShowLogoutModal(true)} />;
+        return <Events navigation={navigation} showLogoutModal={() => setShowLogoutModal(true)} />;
       case "Fines":
         return <Fines showLogoutModal={() => setShowLogoutModal(true)} />;
       case "People":

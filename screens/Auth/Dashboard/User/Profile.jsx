@@ -308,7 +308,7 @@ const Profile = React.memo(({
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'Images',
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.5,

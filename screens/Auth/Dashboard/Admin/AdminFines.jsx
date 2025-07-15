@@ -141,6 +141,7 @@ const AdminFines = () => {
         createdAt: doc.data().createdAt,
         dueDate: doc.data().dueDate,
         timeframe: doc.data().timeframe,
+        finesProcessed: doc.data().finesProcessed || false, // Add finesProcessed flag
       }));
       setEvents(eventsData);
 
@@ -597,6 +598,13 @@ const AdminFines = () => {
             </Text>
           </View>
         </View>
+        {event.finesProcessed && (
+          <View style={{ marginTop: 8, alignSelf: 'flex-start' }}>
+            <View style={[styles.statusBadge, { backgroundColor: '#fee2e2' }]}>
+              <Text style={[styles.statusText, { color: '#ef4444' }]}>Fines Processed</Text>
+            </View>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -1039,6 +1047,108 @@ const AdminFines = () => {
     showFABs(); // Start with visible
     return () => fadeTimeout.current && clearTimeout(fadeTimeout.current);
   }, []);
+
+  useEffect(() => {
+    const autoFineAbsentees = async () => {
+      try {
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) return;
+        // Fetch fine settings
+        const fineSettingsRef = doc(db, "organizations", orgId, "settings", "fineSettings");
+        const fineSettingsSnap = await getDoc(fineSettingsRef);
+        const fineSettings = fineSettingsSnap.exists()
+          ? fineSettingsSnap.data()
+          : { studentFine: 50, officerFine: 100 };
+        // For each event that has ended and not processed
+        for (const event of events) {
+          if (event.finesProcessed) continue;
+          // Parse event end time
+          let eventEnd = null;
+          if (event.dueDate && event.timeframe) {
+            const date = event.dueDate.seconds
+              ? new Date(event.dueDate.seconds * 1000)
+              : new Date(event.dueDate);
+            let match = event.timeframe.match(/(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)/i);
+            if (match) {
+              const endStr = match[2];
+              eventEnd = parseLocalDateTime(date, endStr);
+            } else {
+              match = event.timeframe.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+              if (match) {
+                const endStr = match[2];
+                eventEnd = parseLocalDateTime(date, endStr);
+              } else {
+                eventEnd = date;
+              }
+            }
+          }
+          if (!eventEnd || new Date() < eventEnd) continue; // Not ended yet
+          // Get attendees
+          const attendees = event.attendees || [];
+          // Fine absentees
+          for (const user of [...users, ...officers]) {
+            if (attendees.includes(user.id)) continue;
+            // Check if already fined for this event
+            const finesRef = collection(db, "organizations", orgId, "fines");
+            const finesQuery = query(finesRef, where("userId", "==", user.id), where("eventId", "==", event.id));
+            const finesSnap = await getDocs(finesQuery);
+            if (!finesSnap.empty) continue;
+            // Determine fine amount
+            let amount = 0;
+            if (user.role && user.role !== "student") {
+              amount = fineSettings.officerFine || 100;
+            } else {
+              amount = fineSettings.studentFine || 50;
+            }
+            // Create fine
+            await addDoc(finesRef, {
+              userId: user.id,
+              userFullName: user.fullName || "Unknown User",
+              userStudentId: user.studentId || "No ID",
+              userRole: user.role || "student",
+              eventId: event.id,
+              eventTitle: event.title || "Unknown Event",
+              eventDueDate: event.dueDate || null,
+              eventTimeframe: event.timeframe || "No timeframe",
+              amount,
+              status: "unpaid",
+              createdAt: Timestamp.now(),
+              description: `Fine for missing ${event.title || "an event"}`,
+              issuedBy: {
+                uid: "system",
+                username: "System",
+                role: "system",
+              },
+            });
+          }
+          // Mark event as processed
+          const eventRef = doc(db, "organizations", orgId, "events", event.id);
+          await updateDoc(eventRef, { finesProcessed: true });
+        }
+      } catch (error) {
+        // Silent fail, but log for debugging
+        console.error("Auto-fine error:", error);
+      }
+    };
+    if (events.length && users.length + officers.length) {
+      autoFineAbsentees();
+    }
+    // Helper copied from frontend logic
+    function parseLocalDateTime(date, timeStr) {
+      let hours = 0, minutes = 0;
+      if (/AM|PM/i.test(timeStr)) {
+        const [time, modifier] = timeStr.split(/\s+/);
+        let [h, m] = time.split(":").map(Number);
+        if (modifier.toUpperCase() === "PM" && h !== 12) h += 12;
+        if (modifier.toUpperCase() === "AM" && h === 12) h = 0;
+        hours = h;
+        minutes = m;
+      } else {
+        [hours, minutes] = timeStr.split(":").map(Number);
+      }
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate(), hours, minutes, 0, 0);
+    }
+  }, [events, users, officers]);
 
   if (loading) {
     return (

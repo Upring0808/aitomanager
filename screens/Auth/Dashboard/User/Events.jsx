@@ -6,6 +6,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   RefreshControl,
+  TouchableOpacity,
   Animated,
 } from "react-native";
 import { db, auth } from "../../../../config/firebaseconfig";
@@ -15,6 +16,8 @@ import {
   orderBy,
   onSnapshot,
   getDocs,
+  getDoc,
+  doc,
 } from "firebase/firestore";
 import Toast from "react-native-toast-message";
 import EventDetailsCard from "../../../../components/EventDetailsCard";
@@ -24,8 +27,10 @@ import { Styles } from "../../../../styles/Styles";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import cacheService from "../../../../services/CacheService";
+import { FontAwesome } from "@expo/vector-icons";
 
 const Events = ({
+  navigation,
   initialData = [],
   isDataPreloaded = false,
   showLogoutModal,
@@ -35,7 +40,6 @@ const Events = ({
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [qrScannerVisible, setQrScannerVisible] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState(null);
   const [userAttendance, setUserAttendance] = useState({});
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const unsubscribeRef = useRef(null);
@@ -51,44 +55,36 @@ const Events = ({
       const orgId = await AsyncStorage.getItem("selectedOrgId");
       if (!orgId) return;
       
-      // Try to get cached events first
-      const cachedEvents = await cacheService.getCachedEvents(orgId);
-      if (cachedEvents) {
-        console.log("[Events] Using cached events data");
-        const eventsData = cachedEvents.map((event) => ({
-          ...event,
-          // Convert cached date string back to Date object
-          dueDate: event.dueDate ? new Date(event.dueDate) : new Date(),
-        }));
-        setEvents(eventsData);
-        updateUserAttendance(eventsData);
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
-      
+      // Always fetch events from Firestore to get up-to-date comment counts
       const eventsRef = collection(db, "organizations", orgId, "events");
       const q = query(eventsRef, orderBy("dueDate", "asc"));
       const snapshot = await getDocs(q);
-      const eventsData = snapshot.docs.map((doc) => ({
+      let eventsData = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
         dueDate: doc.data().dueDate?.toDate?.() ? doc.data().dueDate.toDate() : new Date(),
       }));
-      
       // Cache the events data with proper date conversion
       const eventsForCache = eventsData.map(event => ({
         ...event,
-        // Convert Date objects to ISO strings for caching
         dueDate: event.dueDate ? event.dueDate.toISOString() : new Date().toISOString(),
       }));
       await cacheService.cacheEvents(orgId, eventsForCache);
-      
-      setEvents(eventsData);
-
-      // Update user attendance status
-      updateUserAttendance(eventsData);
-
+      // Fetch comment count for each event using getDocs
+      const eventsWithCounts = await Promise.all(eventsData.map(async (event) => {
+        const commentsRef = collection(db, "organizations", orgId, "events", event.id, "comments");
+        let commentCount = 0;
+        try {
+          const snapshot = await getDocs(commentsRef);
+          commentCount = snapshot.size;
+        } catch (e) {
+          commentCount = 0;
+        }
+        return { ...event, commentCount };
+      }));
+      setEvents(eventsWithCounts);
+      console.log('Events with commentCount:', eventsWithCounts.map(e => ({ title: e.title, commentCount: e.commentCount })));
+      updateUserAttendance(eventsWithCounts);
       setLoading(false);
       setRefreshing(false);
     } catch (error) {
@@ -216,11 +212,74 @@ const Events = ({
   }, [initialData, isDataReady]);
 
   useEffect(() => {
-    if (isFirstMount.current) {
-      fetchEventsOnce();
-      isFirstMount.current = false;
-    }
+    let isMounted = true;
+    (async () => {
+      const orgId = await AsyncStorage.getItem('selectedOrgId');
+      if (!orgId) return;
+
+      // 1. Try to load cached events immediately
+      const cached = await cacheService.getCachedEvents(orgId);
+      if (cached && isMounted) {
+        setEvents(cached);
+        setLoading(false); // Show cached data instantly, no spinner
+      }
+
+      // 2. Always fetch fresh events in the background
+      fetchAndUpdateEvents(orgId, isMounted);
+    })();
+    return () => { isMounted = false; };
   }, []);
+
+  const fetchAndUpdateEvents = async (orgId, isMounted = true) => {
+    try {
+      const eventsRef = collection(db, 'organizations', orgId, 'events');
+      const q = query(eventsRef, orderBy('dueDate', 'asc'));
+      const snapshot = await getDocs(q);
+      let eventsData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        dueDate: doc.data().dueDate?.toDate?.() ? doc.data().dueDate.toDate() : new Date(),
+      }));
+
+      // Fetch comment count and seenProfiles for each event
+      eventsData = await Promise.all(eventsData.map(async (event) => {
+        // Comment count
+        const commentsRef = collection(db, 'organizations', orgId, 'events', event.id, 'comments');
+        let commentCount = 0;
+        try {
+          const commentsSnap = await getDocs(commentsRef);
+          commentCount = commentsSnap.size;
+        } catch {}
+        // Seen profiles
+        let seenProfiles = [];
+        if (Array.isArray(event.seenBy) && event.seenBy.length > 0) {
+          seenProfiles = await Promise.all(event.seenBy.map(async (uid) => {
+            try {
+              const userRef = doc(db, 'organizations', orgId, 'users', uid);
+              const userSnap = await getDoc(userRef);
+              if (userSnap.exists()) {
+                const data = userSnap.data();
+                return {
+                  id: uid,
+                  username: data.username || data.email || 'Unknown',
+                  avatarUrl: data.avatarUrl || null,
+                };
+              }
+            } catch {}
+            return null;
+          }));
+          seenProfiles = seenProfiles.filter(Boolean);
+        }
+        return { ...event, commentCount, seenProfiles };
+      }));
+
+      // 3. Update cache and UI
+      await cacheService.cacheEvents(orgId, eventsData);
+      if (isMounted) setEvents(eventsData);
+    } catch (error) {
+      console.error('[Events] Error fetching events:', error);
+    }
+  };
 
   // Add a manual refresh handler if needed
   const handleManualRefresh = async () => {
@@ -234,8 +293,63 @@ const Events = ({
     await fetchEvents();
   }, [fetchEvents]);
 
-  const handleScanQR = (event) => {
-    setSelectedEvent(event);
+  // Helper function to check if event is active (same logic as EventDetailsCard)
+  const isEventActive = (event) => {
+    if (!event.dueDate || !event.timeframe) return false;
+    
+    const parseLocalDateTime = (date, timeStr) => {
+      let hours = 0, minutes = 0;
+      if (/AM|PM/i.test(timeStr)) {
+        const [time, modifier] = timeStr.split(/\s+/);
+        let [h, m] = time.split(":").map(Number);
+        if (modifier.toUpperCase() === "PM" && h !== 12) h += 12;
+        if (modifier.toUpperCase() === "AM" && h === 12) h = 0;
+        hours = h;
+        minutes = m;
+      } else {
+        [hours, minutes] = timeStr.split(":").map(Number);
+      }
+      return new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        hours,
+        minutes,
+        0,
+        0
+      );
+    };
+
+    const getEventStartEnd = (event) => {
+      if (!event.dueDate || !event.timeframe) return [null, null];
+      const date = new Date(event.dueDate);
+      
+      let match = event.timeframe.match(
+        /(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)/i
+      );
+      if (match) {
+        const [_, startStr, endStr] = match;
+        const startDate = parseLocalDateTime(date, startStr);
+        const endDate = parseLocalDateTime(date, endStr);
+        return [startDate, endDate];
+      }
+      
+      match = event.timeframe.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+      if (match) {
+        const [_, startStr, endStr] = match;
+        const startDate = parseLocalDateTime(date, startStr);
+        const endDate = parseLocalDateTime(date, endStr);
+        return [startDate, endDate];
+      }
+      return [date, date];
+    };
+
+    const [eventStart, eventEnd] = getEventStartEnd(event);
+    const now = new Date();
+    return eventEnd && now <= eventEnd;
+  };
+
+  const handleCentralizedScanQR = () => {
     setQrScannerVisible(true);
   };
 
@@ -253,13 +367,12 @@ const Events = ({
     }).start();
   };
 
+  // Always define filteredEvents as a variable before rendering
   const filteredEvents = events.filter((event) => {
     if (!event.dueDate) return false;
-
     const eventDate = event.dueDate;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     if (filter === "Current") {
       return (
         eventDate.getDate() === today.getDate() &&
@@ -280,78 +393,71 @@ const Events = ({
 
   return (
     <>
-      <View style={{ flex: 1 }}>
-        {/* Extend header background behind status bar */}
-        <View
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: insets.top + 80, // Adjust 80 to your header height
-            backgroundColor: headerColor,
-            zIndex: 0,
-          }}
-        />
-        <SafeAreaView
-          style={{
-            flex: 1,
-            backgroundColor: "#ffffff",
-            
-          }}
-          edges={["top", "left", "right"]}
-        >
-          <View style={Styles.mainContainer}>
-            {loading && !isDataReady ? (
-              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#203562" />
-                <Text style={{ marginTop: 10, color: '#666' }}>Loading events...</Text>
-              </View>
-            ) : (
-              <ScrollView
-                contentContainerStyle={Styles.scrollContainer}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={onRefresh}
-                    colors={["#203562"]}
-                    tintColor="#203562"
-                  />
-                }
-              >
-                <View style={Styles.filterContainer}>
-                  <DropdownPicker
-                    options={["All", "Current", "Upcoming", "Past"]}
-                    selectedValue={filter}
-                    onValueChange={setFilter}
-                  />
-                </View>
-
-                {filteredEvents.length > 0 ? (
-                  filteredEvents.map((event, index) => (
-                    <EventDetailsCard
-                      event={event}
-                      key={event.id || `event-${index}`}
-                      onScanQR={handleScanQR}
-                      hasAttended={userAttendance[event.id] || false}
-                    />
-                  ))
-                ) : (
-                  <Text style={Styles.noEvent}>No events available.</Text>
-                )}
-              </ScrollView>
-            )}
-            <Toast />
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#ffffff" }}>
+        {/* Header/Filter restored and moved outside ScrollView */}
+        <View style={[Styles.filterContainer, { paddingHorizontal: 16 }]}>
+          <View style={Styles.filterRow}>
+            <View style={Styles.filterDropdown}>
+              <DropdownPicker
+                options={["All", "Current", "Upcoming", "Past"]}
+                selectedValue={filter}
+                onValueChange={setFilter}
+              />
+            </View>
+            <TouchableOpacity
+              style={Styles.qrScanButton}
+              onPress={handleCentralizedScanQR}
+              activeOpacity={0.8}
+            >
+              <FontAwesome name="qrcode" size={20} color="white" />
+              <Text style={Styles.qrScanButtonText}>Scan QR</Text>
+            </TouchableOpacity>
           </View>
+          <View style={Styles.qrScanHint}>
+            <FontAwesome name="info-circle" size={14} color="#666" />
+            <Text style={Styles.qrScanHintText}>
+              Use QR scan to quickly attend events
+            </Text>
+          </View>
+        </View>
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom:100 }}
+          showsVerticalScrollIndicator={true}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#203562"]}
+              tintColor="#203562"
+            />
+          }
+          keyboardShouldPersistTaps="handled"
+        >
+          {filteredEvents.length > 0 ? (
+            (() => { // Add debug log before rendering
+              console.log('Rendering filteredEvents:', filteredEvents.map(e => ({ title: e.title, commentCount: e.commentCount })));
+              return filteredEvents.map((item) => (
+                <EventDetailsCard
+                  key={item.id}
+                  event={item}
+                  hasAttended={userAttendance[item.id] || false}
+                  navigation={navigation}
+                />
+              ));
+            })()
+          ) : (
+            <Text style={Styles.noEvent}>No events available.</Text>
+          )}
+        </ScrollView>
+        <Toast />
+      </SafeAreaView>
 
-          {/* QR Scanner Modal */}
-          <QRScanner
-            visible={qrScannerVisible}
-            onClose={() => setQrScannerVisible(false)}
-            onAttendanceMarked={handleAttendanceMarked}
-          />
-        </SafeAreaView>
-      </View>
+      {/* QR Scanner Modal */}
+      <QRScanner
+        visible={qrScannerVisible}
+        onClose={() => setQrScannerVisible(false)}
+        onAttendanceMarked={handleAttendanceMarked}
+      />
     </>
   );
 };

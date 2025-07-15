@@ -80,10 +80,10 @@ const CreateOrganizationScreen = () => {
     }
     console.log("Launching image library picker...");
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: 'Images',
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.7,
+      quality: 0.5,
     });
     console.log("Image picker result:", result);
     if (!result.canceled && result.assets && result.assets[0]) {

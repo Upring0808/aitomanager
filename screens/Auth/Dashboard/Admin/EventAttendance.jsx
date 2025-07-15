@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -32,6 +32,8 @@ const EventAttendance = ({ route, navigation }) => {
   const [allUsers, setAllUsers] = useState([]);
   const [activeTab, setActiveTab] = useState("attended");
   const [attendanceDetails, setAttendanceDetails] = useState({});
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const scrollViewRef = useRef(null);
 
   useEffect(() => {
     loadAttendanceData();
@@ -148,6 +150,19 @@ const EventAttendance = ({ route, navigation }) => {
     );
   };
 
+  // Add scroll handler for showing scroll-to-top button
+  const handleScroll = (event) => {
+    const y = event.nativeEvent.contentOffset.y;
+    setShowScrollTop(y > 200);
+  };
+
+  // Scroll to top function
+  const scrollToTop = () => {
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: true });
+    }
+  };
+
   const renderUserList = (users, type) => {
     if (loading) {
       return (
@@ -176,7 +191,22 @@ const EventAttendance = ({ route, navigation }) => {
     }
 
     return (
-      <ScrollView style={styles.userList} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.userList}
+        showsVerticalScrollIndicator={true}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={["#203562"]}
+            tintColor="#203562"
+          />
+        }
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
         {users.map((user) => renderUserCard(user, type))}
       </ScrollView>
     );
@@ -279,6 +309,16 @@ const EventAttendance = ({ route, navigation }) => {
         {activeTab === "attended"
           ? renderUserList(attendedUsers, "attended")
           : renderUserList(notAttendedUsers, "notAttended")}
+        {/* Scroll to top button */}
+        {showScrollTop && (
+          <TouchableOpacity
+            style={styles.scrollTopButton}
+            onPress={scrollToTop}
+            activeOpacity={0.8}
+          >
+            <FontAwesome name="arrow-up" size={20} color="#fff" />
+          </TouchableOpacity>
+        )}
       </View>
 
       <Toast />
@@ -515,6 +555,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#666",
     textAlign: "center",
+  },
+  scrollTopButton: {
+    position: "absolute",
+    right: 16,
+    bottom: 24,
+    backgroundColor: "#203562",
+    borderRadius: 24,
+    width: 48,
+    height: 48,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 10,
   },
 });
 

@@ -10,7 +10,6 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-  SafeAreaView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { db, auth } from '../../../../config/firebaseconfig';
@@ -28,11 +27,12 @@ import {
   updateDoc,
   getDocs,
   writeBatch,
+  deleteDoc,
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import studentPresenceService from '../../../../services/StudentPresenceService';
 import { formatUTCTime, formatUTCRelativeTime } from '../../../../utils/timeUtils';
-
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 
 
 const AdminChatScreen = ({ navigation }) => {
@@ -45,7 +45,7 @@ const AdminChatScreen = ({ navigation }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [studentStatuses, setStudentStatuses] = useState({});
   const flatListRef = useRef(null);
-
+  const insets = useSafeAreaInsets();
 
 
   useEffect(() => {
@@ -352,46 +352,113 @@ const AdminChatScreen = ({ navigation }) => {
     }
   };
 
-  const renderMessageStatus = (message) => {
-    if (message.senderRole === 'admin') {
-      return (
-        <View style={styles.messageFooter}>
-          <Text style={[styles.timestamp, styles.myTimestamp]}>
-            {formatUTCTime(message.timestamp)}
-          </Text>
-          {message.status === 'sending' && (
+  // Remove the trash icon from renderMessage
+  // Add long press handler to message bubble for delete
+  const handleDeleteMessage = async (messageId) => {
+    Alert.alert(
+      'Delete Message',
+      'Are you sure you want to delete this message for everyone?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, 'messages', messageId));
+              setMessages(prev => prev.filter(msg => msg.id !== messageId));
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete message.');
+              console.error('Error deleting message:', error);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Fix ReferenceError: Property 'message' doesn't exist
+  const renderMessageStatus = (item) => {
+    const isMyMessage = item.senderRole === 'admin';
+    if (!isMyMessage) return null;
+    switch (item.status) {
+      case 'sending':
+        return (
+          <View style={styles.messageFooter}>
+            <Text style={[styles.timestamp, styles.myTimestamp]}>
+              {formatUTCTime(item.timestamp)}
+            </Text>
             <MaterialIcons name="schedule" size={12} color="rgba(255, 255, 255, 0.7)" style={styles.checkmark} />
-          )}
-          {message.status === 'delivered' && (
+          </View>
+        );
+      case 'delivered':
+        return (
+          <View style={styles.messageFooter}>
+            <Text style={[styles.timestamp, styles.myTimestamp]}>
+              {formatUTCTime(item.timestamp)}
+            </Text>
             <MaterialIcons name="done" size={12} color="rgba(255, 255, 255, 0.7)" style={styles.checkmark} />
-          )}
-          {message.status === 'failed' && (
-            <TouchableOpacity style={styles.retryButton} onPress={() => retryMessage(message.id)}>
+          </View>
+        );
+      case 'failed':
+        return (
+          <View style={styles.messageFooter}>
+            <Text style={[styles.timestamp, styles.myTimestamp]}>
+              {formatUTCTime(item.timestamp)}
+            </Text>
+            <TouchableOpacity style={styles.retryButton} onPress={() => retryMessage(item.id)}>
               <MaterialIcons name="refresh" size={12} color="#007BFF" />
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
-          )}
-        </View>
-      );
+          </View>
+        );
+      default:
+        return null;
     }
-    return (
-      <Text style={[styles.timestamp, styles.otherTimestamp]}>
-        {formatUTCTime(message.timestamp)}
-      </Text>
-    );
   };
 
   const renderMessage = ({ item }) => {
     const isMyMessage = item.senderRole === 'admin';
-    
     return (
-      <View style={[styles.messageContainer, isMyMessage ? styles.myMessage : styles.otherMessage]}>
-        <View style={[styles.messageBubble, isMyMessage ? styles.myBubble : styles.otherBubble]}>
-          <Text style={[styles.messageText, isMyMessage ? styles.myMessageText : styles.otherMessageText]}>
+      <View
+        style={[
+          styles.messageContainer,
+          isMyMessage ? styles.myMessage : styles.otherMessage
+        ]}
+      >
+        <TouchableOpacity
+          onLongPress={() => handleDeleteMessage(item.id)}
+          delayLongPress={300}
+          activeOpacity={0.8}
+          style={[
+            styles.messageBubble,
+            isMyMessage ? styles.myBubble : styles.otherBubble
+          ]}
+        >
+          <Text style={[
+            styles.messageText,
+            isMyMessage ? styles.myMessageText : styles.otherMessageText
+          ]}>
             {item.content}
           </Text>
-          {renderMessageStatus(item)}
-        </View>
+          <View style={styles.messageFooter}>
+            <Text style={[styles.timestamp, isMyMessage ? styles.myTimestamp : styles.otherTimestamp]}>
+              {formatUTCTime(item.timestamp)}
+            </Text>
+            {isMyMessage && item.status === 'delivered' && (
+              <MaterialIcons name="done" size={12} color="rgba(255, 255, 255, 0.7)" style={styles.checkmark} />
+            )}
+            {isMyMessage && item.status === 'sending' && (
+              <MaterialIcons name="schedule" size={12} color="rgba(255, 255, 255, 0.7)" style={styles.checkmark} />
+            )}
+            {isMyMessage && item.status === 'failed' && (
+              <TouchableOpacity style={styles.retryButton} onPress={() => retryMessage(item.id)}>
+                <MaterialIcons name="refresh" size={12} color="#007BFF" />
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -491,91 +558,96 @@ const AdminChatScreen = ({ navigation }) => {
   }
 
   // Show chat conversation
-  return (
-    <View style={styles.container}>
-      {/* Student Info Header */}
-      <View style={styles.studentInfoContainer}>
-        <View style={styles.studentInfoContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => {
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              } else {
-                navigation.navigate('Dashboard');
-              }
-            }}
-          >
-            <MaterialIcons name="arrow-back" size={24} color="#007BFF" />
-          </TouchableOpacity>
-          <View style={styles.studentAvatar}>
-            <MaterialIcons name="person" size={20} color="#007BFF" />
-          </View>
-          <View style={styles.studentInfo}>
-            <Text style={styles.studentName}>{selectedConversation.studentName}</Text>
-            <View style={styles.studentStatusRow}>
-              <View style={[
-                styles.studentOnlineIndicator,
-                { backgroundColor: studentStatuses[selectedConversation.studentId]?.isOnline ? '#10b981' : '#64748b' }
-              ]} />
-              <Text style={styles.studentStatusText}>
-                {studentStatuses[selectedConversation.studentId]?.isOnline ? 'Active now' : 'Offline'}
-              </Text>
-              {!studentStatuses[selectedConversation.studentId]?.isOnline && studentStatuses[selectedConversation.studentId]?.lastSeen && (
-                <Text style={styles.studentLastSeenText}>
-                  • {formatUTCRelativeTime(new Date(studentStatuses[selectedConversation.studentId].lastSeen))}
-                </Text>
-              )}
+  if (selectedConversation) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#f8f9fa' }} edges={['bottom', 'left', 'right']}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+          <View style={{ flex: 1 }}>
+            {/* Student Info Header */}
+            <View style={styles.studentInfoContainer}>
+              <View style={styles.studentInfoContent}>
+                <TouchableOpacity
+                  style={styles.backButton}
+                  onPress={() => {
+                    if (navigation.canGoBack()) {
+                      navigation.goBack();
+                    } else {
+                      navigation.navigate('Dashboard');
+                    }
+                  }}
+                >
+                  <MaterialIcons name="arrow-back" size={24} color="#007BFF" />
+                </TouchableOpacity>
+                <View style={styles.studentAvatar}>
+                  <MaterialIcons name="person" size={20} color="#007BFF" />
+                </View>
+                <View style={styles.studentInfo}>
+                  <Text style={styles.studentName}>{selectedConversation.studentName}</Text>
+                  <View style={styles.studentStatusRow}>
+                    <View style={[
+                      styles.studentOnlineIndicator,
+                      { backgroundColor: studentStatuses[selectedConversation.studentId]?.isOnline ? '#10b981' : '#64748b' }
+                    ]} />
+                    <Text style={styles.studentStatusText}>
+                      {studentStatuses[selectedConversation.studentId]?.isOnline ? 'Active now' : 'Offline'}
+                    </Text>
+                    {!studentStatuses[selectedConversation.studentId]?.isOnline && studentStatuses[selectedConversation.studentId]?.lastSeen && (
+                      <Text style={styles.studentLastSeenText}>
+                        • {formatUTCRelativeTime(new Date(studentStatuses[selectedConversation.studentId].lastSeen))}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Messages List */}
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              renderItem={renderMessage}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.messagesList}
+              showsVerticalScrollIndicator={false}
+              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              style={styles.messagesContainer}
+            />
+
+            {/* Message Input */}
+            <View style={styles.inputContainer}> {/* No manual paddingBottom */}
+              <TextInput
+                style={styles.textInput}
+                placeholder="Type your message..."
+                value={newMessage}
+                onChangeText={setNewMessage}
+                multiline
+                maxLength={500}
+                placeholderTextColor="#999"
+                textAlignVertical="top"
+                returnKeyType="default"
+              />
+              <TouchableOpacity
+                style={[
+                  styles.sendButton,
+                  (!newMessage.trim() || sending) && styles.sendButtonDisabled
+                ]}
+                onPress={sendMessage}
+                disabled={!newMessage.trim() || sending}
+              >
+                <MaterialIcons name="send" size={20} color="#fff" />
+              </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </View>
-
-      {/* Messages List */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.messagesList}
-        showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        style={styles.messagesContainer}
-      />
-
-      {/* Message Input */}
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      >
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Type your message..."
-            value={newMessage}
-            onChangeText={setNewMessage}
-            multiline
-            maxLength={500}
-            placeholderTextColor="#999"
-            textAlignVertical="top"
-            returnKeyType="default"
-          />
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (!newMessage.trim() || sending) && styles.sendButtonDisabled
-            ]}
-            onPress={sendMessage}
-            disabled={!newMessage.trim() || sending}
-          >
-            <MaterialIcons name="send" size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </View>
-  );
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
 };
 
 const styles = StyleSheet.create({
@@ -839,6 +911,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#e2e8f0',
     minHeight: 60,
+    
   },
   textInput: {
     flex: 1,
