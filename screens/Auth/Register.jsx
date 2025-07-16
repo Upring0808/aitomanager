@@ -13,6 +13,7 @@ import {
   Keyboard,
   Modal,
   TouchableWithoutFeedback,
+  StatusBar,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -26,6 +27,8 @@ import { collection, query, where, getDocs } from "firebase/firestore";
 import { useNavigation } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { doc, setDoc } from "firebase/firestore";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import SystemNavigationBar from "react-native-system-navigation-bar";
 
 const Register = () => {
   const [username, setUsername] = useState("");
@@ -40,6 +43,18 @@ const Register = () => {
   const [orgLogo, setOrgLogo] = useState(null);
   const [orgName, setOrgName] = useState("");
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      // Set navigation bar to solid white (not transparent)
+      SystemNavigationBar.setNavigationColor("#ffffff", true); // true makes it light content
+      SystemNavigationBar.setNavigationBarContrastEnforced(true);
+      // Alternative approach if the above doesn't work:
+      // SystemNavigationBar.setBarMode('normal');
+      // SystemNavigationBar.setNavigationBarHidden(false);
+    }
+  }, []);
 
   const yearLevels = [
     { label: "1st Year", value: "1" },
@@ -79,6 +94,17 @@ const Register = () => {
     return true;
   };
 
+  const validatePassword = (password) => {
+    // At least 6 characters, 1 number, 1 letter
+    const lengthValid = password.length >= 6;
+    const hasNumber = /\d/.test(password);
+    const hasLetter = /[a-zA-Z]/.test(password);
+    if (!lengthValid || !hasNumber || !hasLetter) {
+      return false;
+    }
+    return true;
+  };
+
   const handleRegister = async () => {
     if (
       !username ||
@@ -95,6 +121,14 @@ const Register = () => {
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailPattern.test(email)) {
       showWarning("Please enter a valid email address.");
+      return;
+    }
+
+    // Validate password
+    if (!validatePassword(password)) {
+      showWarning(
+        "Password must be at least 6 characters, contain at least 1 number and 1 letter."
+      );
       return;
     }
 
@@ -251,6 +285,11 @@ const Register = () => {
 
   return (
     <BackgroundImage>
+      <StatusBar
+        translucent={false} // Change to false to make it solid
+        backgroundColor="#ffffff" // Set to white
+        barStyle="dark-content"
+      />
       <LinearGradient
         colors={["#ffffffaa", "#16325B77"]}
         style={styles.gradient}
@@ -258,11 +297,14 @@ const Register = () => {
         <SafeAreaView style={styles.safeArea}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <ScrollView
-              contentContainerStyle={styles.scrollViewContent}
+              contentContainerStyle={{
+                ...styles.scrollViewContent,
+                paddingBottom: insets.bottom + 20,
+              }}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              <View style={styles.content}>
+              <View style={[styles.content, { paddingBottom: insets.bottom }]}>
                 <View style={styles.logoAndWelcome}>
                   <View style={styles.logoContainer}>
                     <Image
@@ -427,6 +469,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     position: "relative",
     paddingHorizontal: 20,
+    paddingBottom: 0, // Remove the paddingBottom from here
   },
   gradient: { flex: 1 },
   safeArea: { flex: 1 },
@@ -464,10 +507,11 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     elevation: 15,
     position: "absolute",
-    bottom: -20,
+    bottom: 0, // Changed from -20 to 0
     left: 0,
     right: 0,
-    height: 550, // Increased to accommodate new studentId input
+    height: 550,
+    paddingBottom: 30, // Add extra padding at bottom
   },
   inputBulk: {
     marginTop: 10,
