@@ -102,6 +102,7 @@ import FineSettingsScreen from "./screens/Auth/Dashboard/Admin/FineSettingsScree
 import AdminChatScreen from "./screens/Auth/Dashboard/Admin/AdminChatScreen";
 import { useNavigation } from '@react-navigation/native';
 import GovernorDashboard from "./screens/Auth/Dashboard/Admin/GovernorDashboard";
+import messaging from '@react-native-firebase/messaging';
 
 // Override default Text component to use system fonts
 Text.defaultProps = Text.defaultProps || {};
@@ -690,6 +691,51 @@ const App = () => {
     setIsNavigationReady(true);
     navigationInitialized.current = true;
   };
+
+  // FCM notification permission and token setup
+  useEffect(() => {
+    // Request user permission for notifications
+    const requestPermission = async () => {
+      try {
+        const authStatus = await messaging().requestPermission();
+        const enabled =
+          authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+          authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+        if (enabled) {
+          console.log('Notification permission enabled:', authStatus);
+          getFcmToken();
+        } else {
+          console.log('Notification permission not granted');
+        }
+      } catch (error) {
+        console.error('Error requesting notification permission:', error);
+      }
+    };
+
+    // Get FCM token
+    const getFcmToken = async () => {
+      try {
+        const fcmToken = await messaging().getToken();
+        if (fcmToken) {
+          console.log('FCM Token:', fcmToken);
+          // TODO: Save this token to your database, associated with the user
+        }
+      } catch (error) {
+        console.error('Error getting FCM token:', error);
+      }
+    };
+
+    requestPermission();
+
+    // Listen for token refresh
+    const unsubscribe = messaging().onTokenRefresh(token => {
+      // TODO: Update token in your database
+      console.log('FCM Token refreshed:', token);
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Handle user state changes using Firebase web SDK
   useEffect(() => {

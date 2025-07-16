@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "689997147601",
+    "firebase_url": "https://aito-manage-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "aito-manage",
+    "storage_bucket": "aito-manage.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:689997147601:android:5fd284386af4e996d3c4f0",
+        "android_client_info": {
+          "package_name": "com.opring.AitoCheck"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "689997147601-o6rt4asgh8f35p814jt709fr81t7hdv1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAOArzXnUuQm3hAl9iq5FeS6g7GNj9LaNM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "689997147601-o6rt4asgh8f35p814jt709fr81t7hdv1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
