@@ -41,7 +41,8 @@
         {
           "cameraPermission": "Allow Fivent to access your camera to scan QR codes."
         }
-      ]
+      ],
+      "expo-barcode-scanner"
     ],
     "experiments": {
       "tsconfigPaths": true
