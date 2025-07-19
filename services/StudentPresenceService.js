@@ -26,7 +26,7 @@ class StudentPresenceService {
     this.cleanupListeners = [];
     this.studentStatusCallbacks = [];
     this.authUnsubscribe = null;
-    this.INACTIVE_THRESHOLD = 5 * 60 * 1000; // 5 minutes in milliseconds
+    this.INACTIVE_THRESHOLD = 2 * 60 * 1000; // 2 minutes in milliseconds
   }
 
   /**
@@ -60,6 +60,9 @@ class StudentPresenceService {
       // Set up connection monitoring
       this.setupConnectionMonitoring();
       
+      // Set up auth state listener for automatic logout cleanup
+      this.setupAuthStateListener();
+      
       this.initialized = true;
       console.log("[StudentPresence] Successfully initialized");
     } catch (error) {
@@ -83,6 +86,38 @@ class StudentPresenceService {
       this.cleanupListeners.push(unsubscribe);
     } catch (error) {
       console.error("[StudentPresence] Error setting up connection monitoring:", error);
+    }
+  }
+
+  /**
+   * Setup auth state listener for automatic logout cleanup
+   */
+  setupAuthStateListener() {
+    try {
+      if (this.authUnsubscribe) {
+        this.authUnsubscribe();
+      }
+      
+      this.authUnsubscribe = onAuthStateChanged(getAuth(), async (user) => {
+        if (!user && this.initialized) {
+          console.log("[StudentPresence] User signed out, removing completely and cleaning up");
+          try {
+            await this.removeStudentCompletely();
+            await this.cleanup();
+          } catch (error) {
+            console.error("[StudentPresence] Error during auth state cleanup:", error);
+          }
+        }
+      });
+      
+      this.cleanupListeners.push(() => {
+        if (this.authUnsubscribe) {
+          this.authUnsubscribe();
+          this.authUnsubscribe = null;
+        }
+      });
+    } catch (error) {
+      console.error("[StudentPresence] Error setting up auth state listener:", error);
     }
   }
 
@@ -126,8 +161,8 @@ class StudentPresenceService {
                 const lastSeen = studentData.lastSeen;
                 const timeDiff = now - lastSeen;
                 
-                // Consider student online if they were active in the last 5 minutes
-                if (timeDiff < this.INACTIVE_THRESHOLD) {
+                // Only consider student online if they were active in the last 2 minutes AND not explicitly marked offline
+                if (timeDiff < this.INACTIVE_THRESHOLD && studentData.isOnline !== false) {
                   onlineStudents.push({
                     id: studentId,
                     name: studentData.name || 'Student',
@@ -250,6 +285,13 @@ class StudentPresenceService {
   async cleanup() {
     console.log("[StudentPresence] Cleaning up service");
     
+    // Completely remove student from presence tracking
+    try {
+      await this.removeStudentCompletely();
+    } catch (error) {
+      console.error("[StudentPresence] Error removing student completely during cleanup:", error);
+    }
+    
     // Clean up all listeners
     this.cleanupListeners.forEach(unsubscribe => {
       try {
@@ -299,6 +341,10 @@ class StudentPresenceService {
     try {
       const uid = this.getUserId();
       if (!uid) return;
+      
+      console.log("[StudentPresence] Forcing student offline:", uid);
+      
+      // Update Realtime Database
       const db = getDatabase();
       const studentRef = ref(db, `studentPresence/${uid}`);
       await update(studentRef, {
@@ -306,9 +352,78 @@ class StudentPresenceService {
         isOnline: false,
         updatedAt: Date.now(),
       });
-      console.log("[StudentPresence] Forced student offline:", uid);
+      
+      // Also update Firestore studentStatus collection
+      try {
+        const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
+        const { db: firestoreDb } = await import('../config/firebaseconfig');
+        
+        const studentStatusRef = doc(firestoreDb, 'studentStatus', uid);
+        await setDoc(studentStatusRef, {
+          isOnline: false,
+          lastActive: serverTimestamp(),
+          studentId: uid,
+          studentName: 'Student',
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+        
+        console.log("[StudentPresence] Updated Firestore studentStatus for:", uid);
+      } catch (firestoreError) {
+        console.error("[StudentPresence] Error updating Firestore studentStatus:", firestoreError);
+      }
+      
+      // Remove the student from Realtime Database completely
+      try {
+        await set(ref(db, `studentPresence/${uid}`), null);
+        console.log("[StudentPresence] Removed student from Realtime Database:", uid);
+      } catch (removeError) {
+        console.error("[StudentPresence] Error removing student from Realtime Database:", removeError);
+      }
+      
+      console.log("[StudentPresence] Successfully forced student offline:", uid);
     } catch (error) {
       console.error("[StudentPresence] Error forcing student offline:", error);
+    }
+  }
+
+  /**
+   * Completely remove student from all presence tracking
+   */
+  async removeStudentCompletely() {
+    try {
+      const uid = this.getUserId();
+      if (!uid) return;
+      
+      console.log("[StudentPresence] Completely removing student from presence tracking:", uid);
+      
+      // First, mark as offline in Realtime Database
+      const db = getDatabase();
+      const studentRef = ref(db, `studentPresence/${uid}`);
+      await update(studentRef, {
+        lastSeen: Date.now(),
+        isOnline: false,
+        updatedAt: Date.now(),
+      });
+      
+      // Then remove completely from Realtime Database
+      await set(studentRef, null);
+      
+      // Remove from Firestore studentStatus collection
+      try {
+        const { doc, deleteDoc } = await import('firebase/firestore');
+        const { db: firestoreDb } = await import('../config/firebaseconfig');
+        
+        const studentStatusRef = doc(firestoreDb, 'studentStatus', uid);
+        await deleteDoc(studentStatusRef);
+        
+        console.log("[StudentPresence] Removed student from Firestore studentStatus:", uid);
+      } catch (firestoreError) {
+        console.error("[StudentPresence] Error removing from Firestore studentStatus:", firestoreError);
+      }
+      
+      console.log("[StudentPresence] Successfully removed student completely:", uid);
+    } catch (error) {
+      console.error("[StudentPresence] Error removing student completely:", error);
     }
   }
 }

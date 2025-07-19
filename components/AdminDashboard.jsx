@@ -200,9 +200,10 @@ const AdminDashboard = ({ navigation, route }) => {
       console.log("[AdminDashboard] Cleaning up presence service");
       await userPresenceService.cleanup();
 
-      // Force admin offline
-      console.log("[AdminDashboard] Forcing admin offline");
+      // Force admin offline and cleanup
+      console.log("[AdminDashboard] Forcing admin offline and cleaning up");
       await adminStatusService.forceOffline();
+      await adminStatusService.cleanup();
 
       // Then sign out from Firebase
       console.log("[AdminDashboard] Signing out from Firebase");

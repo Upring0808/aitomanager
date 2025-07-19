@@ -400,48 +400,46 @@ const ChatScreen = ({ navigation }) => {
   });
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f8f9fa' }}>
-      <View style={{ flex: 1, backgroundColor: 'red' }}>
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={[
-            styles.messagesList,
-            { paddingBottom: keyboardVisible ? 0 : 16 }
-          ]}
-          showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => scrollToEnd.current?.()}
-          ListEmptyComponent={renderEmptyState}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          initialNumToRender={15}
-          maxToRenderPerBatch={20}
-          windowSize={10}
-          removeClippedSubviews={true}
+    <View style={{ flex: 1, backgroundColor: '#f8f9fa' }}>
+      <FlatList
+        ref={flatListRef}
+        data={messages}
+        renderItem={renderMessage}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={[
+          styles.messagesList,
+          { paddingBottom: keyboardVisible ? 0 : 16 }
+        ]}
+        showsVerticalScrollIndicator={false}
+        onContentSizeChange={() => scrollToEnd.current?.()}
+        ListEmptyComponent={renderEmptyState}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        initialNumToRender={15}
+        maxToRenderPerBatch={20}
+        windowSize={10}
+        removeClippedSubviews={true}
+      />
+      <Animated.View style={[styles.inputContainer, { marginBottom: Math.max(0, keyboardHeight - 8) }]}>
+        <TextInput
+          style={styles.textInput}
+          placeholder="Type your message..."
+          value={newMessage}
+          onChangeText={setNewMessage}
+          multiline
+          maxLength={500}
+          placeholderTextColor="#999"
+          textAlignVertical="top"
+          returnKeyType="default"
         />
-        <Animated.View style={[styles.inputContainer, { marginBottom: Math.max(0, keyboardHeight - 8) }]}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Type your message..."
-            value={newMessage}
-            onChangeText={setNewMessage}
-            multiline
-            maxLength={500}
-            placeholderTextColor="#999"
-            textAlignVertical="top"
-            returnKeyType="default"
-          />
-          <TouchableOpacity
-            style={styles.sendButton}
-            onPress={sendMessage}
-            disabled={!newMessage.trim() || sending}
-          >
-            <MaterialIcons name="send" size={20} color="#fff" />
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
+        <TouchableOpacity
+          style={styles.sendButton}
+          onPress={sendMessage}
+          disabled={!newMessage.trim() || sending}
+        >
+          <MaterialIcons name="send" size={20} color="#fff" />
+        </TouchableOpacity>
+      </Animated.View>
       {Platform.OS === 'android' && (
         <Modal
           visible={showActionSheet}
@@ -513,7 +511,7 @@ const ChatScreen = ({ navigation }) => {
           </TouchableWithoutFeedback>
         </Modal>
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -538,8 +536,9 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
   messagesList: {
+    flexGrow: 1,
     paddingHorizontal: 16,
-    // paddingVertical: 12, // Removed as per edit hint
+    paddingTop: 0, // Start at the very top
   },
   messageContainer: {
     marginVertical: 4,

@@ -1,6 +1,7 @@
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../config/firebaseconfig';
 import { AppState } from 'react-native';
+import { onAuthStateChanged } from 'firebase/auth';
 
 class StudentStatusService {
   constructor() {
@@ -9,6 +10,7 @@ class StudentStatusService {
     this.backgroundTimeout = null;
     this.lastActiveTime = null;
     this.appStateSubscription = null;
+    this.authUnsubscribe = null;
   }
 
   // Set student as online
@@ -193,6 +195,31 @@ class StudentStatusService {
     }
   };
 
+  /**
+   * Setup auth state listener for automatic logout cleanup
+   */
+  setupAuthStateListener() {
+    try {
+      if (this.authUnsubscribe) {
+        this.authUnsubscribe();
+      }
+      
+      this.authUnsubscribe = onAuthStateChanged(auth, async (user) => {
+        if (!user && this.isOnline) {
+          console.log('[StudentStatusService] User signed out, forcing offline and cleaning up');
+          try {
+            await this.forceOffline();
+            await this.cleanup();
+          } catch (error) {
+            console.error('[StudentStatusService] Error during auth state cleanup:', error);
+          }
+        }
+      });
+    } catch (error) {
+      console.error('[StudentStatusService] Error setting up auth state listener:', error);
+    }
+  }
+
   // Initialize student status (called when student logs in)
   async initialize() {
     console.log('[StudentStatusService] Initializing student status service');
@@ -200,6 +227,10 @@ class StudentStatusService {
     
     // Set up app state listener
     this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
+    
+    // Set up auth state listener for automatic logout cleanup
+    this.setupAuthStateListener();
+    
     console.log('[StudentStatusService] Student status service initialized successfully');
   }
 
@@ -209,13 +240,20 @@ class StudentStatusService {
     console.log('[StudentStatusService] Current user:', auth.currentUser?.uid);
     console.log('[StudentStatusService] Is online before cleanup:', this.isOnline);
     
-    await this.setOffline();
+    await this.forceOffline();
     
     // Remove app state listener
     if (this.appStateSubscription) {
       this.appStateSubscription.remove();
       this.appStateSubscription = null;
       console.log('[StudentStatusService] App state listener removed');
+    }
+    
+    // Remove auth state listener
+    if (this.authUnsubscribe) {
+      this.authUnsubscribe();
+      this.authUnsubscribe = null;
+      console.log('[StudentStatusService] Auth state listener removed');
     }
     
     console.log('[StudentStatusService] Cleanup completed');

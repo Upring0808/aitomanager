@@ -46,7 +46,7 @@ const Logout = ({
         } else {
           console.log("[Logout] Forcing student offline immediately");
           await studentStatusService.forceOffline();
-          await studentPresenceService.forceOffline();
+          await studentPresenceService.removeStudentCompletely();
           // Direct Firestore update for immediate effect
           if (user) {
             try {

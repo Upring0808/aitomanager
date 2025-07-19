@@ -16,6 +16,7 @@ import {
   Easing,
   Dimensions,
   TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { db, auth } from '../../../../config/firebaseconfig';
@@ -57,6 +58,8 @@ const AdminChatScreen = ({ navigation }) => {
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [actionSheetMessageId, setActionSheetMessageId] = useState(null);
   const [actionSheetAnim] = useState(new Animated.Value(0));
+  const [keyboardHeight] = useState(new Animated.Value(0));
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
 
   useEffect(() => {
@@ -75,6 +78,31 @@ const AdminChatScreen = ({ navigation }) => {
         if (cleanup) cleanup();
       };
     }
+  }, []);
+
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardVisible(true);
+      Animated.timing(keyboardHeight, {
+        toValue: event.endCoordinates.height,
+        duration: 250,
+        useNativeDriver: false,
+      }).start();
+    });
+
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+      Animated.timing(keyboardHeight, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: false,
+      }).start();
+    });
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
   }, []);
 
   const initializeStudentPresence = async () => {
@@ -575,94 +603,90 @@ const AdminChatScreen = ({ navigation }) => {
   // Show chat conversation
   if (selectedConversation) {
     return (
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      >
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#f8f9fa' }} edges={['bottom', 'left', 'right']}>
-          {/* Student Info Header */}
-          <View style={styles.studentInfoContainer}>
-            <View style={styles.studentInfoContent}>
-              <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => {
-                  if (navigation.canGoBack()) {
-                    navigation.goBack();
-                  } else {
-                    navigation.navigate('Dashboard');
-                  }
-                }}
-              >
-                <MaterialIcons name="arrow-back" size={24} color="#007BFF" />
-              </TouchableOpacity>
-              <View style={styles.studentAvatar}>
-                <MaterialIcons name="person" size={20} color="#007BFF" />
-              </View>
-              <View style={styles.studentInfo}>
-                <Text style={styles.studentName}>{selectedConversation?.studentName || 'Student'}</Text>
-                <View style={styles.studentStatusRow}>
-                  <View style={[
-                    styles.studentOnlineIndicator,
-                    { backgroundColor: studentStatuses[selectedConversation.studentId]?.isOnline ? '#10b981' : '#64748b' }
-                  ]} />
-                  <Text style={styles.studentStatusText}>
-                    {studentStatuses[selectedConversation.studentId]?.isOnline ? 'Active now' : 'Offline'}
+      <View style={{ flex: 1, backgroundColor: '#f8f9fa' }}>
+        {/* Student Info Header */}
+        <View style={styles.studentInfoContainer}>
+          <View style={styles.studentInfoContent}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => {
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                } else {
+                  navigation.navigate('Dashboard');
+                }
+              }}
+            >
+              <MaterialIcons name="arrow-back" size={24} color="#007BFF" />
+            </TouchableOpacity>
+            <View style={styles.studentAvatar}>
+              <MaterialIcons name="person" size={20} color="#007BFF" />
+            </View>
+            <View style={styles.studentInfo}>
+              <Text style={styles.studentName}>{selectedConversation?.studentName || 'Student'}</Text>
+              <View style={styles.studentStatusRow}>
+                <View style={[
+                  styles.studentOnlineIndicator,
+                  { backgroundColor: studentStatuses[selectedConversation.studentId]?.isOnline ? '#10b981' : '#64748b' }
+                ]} />
+                <Text style={styles.studentStatusText}>
+                  {studentStatuses[selectedConversation.studentId]?.isOnline ? 'Active now' : 'Offline'}
+                </Text>
+                {!studentStatuses[selectedConversation.studentId]?.isOnline && (
+                  <Text style={styles.studentLastSeenText}>
+                    • {studentPresenceService.formatLastSeen(studentStatuses[selectedConversation.studentId]?.lastSeen)}
                   </Text>
-                  {!studentStatuses[selectedConversation.studentId]?.isOnline && (
-                    <Text style={styles.studentLastSeenText}>
-                      • {studentPresenceService.formatLastSeen(studentStatuses[selectedConversation.studentId]?.lastSeen)}
-                    </Text>
-                  )}
-                </View>
+                )}
               </View>
             </View>
           </View>
+        </View>
 
-          {/* Messages List */}
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            renderItem={renderMessage}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={[styles.messagesList, { paddingBottom: 70 }]}
-            showsVerticalScrollIndicator={false}
-            onContentSizeChange={() => scrollToEnd.current?.()}
-            ListEmptyComponent={renderEmptyState}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            style={styles.messagesContainer}
-            initialNumToRender={15}
-            maxToRenderPerBatch={20}
-            windowSize={10}
-            removeClippedSubviews={true}
+        {/* Messages List */}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[
+            styles.messagesList,
+            { paddingBottom: keyboardVisible ? 0 : 16 }
+          ]}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => scrollToEnd.current?.()}
+          ListEmptyComponent={renderEmptyState}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          initialNumToRender={15}
+          maxToRenderPerBatch={20}
+          windowSize={10}
+          removeClippedSubviews={true}
+        />
+
+        {/* Message Input */}
+        <Animated.View style={[styles.inputContainer, { marginBottom: Math.max(0, keyboardHeight - 8) }]}>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Type your message..."
+            value={newMessage}
+            onChangeText={setNewMessage}
+            multiline
+            maxLength={500}
+            placeholderTextColor="#999"
+            textAlignVertical="top"
+            returnKeyType="default"
           />
-
-          {/* Message Input */}
-          <View style={styles.fixedInputContainer}>
-            <TextInput
-              style={styles.textInput}
-              placeholder="Type your message..."
-              value={newMessage}
-              onChangeText={setNewMessage}
-              multiline
-              maxLength={500}
-              placeholderTextColor="#999"
-              textAlignVertical="top"
-              returnKeyType="default"
-            />
-            <TouchableOpacity
-              style={[
-                styles.sendButton,
-                (!newMessage.trim() || sending) && styles.sendButtonDisabled
-              ]}
-              onPress={sendMessage}
-              disabled={!newMessage.trim() || sending}
-            >
-              <MaterialIcons name="send" size={20} color="#fff" />
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              (!newMessage.trim() || sending) && styles.sendButtonDisabled
+            ]}
+            onPress={sendMessage}
+            disabled={!newMessage.trim() || sending}
+          >
+            <MaterialIcons name="send" size={20} color="#fff" />
+          </TouchableOpacity>
+        </Animated.View>
         {Platform.OS === 'android' && (
           <Modal
             visible={showActionSheet}
@@ -735,7 +759,7 @@ const AdminChatScreen = ({ navigation }) => {
             </TouchableWithoutFeedback>
           </Modal>
         )}
-      </KeyboardAvoidingView>
+      </View>
     );
   }
 
@@ -922,9 +946,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   messagesList: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
     flexGrow: 1,
+    paddingHorizontal: 16,
+    paddingTop: 0, // Start at the very top
   },
   messageContainer: {
     marginVertical: 4,
