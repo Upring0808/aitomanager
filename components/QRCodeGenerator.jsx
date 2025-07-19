@@ -105,12 +105,13 @@ const QRCodeGenerator = ({ organization, visible, onClose }) => {
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="fade"
       transparent={true}
+      statusBarTranslucent={true}
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="rgba(0,0,0,0.8)" />
+      <View style={styles.fullscreenModal}>
+       
         <View style={styles.overlay}>
           <View style={styles.modalContent}>
             {/* Header */}
@@ -237,18 +238,28 @@ const QRCodeGenerator = ({ organization, visible, onClose }) => {
             </View>
           </View>
         </View>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
+  fullscreenModal: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 99999,
+    width: '100%',
+    height: '100%',
+  },
   container: {
     flex: 1,
   },
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,

@@ -30,14 +30,13 @@ import { createStackNavigator } from "@react-navigation/stack";
 import * as SplashScreen from "expo-splash-screen";
 
 // Direct import for firebase/auth to avoid the modular instance error
-import {
-  onAuthStateChanged as firebaseOnAuthStateChanged,
-  signOut as firebaseSignOut,
-} from "firebase/auth";
+import { getAuth } from "./firebase";
+const firebaseOnAuthStateChanged = (...args) => getAuth().onAuthStateChanged(...args);
+const firebaseSignOut = (...args) => getAuth().signOut(...args);
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Import Firebase services with newer approach
-import { getAuth, getDatabase, getDb, getStorage } from "./firebase";
+import { getDatabase, getDb, getStorage } from "./firebase";
 import { collection, query, where, getDocs, onSnapshot, writeBatch, doc, onSnapshot as firestoreOnSnapshot, orderBy, limit } from "firebase/firestore";
 import { auth, db } from "./config/firebaseconfig";
 import { formatUTCRelativeTime } from "./utils/timeUtils";
@@ -47,6 +46,7 @@ import userPresenceService from "./services/UserPresenceService";
 import adminStatusService from "./services/AdminStatusService";
 import FontLoader from "./FontLoader";
 import studentStatusService from "./services/StudentStatusService";
+import StudentPresenceService from './services/StudentPresenceService';
 
 // Import context providers
 import { OnlineStatusProvider } from "./contexts/OnlineStatusContext";
@@ -103,6 +103,7 @@ import AdminChatScreen from "./screens/Auth/Dashboard/Admin/AdminChatScreen";
 import { useNavigation } from '@react-navigation/native';
 import GovernorDashboard from "./screens/Auth/Dashboard/Admin/GovernorDashboard";
 import messaging from '@react-native-firebase/messaging';
+import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 
 // Override default Text component to use system fonts
 Text.defaultProps = Text.defaultProps || {};
@@ -123,7 +124,9 @@ const ChatHeaderTitle = () => {
         const data = doc.data();
         setAdminStatus({
           isOnline: data.isOnline || false,
-          lastActive: data.lastActive?.toDate() || null,
+          lastActive: data.lastActive?.toDate
+            ? data.lastActive.toDate()
+            : (typeof data.lastActive === 'number' ? new Date(data.lastActive) : null),
         });
       } else {
         setAdminStatus({
@@ -167,9 +170,9 @@ const ChatHeaderTitle = () => {
             <Text style={styles.chatHeaderStatusText}>
               {adminStatus.isOnline ? 'Active now' : 'Offline'}
             </Text>
-            {!adminStatus.isOnline && adminStatus.lastActive && (
+            {!adminStatus.isOnline && (
               <Text style={styles.chatHeaderLastActiveText}>
-                • {formatLastActive(adminStatus.lastActive)}
+                • {StudentPresenceService.formatLastSeen(adminStatus.lastActive)}
               </Text>
             )}
           </View>
@@ -193,7 +196,9 @@ const ChatHeader = () => {
         const data = doc.data();
         setAdminStatus({
           isOnline: data.isOnline || false,
-          lastActive: data.lastActive?.toDate() || null,
+          lastActive: data.lastActive?.toDate
+            ? data.lastActive.toDate()
+            : (typeof data.lastActive === 'number' ? new Date(data.lastActive) : null),
         });
       } else {
         setAdminStatus({
@@ -245,9 +250,9 @@ const ChatHeader = () => {
               <Text style={styles.chatHeaderStatusText}>
                 {adminStatus.isOnline ? 'Active now' : 'Offline'}
               </Text>
-              {!adminStatus.isOnline && adminStatus.lastActive && (
+              {!adminStatus.isOnline && (
                 <Text style={styles.chatHeaderLastActiveText}>
-                  • {formatLastActive(adminStatus.lastActive)}
+                  • {StudentPresenceService.formatLastSeen(adminStatus.lastActive)}
                 </Text>
               )}
             </View>
@@ -270,38 +275,38 @@ const UserHeaderRight = () => {
   
   // Fetch unread counts
   useEffect(() => {
-    const user = auth.currentUser;
-    if (user) {
-      // Listen for unread messages
-      const messagesRef = collection(db, 'messages');
-      const messagesQuery = query(
-        messagesRef,
-        where('participants', 'array-contains', user.uid),
-        where('read', '==', false),
-        where('senderRole', '==', 'admin')
-      );
-      
-      const unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
-        setUnreadMessages(snapshot.size);
-      });
-      
-      // Listen for unread notifications
-      const notificationsRef = collection(db, 'notifications');
-      const notificationsQuery = query(
-        notificationsRef,
-        where('recipients', 'array-contains', user.uid),
-        where('read', '==', false)
-      );
-      
-      const unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot) => {
-        setUnreadNotifications(snapshot.size);
-      });
-      
-      return () => {
-        unsubscribeMessages();
-        unsubscribeNotifications();
-      };
-    }
+    let unsubscribeMessages;
+    let unsubscribeNotifications;
+    const fetchUnread = async () => {
+      const user = auth.currentUser;
+      const orgId = await AsyncStorage.getItem('selectedOrgId');
+      if (user && orgId) {
+        const messagesRef = collection(db, 'organizations', orgId, 'messages');
+        const messagesQuery = query(
+          messagesRef,
+          where('participants', 'array-contains', user.uid),
+          where('read', '==', false),
+          where('senderRole', '==', 'admin')
+        );
+        unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
+          setUnreadMessages(snapshot.size);
+        });
+        const notificationsRef = collection(db, 'notifications');
+        const notificationsQuery = query(
+          notificationsRef,
+          where('recipients', 'array-contains', user.uid),
+          where('read', '==', false)
+        );
+        unsubscribeNotifications = onSnapshot(notificationsQuery, (snapshot) => {
+          setUnreadNotifications(snapshot.size);
+        });
+      }
+    };
+    fetchUnread();
+    return () => {
+      if (unsubscribeMessages) unsubscribeMessages();
+      if (unsubscribeNotifications) unsubscribeNotifications();
+    };
   }, []);
   
   return (
@@ -368,18 +373,25 @@ const AdminHeaderRight = () => {
   
   // Fetch unread student messages
   useEffect(() => {
-    const messagesRef = collection(db, 'messages');
-    const messagesQuery = query(
-      messagesRef,
-      where('senderRole', '==', 'student'),
-      where('read', '==', false)
-    );
-    
-    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
-      setUnreadMessages(snapshot.size);
-    });
-    
-    return unsubscribe;
+    let unsubscribe;
+    const fetchUnread = async () => {
+      const orgId = await AsyncStorage.getItem('selectedOrgId');
+      if (orgId) {
+        const messagesRef = collection(db, 'organizations', orgId, 'messages');
+        const messagesQuery = query(
+          messagesRef,
+          where('senderRole', '==', 'student'),
+          where('read', '==', false)
+        );
+        unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
+          setUnreadMessages(snapshot.size);
+        });
+      }
+    };
+    fetchUnread();
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
   
   return (
@@ -594,7 +606,7 @@ const AdminDashboardNavigator = () => {
   return (
     <AdminDashboardStack.Navigator screenOptions={{ headerShown: true }}>
       <AdminDashboardStack.Screen
-        name="AdminDashboardMain"
+        name="Admin Dashboard"
         component={AdminDashboard}
         options={{
           headerRight: () => <AdminHeaderRight />,
@@ -631,6 +643,7 @@ const AdminDashboardNavigator = () => {
           headerShown: false,
         }}
       />
+      <AdminDashboardStack.Screen name="EventCommentsScreen" component={EventCommentsScreen} options={{ title: 'Event Comments', headerShown: true }} />
     </AdminDashboardStack.Navigator>
   );
 };
@@ -672,6 +685,7 @@ const LoadingScreen = () => {
 };
 
 const App = () => {
+  console.log("[App] App.js loaded");
   const [userLoggedIn, setUserLoggedIn] = useState(false);
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [initializing, setInitializing] = useState(true);
@@ -679,6 +693,8 @@ const App = () => {
   const [isNavigationReady, setIsNavigationReady] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [initialRoute, setInitialRoute] = useState("EntryScreen");
+  const [entryChecked, setEntryChecked] = useState(false);
 
   const appState = useRef(AppState.currentState);
   const navigationRef = useRef(null);
@@ -693,54 +709,55 @@ const App = () => {
   };
 
   // FCM notification permission and token setup
-  useEffect(() => {
-    // Request user permission for notifications
-    const requestPermission = async () => {
-      try {
-        const authStatus = await messaging().requestPermission();
-        const enabled =
-          authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-          authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+  // useEffect(() => {
+  //   // Request user permission for notifications
+  //   const requestPermission = async () => {
+  //     try {
+  //       const authStatus = await messaging().requestPermission();
+  //       const enabled =
+  //         authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+  //         authStatus === messaging.AuthorizationStatus.PROVISIONAL;
 
-        if (enabled) {
-          console.log('Notification permission enabled:', authStatus);
-          getFcmToken();
-        } else {
-          console.log('Notification permission not granted');
-        }
-      } catch (error) {
-        console.error('Error requesting notification permission:', error);
-      }
-    };
+  //       if (enabled) {
+  //         console.log('Notification permission enabled:', authStatus);
+  //         getFcmToken();
+  //       } else {
+  //         console.log('Notification permission not granted');
+  //       }
+  //     } catch (error) {
+  //       console.error('Error requesting notification permission:', error);
+  //     }
+  //   };
 
-    // Get FCM token
-    const getFcmToken = async () => {
-      try {
-        const fcmToken = await messaging().getToken();
-        if (fcmToken) {
-          console.log('FCM Token:', fcmToken);
-          // TODO: Save this token to your database, associated with the user
-        }
-      } catch (error) {
-        console.error('Error getting FCM token:', error);
-      }
-    };
+  //   // Get FCM token
+  //   const getFcmToken = async () => {
+  //     try {
+  //       const fcmToken = await messaging().getToken();
+  //       if (fcmToken) {
+  //         console.log('FCM Token:', fcmToken);
+  //         // TODO: Save this token to your database, associated with the user
+  //       }
+  //     } catch (error) {
+  //       console.error('Error getting FCM token:', error);
+  //     }
+  //   };
 
-    requestPermission();
+  //   requestPermission();
 
-    // Listen for token refresh
-    const unsubscribe = messaging().onTokenRefresh(token => {
-      // TODO: Update token in your database
-      console.log('FCM Token refreshed:', token);
-    });
+  //   // Listen for token refresh
+  //   const unsubscribe = messaging().onTokenRefresh(token => {
+  //     // TODO: Update token in your database
+  //     console.log('FCM Token refreshed:', token);
+  //   });
 
-    return unsubscribe;
-  }, []);
+  //   return unsubscribe;
+  // }, []);
 
   // Handle user state changes using Firebase web SDK
   useEffect(() => {
-    // Check if auth is initialized
+    console.log("[App] About to call getAuth() in useEffect");
     const auth = getAuth();
+    console.log("[App] getAuth() returned:", auth);
     if (!auth) {
       console.error(
         "[App] Auth is not initialized yet, cannot subscribe to auth changes"
@@ -750,10 +767,10 @@ const App = () => {
       return () => {};
     }
 
-    console.log("[App] Setting up auth state listener");
+    console.log("[App] Setting up auth state listener", auth);
 
     try {
-      // Use direct import of onAuthStateChanged
+      if (auth && typeof auth.onAuthStateChanged === "function") {
       const unsubscribe = firebaseOnAuthStateChanged(
         auth,
         async (currentUser) => {
@@ -826,10 +843,17 @@ const App = () => {
           }
         }
       );
-
       return unsubscribe; // unsubscribe on unmount
+      } else {
+        console.error("[App] onAuthStateChanged is not a function on auth instance", auth);
+        setInitializing(false);
+        setFirebaseReady(true);
+        return () => {};
+      }
     } catch (error) {
-      console.error("[App] Error setting up auth listener:", error);
+      // Suppressed: [App] Error setting up auth listener
+      // console.error("[App] Error setting up auth listener:", error);
+      console.debug("[App] (suppressed) Error setting up auth listener:", error);
       setInitializing(false);
       setFirebaseReady(true);
       return () => {};
@@ -890,6 +914,49 @@ const App = () => {
     return () => clearInterval(interval);
   }, [userLoggedIn]);
 
+  // Manual splash screen control for pro feel
+  useEffect(() => {
+    SplashScreen.preventAutoHideAsync();
+  }, []);
+
+  useEffect(() => {
+    // Hide splash as soon as ready, no extra delay
+    if (!initializing && firebaseReady) {
+      SplashScreen.hideAsync();
+    }
+  }, [initializing, firebaseReady]);
+
+  // Check if EntryScreen has been shown before
+  useEffect(() => {
+    const checkEntryScreen = async () => {
+      try {
+        const hasShownEntry = await AsyncStorage.getItem("@hasShownEntryScreen");
+        if (hasShownEntry) {
+          // If user is logged in, skip EntryScreen
+          if (userLoggedIn) {
+            setInitialRoute(isAdmin ? "AdminDashboard" : "Dashboard");
+          } else {
+            setInitialRoute("EntryScreen");
+          }
+        } else {
+          setInitialRoute("EntryScreen");
+        }
+      } catch (e) {
+        setInitialRoute("EntryScreen");
+      } finally {
+        setEntryChecked(true);
+      }
+    };
+    checkEntryScreen();
+  }, [userLoggedIn, isAdmin]);
+
+  // Mark EntryScreen as shown after first mount
+  useEffect(() => {
+    if (initialRoute === "EntryScreen" && entryChecked) {
+      AsyncStorage.setItem("@hasShownEntryScreen", "true");
+    }
+  }, [initialRoute, entryChecked]);
+
   // Main navigation structure with better conditional rendering
   const renderNavigationContent = () => {
     // Show loading screen while Firebase initializes
@@ -913,7 +980,8 @@ const App = () => {
         />
         <Stack.Screen name="QRLoginScreen" component={QRLoginScreen} />
         <Stack.Screen name="LoginScreen" component={LoginScreen} />
-        <Stack.Screen name="Register" component={Register} />
+        <Stack.Screen name="ForgotPasswordScreen" component={ForgotPasswordScreen} options={{ headerShown: true, title: 'Forgot Password' }} />
+        <Stack.Screen name="Register" component={Register} options={{ headerShown: true, title: '' }} />
         <Stack.Screen name="RegisterAdmin" component={RegisterAdmin} />
         <Stack.Screen name="AdminLogin" component={AdminLogin} />
         <Stack.Screen name="Dashboard" component={DashboardNavigator} />
@@ -932,8 +1000,8 @@ const App = () => {
     );
   };
 
-  // Show loading screen while Firebase initializes auth state
-  if (initializing || !firebaseReady) {
+  // Show loading screen while checking entry state
+  if (!entryChecked || initializing || !firebaseReady) {
     return <LoadingScreen />;
   }
 
@@ -972,7 +1040,7 @@ const App = () => {
                     };
                   },
                 }}
-                initialRouteName="EntryScreen"
+                initialRouteName={initialRoute}
               >
                 {renderNavigationContent()}
               </Stack.Navigator>
@@ -1132,5 +1200,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     paddingLeft: 5,
+  },
+  modernBadgeDot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#D92626',
+    zIndex: 2,
   },
 });

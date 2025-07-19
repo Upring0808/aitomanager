@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,12 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Modal,
+  ActionSheetIOS,
+  Animated,
+  Easing,
+  Dimensions,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { db, auth } from '../../../../config/firebaseconfig';
@@ -33,6 +39,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import studentPresenceService from '../../../../services/StudentPresenceService';
 import { formatUTCTime, formatUTCRelativeTime } from '../../../../utils/timeUtils';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
+import { LogBox } from 'react-native';
+LogBox.ignoreLogs(['Text strings must be rendered within a <Text> component']);
 
 
 const AdminChatScreen = ({ navigation }) => {
@@ -46,6 +54,9 @@ const AdminChatScreen = ({ navigation }) => {
   const [studentStatuses, setStudentStatuses] = useState({});
   const flatListRef = useRef(null);
   const insets = useSafeAreaInsets();
+  const [showActionSheet, setShowActionSheet] = useState(false);
+  const [actionSheetMessageId, setActionSheetMessageId] = useState(null);
+  const [actionSheetAnim] = useState(new Animated.Value(0));
 
 
   useEffect(() => {
@@ -142,20 +153,20 @@ const AdminChatScreen = ({ navigation }) => {
     }
   };
 
-  const fetchConversations = () => {
-    setLoading(true);
-    
-    // Query all messages to get unique student conversations
-    const messagesRef = collection(db, 'messages');
-    const q = query(messagesRef, orderBy('timestamp', 'desc'));
+  const getOrgId = async () => {
+    return await AsyncStorage.getItem('selectedOrgId');
+  };
 
+  const fetchConversations = async () => {
+    setLoading(true);
+    const orgId = await getOrgId();
+    const messagesRef = collection(db, 'organizations', orgId, 'messages');
+    const q = query(messagesRef, orderBy('timestamp', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const conversationsMap = new Map();
-      
       snapshot.forEach((doc) => {
         const messageData = doc.data();
         const studentId = messageData.senderRole === 'student' ? messageData.senderId : null;
-        
         if (studentId) {
           if (!conversationsMap.has(studentId)) {
             conversationsMap.set(studentId, {
@@ -175,14 +186,11 @@ const AdminChatScreen = ({ navigation }) => {
               existing.unreadCount += 1;
             }
           }
-          
-          // Update student presence when they send a message
           if (messageData.senderRole === 'student') {
             studentPresenceService.updateStudentLastSeen(studentId, messageData.senderName || 'Student');
           }
         }
       });
-      
       const conversationsList = Array.from(conversationsMap.values());
       setConversations(conversationsList);
       setLoading(false);
@@ -190,18 +198,17 @@ const AdminChatScreen = ({ navigation }) => {
       console.error('Error fetching conversations:', error);
       setLoading(false);
     });
-
     return unsubscribe;
   };
 
-  const fetchMessages = (studentId) => {
-    const messagesRef = collection(db, 'messages');
+  const fetchMessages = async (studentId) => {
+    const orgId = await getOrgId();
+    const messagesRef = collection(db, 'organizations', orgId, 'messages');
     const q = query(
       messagesRef,
       where('participants', 'array-contains', studentId),
       orderBy('timestamp', 'asc')
     );
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const messageList = [];
       snapshot.forEach((doc) => {
@@ -213,31 +220,26 @@ const AdminChatScreen = ({ navigation }) => {
       });
       setMessages(messageList);
     });
-
     return unsubscribe;
   };
 
   const selectConversation = async (conversation) => {
     setSelectedConversation(conversation);
     fetchMessages(conversation.studentId);
-    
-    // Mark messages from this student as read
     try {
-      const messagesRef = collection(db, 'messages');
+      const orgId = await getOrgId();
+      const messagesRef = collection(db, 'organizations', orgId, 'messages');
       const messagesQuery = query(
         messagesRef,
         where('senderId', '==', conversation.studentId),
         where('senderRole', '==', 'student'),
         where('read', '==', false)
       );
-      
       const snapshot = await getDocs(messagesQuery);
       const batch = writeBatch(db);
-      
       snapshot.docs.forEach((doc) => {
         batch.update(doc.ref, { read: true });
       });
-      
       await batch.commit();
     } catch (error) {
       console.error('Error marking messages as read:', error);
@@ -246,11 +248,8 @@ const AdminChatScreen = ({ navigation }) => {
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !currentUser || !selectedConversation) return;
-
     const messageContent = newMessage.trim();
     setNewMessage('');
-    
-    // Create temporary message with "sending" status
     const tempMessage = {
       id: `temp_${Date.now()}`,
       senderId: currentUser.uid,
@@ -263,11 +262,9 @@ const AdminChatScreen = ({ navigation }) => {
       read: false,
       status: 'sending',
     };
-
-    // Add temporary message to UI immediately
     setMessages(prev => [...prev, tempMessage]);
-
     try {
+      const orgId = await getOrgId();
       const messageData = {
         senderId: currentUser.uid,
         senderName: 'Admin',
@@ -280,23 +277,16 @@ const AdminChatScreen = ({ navigation }) => {
         status: 'delivered',
         deliveredAt: serverTimestamp(),
       };
-
-      // Add message to Firestore
-      const docRef = await addDoc(collection(db, 'messages'), messageData);
-
-      // Update the temporary message with the real message data
-      setMessages(prev => prev.map(msg => 
-        msg.id === tempMessage.id 
+      const docRef = await addDoc(collection(db, 'organizations', orgId, 'messages'), messageData);
+      setMessages(prev => prev.map(msg =>
+        msg.id === tempMessage.id
           ? { ...msg, id: docRef.id, status: 'delivered', deliveredAt: new Date() }
           : msg
       ));
-
     } catch (error) {
       console.error('Error sending message:', error);
-      
-      // Update the temporary message to show failed status
-      setMessages(prev => prev.map(msg => 
-        msg.id === tempMessage.id 
+      setMessages(prev => prev.map(msg =>
+        msg.id === tempMessage.id
           ? { ...msg, status: 'failed' }
           : msg
       ));
@@ -305,16 +295,14 @@ const AdminChatScreen = ({ navigation }) => {
 
   const retryMessage = async (messageId) => {
     const messageToRetry = messages.find(msg => msg.id === messageId);
-    if (!messageToRetry) return;
-
-    // Update status to sending
-    setMessages(prev => prev.map(msg => 
-      msg.id === messageId 
+    if (!messageToRetry || !selectedConversation) return;
+    setMessages(prev => prev.map(msg =>
+      msg.id === messageId
         ? { ...msg, status: 'sending' }
         : msg
     ));
-
     try {
+      const orgId = await getOrgId();
       const messageData = {
         senderId: currentUser.uid,
         senderName: 'Admin',
@@ -327,11 +315,7 @@ const AdminChatScreen = ({ navigation }) => {
         status: 'delivered',
         deliveredAt: serverTimestamp(),
       };
-
-      // Add message to Firestore
-      const docRef = await addDoc(collection(db, 'messages'), messageData);
-
-      // Remove the failed message and add the new one
+      const docRef = await addDoc(collection(db, 'organizations', orgId, 'messages'), messageData);
       setMessages(prev => prev.filter(msg => msg.id !== messageId));
       setMessages(prev => [...prev, {
         id: docRef.id,
@@ -339,85 +323,84 @@ const AdminChatScreen = ({ navigation }) => {
         timestamp: new Date(),
         deliveredAt: new Date(),
       }]);
-
     } catch (error) {
       console.error('Error retrying message:', error);
-      
-      // Update the message to show failed status again
-      setMessages(prev => prev.map(msg => 
-        msg.id === messageId 
+      setMessages(prev => prev.map(msg =>
+        msg.id === messageId
           ? { ...msg, status: 'failed' }
           : msg
       ));
     }
   };
 
-  // Remove the trash icon from renderMessage
-  // Add long press handler to message bubble for delete
-  const handleDeleteMessage = async (messageId) => {
-    Alert.alert(
-      'Delete Message',
-      'Are you sure you want to delete this message for everyone?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteDoc(doc(db, 'messages', messageId));
-              setMessages(prev => prev.filter(msg => msg.id !== messageId));
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete message.');
-              console.error('Error deleting message:', error);
-            }
+  const handleDeleteMessage = (messageId, senderRole) => {
+    console.log('handleDeleteMessage called', { messageId, senderRole, currentUser });
+    if (currentUser) {
+      if (Platform.OS === 'ios') {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: ['Cancel', 'Delete'],
+            destructiveButtonIndex: 1,
+            cancelButtonIndex: 0,
           },
-        },
-      ]
-    );
-  };
-
-  // Fix ReferenceError: Property 'message' doesn't exist
-  const renderMessageStatus = (item) => {
-    const isMyMessage = item.senderRole === 'admin';
-    if (!isMyMessage) return null;
-    switch (item.status) {
-      case 'sending':
-        return (
-          <View style={styles.messageFooter}>
-            <Text style={[styles.timestamp, styles.myTimestamp]}>
-              {formatUTCTime(item.timestamp)}
-            </Text>
-            <MaterialIcons name="schedule" size={12} color="rgba(255, 255, 255, 0.7)" style={styles.checkmark} />
-          </View>
+          (buttonIndex) => {
+            if (buttonIndex === 1) {
+              confirmDeleteMessage(messageId);
+            }
+          }
         );
-      case 'delivered':
-        return (
-          <View style={styles.messageFooter}>
-            <Text style={[styles.timestamp, styles.myTimestamp]}>
-              {formatUTCTime(item.timestamp)}
-            </Text>
-            <MaterialIcons name="done" size={12} color="rgba(255, 255, 255, 0.7)" style={styles.checkmark} />
-          </View>
-        );
-      case 'failed':
-        return (
-          <View style={styles.messageFooter}>
-            <Text style={[styles.timestamp, styles.myTimestamp]}>
-              {formatUTCTime(item.timestamp)}
-            </Text>
-            <TouchableOpacity style={styles.retryButton} onPress={() => retryMessage(item.id)}>
-              <MaterialIcons name="refresh" size={12} color="#007BFF" />
-              <Text style={styles.retryText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        );
-      default:
-        return null;
+      } else {
+        setActionSheetMessageId(messageId);
+        setShowActionSheet(true);
+      }
     }
   };
 
-  const renderMessage = ({ item }) => {
+  const confirmDeleteMessage = async (messageId) => {
+    // Optimistically remove the message from UI
+    setMessages(prev => prev.filter(msg => msg.id !== messageId));
+    setShowActionSheet(false);
+    setActionSheetMessageId(null);
+    try {
+      const orgId = await getOrgId();
+      await deleteDoc(doc(db, 'organizations', orgId, 'messages', messageId));
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete message.');
+      console.error('Error deleting message:', error);
+      // Optionally, re-add the message to UI if delete fails
+      // (You can implement this if you want full consistency)
+    }
+  };
+
+  // Show/hide action sheet with animation
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      if (showActionSheet) {
+        Animated.timing(actionSheetAnim, {
+          toValue: 1,
+          duration: 220,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }).start();
+      } else {
+        Animated.timing(actionSheetAnim, {
+          toValue: 0,
+          duration: 180,
+          easing: Easing.in(Easing.ease),
+          useNativeDriver: true,
+        }).start();
+      }
+    }
+  }, [showActionSheet]);
+
+  const { height: screenHeight } = Dimensions.get('window');
+  const translateY = actionSheetAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [screenHeight, 0],
+  });
+
+  // Memoized message component
+  const MemoMessage = memo(({ item, handleDeleteMessage, retryMessage, currentUser }) => {
     const isMyMessage = item.senderRole === 'admin';
     return (
       <View
@@ -427,7 +410,10 @@ const AdminChatScreen = ({ navigation }) => {
         ]}
       >
         <TouchableOpacity
-          onLongPress={() => handleDeleteMessage(item.id)}
+          onLongPress={() => {
+            console.log('onLongPress called for message', item, 'currentUser:', currentUser);
+            handleDeleteMessage(item.id, item.senderRole);
+          }}
           delayLongPress={300}
           activeOpacity={0.8}
           style={[
@@ -439,29 +425,55 @@ const AdminChatScreen = ({ navigation }) => {
             styles.messageText,
             isMyMessage ? styles.myMessageText : styles.otherMessageText
           ]}>
-            {item.content}
+            {item.content || ''}
           </Text>
           <View style={styles.messageFooter}>
-            <Text style={[styles.timestamp, isMyMessage ? styles.myTimestamp : styles.otherTimestamp]}>
-              {formatUTCTime(item.timestamp)}
+            <Text style={[
+              styles.timestamp,
+              isMyMessage ? styles.myTimestamp : styles.otherTimestamp
+            ]}>
+              {item.timestamp ? formatUTCTime(item.timestamp) : 'Now'}
             </Text>
             {isMyMessage && item.status === 'delivered' && (
               <MaterialIcons name="done" size={12} color="rgba(255, 255, 255, 0.7)" style={styles.checkmark} />
             )}
-            {isMyMessage && item.status === 'sending' && (
-              <MaterialIcons name="schedule" size={12} color="rgba(255, 255, 255, 0.7)" style={styles.checkmark} />
-            )}
-            {isMyMessage && item.status === 'failed' && (
-              <TouchableOpacity style={styles.retryButton} onPress={() => retryMessage(item.id)}>
-                <MaterialIcons name="refresh" size={12} color="#007BFF" />
-                <Text style={styles.retryText}>Retry</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </TouchableOpacity>
+        {isMyMessage && item.status === 'sending' && (
+          <View style={styles.statusContainer}>
+            <ActivityIndicator size="small" color="#64748b" />
+            <Text style={styles.statusText}>Sending...</Text>
+          </View>
+        )}
+        {isMyMessage && item.status === 'failed' && (
+          <View style={styles.statusContainer}>
+            <MaterialIcons name="error" size={14} color="#ef4444" />
+            <Text style={styles.statusText}>Failed</Text>
+            <TouchableOpacity 
+              onPress={() => retryMessage(item.id)}
+              style={styles.retryButton}
+            >
+              <MaterialIcons name="refresh" size={14} color="#007BFF" />
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
-  };
+  });
+
+  // Debounced scroll to end
+  const scrollToEnd = useRef(null);
+  useEffect(() => {
+    scrollToEnd.current = debounce(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    return () => scrollToEnd.current?.cancel && scrollToEnd.current.cancel();
+  }, []);
+
+  const renderMessage = useCallback(({ item }) => (
+    <MemoMessage item={item} handleDeleteMessage={handleDeleteMessage} retryMessage={retryMessage} currentUser={currentUser} />
+  ), [currentUser]);
 
   const renderConversation = ({ item }) => {
     const studentStatus = studentStatuses[item.studentId] || { isOnline: false, lastSeen: null };
@@ -495,11 +507,14 @@ const AdminChatScreen = ({ navigation }) => {
             </View>
           </View>
           <Text style={styles.lastMessage} numberOfLines={1}>
-            {item.lastMessage}
+            {item.lastMessage || 'No message'}
+          </Text>
+          <Text style={styles.lastMessageTime}>
+            {item.lastMessageTimestamp ? formatUTCRelativeTime(item.lastMessageTimestamp) : ''}
           </Text>
           {!studentStatus.isOnline && studentStatus.lastSeen && (
             <Text style={styles.lastSeenText}>
-              Last seen {studentPresenceService.formatLastSeen(studentStatus.lastSeen)}
+              {studentPresenceService.formatLastSeen(studentStatus.lastSeen)}
             </Text>
           )}
         </View>
@@ -560,94 +575,176 @@ const AdminChatScreen = ({ navigation }) => {
   // Show chat conversation
   if (selectedConversation) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f8f9fa' }} edges={['bottom', 'left', 'right']}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-        >
-          <View style={{ flex: 1 }}>
-            {/* Student Info Header */}
-            <View style={styles.studentInfoContainer}>
-              <View style={styles.studentInfoContent}>
-                <TouchableOpacity
-                  style={styles.backButton}
-                  onPress={() => {
-                    if (navigation.canGoBack()) {
-                      navigation.goBack();
-                    } else {
-                      navigation.navigate('Dashboard');
-                    }
-                  }}
-                >
-                  <MaterialIcons name="arrow-back" size={24} color="#007BFF" />
-                </TouchableOpacity>
-                <View style={styles.studentAvatar}>
-                  <MaterialIcons name="person" size={20} color="#007BFF" />
-                </View>
-                <View style={styles.studentInfo}>
-                  <Text style={styles.studentName}>{selectedConversation.studentName}</Text>
-                  <View style={styles.studentStatusRow}>
-                    <View style={[
-                      styles.studentOnlineIndicator,
-                      { backgroundColor: studentStatuses[selectedConversation.studentId]?.isOnline ? '#10b981' : '#64748b' }
-                    ]} />
-                    <Text style={styles.studentStatusText}>
-                      {studentStatuses[selectedConversation.studentId]?.isOnline ? 'Active now' : 'Offline'}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#f8f9fa' }} edges={['bottom', 'left', 'right']}>
+          {/* Student Info Header */}
+          <View style={styles.studentInfoContainer}>
+            <View style={styles.studentInfoContent}>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.navigate('Dashboard');
+                  }
+                }}
+              >
+                <MaterialIcons name="arrow-back" size={24} color="#007BFF" />
+              </TouchableOpacity>
+              <View style={styles.studentAvatar}>
+                <MaterialIcons name="person" size={20} color="#007BFF" />
+              </View>
+              <View style={styles.studentInfo}>
+                <Text style={styles.studentName}>{selectedConversation?.studentName || 'Student'}</Text>
+                <View style={styles.studentStatusRow}>
+                  <View style={[
+                    styles.studentOnlineIndicator,
+                    { backgroundColor: studentStatuses[selectedConversation.studentId]?.isOnline ? '#10b981' : '#64748b' }
+                  ]} />
+                  <Text style={styles.studentStatusText}>
+                    {studentStatuses[selectedConversation.studentId]?.isOnline ? 'Active now' : 'Offline'}
+                  </Text>
+                  {!studentStatuses[selectedConversation.studentId]?.isOnline && (
+                    <Text style={styles.studentLastSeenText}>
+                      • {studentPresenceService.formatLastSeen(studentStatuses[selectedConversation.studentId]?.lastSeen)}
                     </Text>
-                    {!studentStatuses[selectedConversation.studentId]?.isOnline && studentStatuses[selectedConversation.studentId]?.lastSeen && (
-                      <Text style={styles.studentLastSeenText}>
-                        • {formatUTCRelativeTime(new Date(studentStatuses[selectedConversation.studentId].lastSeen))}
-                      </Text>
-                    )}
-                  </View>
+                  )}
                 </View>
               </View>
             </View>
-
-            {/* Messages List */}
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              renderItem={renderMessage}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.messagesList}
-              showsVerticalScrollIndicator={false}
-              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="interactive"
-              style={styles.messagesContainer}
-            />
-
-            {/* Message Input */}
-            <View style={styles.inputContainer}> {/* No manual paddingBottom */}
-              <TextInput
-                style={styles.textInput}
-                placeholder="Type your message..."
-                value={newMessage}
-                onChangeText={setNewMessage}
-                multiline
-                maxLength={500}
-                placeholderTextColor="#999"
-                textAlignVertical="top"
-                returnKeyType="default"
-              />
-              <TouchableOpacity
-                style={[
-                  styles.sendButton,
-                  (!newMessage.trim() || sending) && styles.sendButtonDisabled
-                ]}
-                onPress={sendMessage}
-                disabled={!newMessage.trim() || sending}
-              >
-                <MaterialIcons name="send" size={20} color="#fff" />
-              </TouchableOpacity>
-            </View>
           </View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+
+          {/* Messages List */}
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={[styles.messagesList, { paddingBottom: 70 }]}
+            showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => scrollToEnd.current?.()}
+            ListEmptyComponent={renderEmptyState}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            style={styles.messagesContainer}
+            initialNumToRender={15}
+            maxToRenderPerBatch={20}
+            windowSize={10}
+            removeClippedSubviews={true}
+          />
+
+          {/* Message Input */}
+          <View style={styles.fixedInputContainer}>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Type your message..."
+              value={newMessage}
+              onChangeText={setNewMessage}
+              multiline
+              maxLength={500}
+              placeholderTextColor="#999"
+              textAlignVertical="top"
+              returnKeyType="default"
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                (!newMessage.trim() || sending) && styles.sendButtonDisabled
+              ]}
+              onPress={sendMessage}
+              disabled={!newMessage.trim() || sending}
+            >
+              <MaterialIcons name="send" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+        {Platform.OS === 'android' && (
+          <Modal
+            visible={showActionSheet}
+            transparent
+            animationType="none"
+            statusBarTranslucent={true}
+            onRequestClose={() => {
+              setShowActionSheet(false);
+              setActionSheetMessageId(null);
+            }}
+          >
+            {console.log('ActionSheet Modal rendered, showActionSheet:', showActionSheet)}
+            <TouchableWithoutFeedback
+              onPress={() => {
+                setShowActionSheet(false);
+                setActionSheetMessageId(null);
+              }}
+            >
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0,0,0,0.22)',
+                  zIndex: 9999,
+                  justifyContent: 'flex-end',
+                }}
+              >
+                <TouchableWithoutFeedback>
+                  <Animated.View
+                    style={{
+                      backgroundColor: '#fff',
+                      borderTopLeftRadius: 22,
+                      borderTopRightRadius: 22,
+                      padding: 16,
+                      transform: [{ translateY }],
+                      zIndex: 10000,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: -2 },
+                      shadowOpacity: 0.18,
+                      shadowRadius: 12,
+                      elevation: 12,
+                    }}
+                  >
+                    <View style={{ alignItems: 'center', marginBottom: 8 }}>
+                      <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#e0e0e0' }} />
+                    </View>
+                    <TouchableOpacity
+                      style={{ paddingVertical: 12, alignItems: 'center' }}
+                      onPress={() => {
+                        confirmDeleteMessage(actionSheetMessageId);
+                      }}
+                    >
+                      <Text style={{ color: '#e74c3c', fontWeight: 'bold', fontSize: 16 }}>Delete</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ paddingVertical: 12, alignItems: 'center' }}
+                      onPress={() => {
+                        setShowActionSheet(false);
+                        setActionSheetMessageId(null);
+                      }}
+                    >
+                      <Text style={{ color: '#222', fontSize: 16 }}>Cancel</Text>
+                    </TouchableOpacity>
+                  </Animated.View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+        )}
+      </KeyboardAvoidingView>
     );
   }
+
+  // Fallback: render nothing (should never hit)
+  return (
+    <View style={styles.container}>
+      <Text style={styles.emptyTitle}>No conversation selected</Text>
+    </View>
+  );
 };
 
 const styles = StyleSheet.create({
@@ -953,6 +1050,97 @@ const styles = StyleSheet.create({
     color: '#007BFF',
     marginLeft: 4,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteModalModern: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 24,
+    minWidth: 260,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  deleteModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#222',
+    marginBottom: 8,
+  },
+  deleteModalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  deleteModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 8,
+  },
+  deleteModalCancel: {
+    flex: 1,
+    marginRight: 8,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#f2f2f2',
+    alignItems: 'center',
+  },
+  deleteModalDelete: {
+    flex: 1,
+    marginLeft: 8,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#e74c3c',
+    alignItems: 'center',
+  },
+  deleteModalCancelText: {
+    color: '#222',
+    fontWeight: '500',
+    fontSize: 15,
+  },
+  deleteModalDeleteText: {
+    color: '#fff',
+    fontWeight: '500',
+    fontSize: 15,
+  },
+  fixedInputContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    zIndex: 10,
+  },
 });
+
+// Helper debounce function
+function debounce(func, wait) {
+  let timeout;
+  function debounced(...args) {
+    const later = () => {
+      timeout = null;
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  }
+  debounced.cancel = () => clearTimeout(timeout);
+  return debounced;
+}
 
 export default AdminChatScreen; 

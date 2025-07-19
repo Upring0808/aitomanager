@@ -273,25 +273,26 @@ const EventDetailsCard = ({ event, hasAttended, navigation, onAddComment }) => {
         )}
         {/* Add Event Comment Button */}
                     <TouchableOpacity
-          style={commentStyles.addCommentBtnImproved}
-          onPress={() => {
+          style={[commentStyles.addCommentBtnImproved, isEventEnded && commentStyles.crossedOutBtn]}
+          onPress={isEventEnded ? null : () => {
             if (navigation && navigation.navigate) {
               navigation.navigate('EventCommentsScreen', { eventId: event.id });
             } else {
               console.warn('Navigation not available for EventCommentsScreen');
             }
           }}
-          activeOpacity={0.85}
+          activeOpacity={isEventEnded ? 1 : 0.85}
+          disabled={isEventEnded}
         >
           {event.commentCount > 0 ? (
             <View style={commentStyles.inlineRow}>
-              <Text style={commentStyles.addCommentTextImproved}>See comments</Text>
-              <FontAwesome name="chevron-right" size={18} color="#203562" style={{ marginLeft: 8, marginTop: 1 }} />
+              <Text style={[commentStyles.addCommentTextImproved, isEventEnded && commentStyles.crossedOutText]}>See comments</Text>
+              <FontAwesome name="chevron-right" size={18} color="#203562" style={{ marginLeft: 8, marginTop: 1, opacity: isEventEnded ? 0.5 : 1 }} />
             </View>
           ) : (
-            <Text style={commentStyles.addCommentTextImproved}>Add comment</Text>
+            <Text style={[commentStyles.addCommentTextImproved, isEventEnded && commentStyles.crossedOutText]}>Add comment</Text>
           )}
-                    </TouchableOpacity>
+        </TouchableOpacity>
         {/* Modal for full seen list */}
         <Modal
           visible={modalVisible}
@@ -593,6 +594,12 @@ const commentStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  crossedOutBtn: {
+    opacity: 0.5,
+  },
+  crossedOutText: {
+    textDecorationLine: 'line-through',
   },
 });
 

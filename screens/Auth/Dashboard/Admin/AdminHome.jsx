@@ -50,6 +50,7 @@ import {
   startOfDay,
   endOfDay,
   isWithinInterval,
+  isValid,
 } from "date-fns";
 import {
   ChevronLeft,
@@ -106,11 +107,9 @@ const SPACING = 16;
 // Define styles before components
 const styles = StyleSheet.create({
   mainContainer: {
-    flex: 1,
     backgroundColor: "#F8FAFC",
   },
   container: {
-    flex: 1,
     paddingHorizontal: 16,
   },
   loader: {
@@ -991,6 +990,35 @@ const AddUserModal = React.memo(
             doc(db, "organizations", orgId, "users", userId),
             userData
           );
+          // Add activity log for student registration
+          const currentUser = auth.currentUser;
+          let adminUsername = "System";
+          let adminUid = "";
+          if (currentUser) {
+            adminUid = currentUser.uid;
+            // Try to get admin username from organizations/{orgId}/admins/{uid}
+            try {
+              const adminDocRef = doc(db, "organizations", orgId, "admins", adminUid);
+              const adminDocSnap = await getDoc(adminDocRef);
+              if (adminDocSnap.exists()) {
+                const adminData = adminDocSnap.data();
+                adminUsername = adminData.username || adminData.email || "System";
+              }
+            } catch (e) {}
+          }
+          await addDoc(collection(db, "organizations", orgId, "activities"), {
+            type: "student_added",
+            description: "New student registered",
+            timestamp: Timestamp.now(),
+            details: {
+              studentName: localUser.fullName,
+              studentId: localUser.studentId,
+              studentRole: localUser.role || "student",
+              issuedBy: adminUsername,
+              adminUid: adminUid,
+              orgId: orgId,
+            },
+          });
           console.log(
             "[DEBUG] AddUserModal: Student written to Firestore",
             orgId,
@@ -1558,6 +1586,12 @@ const NotificationCenter = React.memo(() => {
   );
 });
 
+// Add a safe date formatting utility at the top level
+const safeFormat = (date, fmt) => {
+  if (!date || !(date instanceof Date) || isNaN(date.getTime())) return "";
+  return format(date, fmt);
+};
+
 const AdminHome = ({ userData }) => {
   const navigation = useNavigation();
   const [username, setUsername] = useState("");
@@ -1936,31 +1970,17 @@ const AdminHome = ({ userData }) => {
     try {
       const orgId = await AsyncStorage.getItem("selectedOrgId");
       if (!orgId) return;
-      const activitiesRef = collection(db, "activities");
-      const q = query(activitiesRef, orderBy("timestamp", "desc"), limit(50));
+      const activitiesRef = collection(db, "organizations", orgId, "activities");
+      const q = query(activitiesRef, orderBy("timestamp", "desc"), limit(5));
       const snapshot = await getDocs(q);
-
-      const activities = (
-        await Promise.all(
-          snapshot.docs.map(async (docSnapshot) => {
-            const activityData = docSnapshot.data();
-            const details = activityData.details || {};
-            // Only include activities for this org
-            if (details.orgId && details.orgId !== orgId) return null;
-            if (!details.orgId && activityData.type !== "settings_updated")
-              return null;
-            // ... existing user/event/admin lookup logic ...
-            const activity = {
-              id: docSnapshot.id,
-              type: activityData.type,
-              timestamp: activityData.timestamp?.toDate(),
-              details: details,
-            };
-            // ... existing user/event/admin lookup logic ...
-            return activity;
-          })
-        )
-      ).filter(Boolean);
+      const activities = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          timestamp: data.timestamp?.toDate ? data.timestamp.toDate() : data.timestamp,
+        };
+      });
       setRecentActivities(activities);
     } catch (error) {
       console.error("Error fetching activities:", error);
@@ -1971,14 +1991,11 @@ const AdminHome = ({ userData }) => {
         position: "bottom",
       });
     }
-  }, [allUsers]);
+  }, []);
 
   useEffect(() => {
-    // Only call fetchRecentActivities if allUsers has data
-    if (allUsers.length > 0) {
-      fetchRecentActivities();
-    }
-  }, [allUsers, fetchRecentActivities]);
+    fetchRecentActivities();
+  }, [fetchRecentActivities]);
 
   const formatTimeAgo = (timestamp) => {
     if (
@@ -2023,16 +2040,17 @@ const AdminHome = ({ userData }) => {
             : adminLabel
         } (${details.adminRole || adminLabel})`;
       case "fine_paid": {
-        const paidDate = details.paidAt?.toDate();
+        const paidDate = details.paidAt?.toDate ? details.paidAt.toDate() : details.paidAt;
         const studentName = details.studentName || "Unknown";
         const eventTitle = details.eventTitle || "Unknown Event";
         const displayDate =
-          paidDate && !isNaN(paidDate.getTime())
+          paidDate && paidDate instanceof Date && !isNaN(paidDate.getTime())
             ? format(paidDate, "MMM d, yyyy")
             : "Unknown Date";
+        const claimedBy = details.issuedBy || details.claimedBy || details.adminUsername || details.adminEmail || "Unknown";
         return `Fine of ₱${
           details.amount || "0"
-        } paid by ${studentName} for ${eventTitle} on ${displayDate}`;
+        } paid by ${studentName} for ${eventTitle} on ${displayDate}. Claimed by ${claimedBy}`;
       }
       case "role_changed":
         return `Role changed for ${details.studentName || "Unknown"} from ${
@@ -2287,7 +2305,7 @@ const AdminHome = ({ userData }) => {
                   {formatActivityDescription(activity)}
                 </Text>
                 <Text style={styles.activityTime}>
-                  {format(activity.timestamp, "MMM d, yyyy 'at' h:mm a")}
+                  {safeFormat(activity.timestamp, "MMM d, yyyy 'at' h:mm a")}
                 </Text>
               </View>
             </View>
@@ -2337,8 +2355,12 @@ const AdminHome = ({ userData }) => {
   }, [userData]);
 
   return (
-    <View style={styles.mainContainer}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F8FAFC" }} edges={["bottom"]}>
+      <ScrollView
+        style={{ paddingHorizontal: 16 }}
+        contentContainerStyle={{ paddingBottom: 32, flexGrow: 1 }}
+        showsVerticalScrollIndicator={false}
+      >
         <Animated.View
           style={[
             styles.header,
@@ -2541,7 +2563,7 @@ const AdminHome = ({ userData }) => {
                       {formatActivityDescription(activity)}
                     </Text>
                     <Text style={styles.activityTime}>
-                      {formatTimeAgo(activity.timestamp)}
+                      {safeFormat(activity.timestamp, "MMM d, yyyy 'at' h:mm a")}
                     </Text>
                   </View>
                 </View>
@@ -2561,7 +2583,7 @@ const AdminHome = ({ userData }) => {
       />
       <SettingsModal />
       <NotificationCenter />
-    </View>
+    </SafeAreaView>
   );
 };
 

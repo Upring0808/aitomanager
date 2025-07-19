@@ -1029,9 +1029,9 @@ const Profile = React.memo(({
       if (["governor", "vice_governor"].includes(officerModal.role)) {
         navigation.navigate("GovernorDashboard", { userData });
       } else if (officerModal.role === "treasurer") {
-        navigation.navigate("AdminFines");
+        navigation.navigate("AdminDashboard", { screen: "AdminFines" });
       } else if (officerModal.role === "secretary") {
-        navigation.navigate("AdminEvents");
+        navigation.navigate("AdminDashboard", { screen: "AdminEvents" });
       }
     } else {
       setOfficerError(result.error || "Failed. Try again.");

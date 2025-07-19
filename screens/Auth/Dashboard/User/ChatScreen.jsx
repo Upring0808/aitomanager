@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,13 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Modal,
+  ActionSheetIOS,
+  Animated,
+  Easing,
+  Dimensions,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,9 +36,14 @@ import {
   getDocs,
   writeBatch,
   deleteDoc,
+  doc as firestoreDoc,
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { formatUTCTime } from '../../../../utils/timeUtils';
+import { formatUTCTime, formatUTCRelativeTime } from '../../../../utils/timeUtils';
+import { LogBox } from 'react-native';
+import debounce from 'lodash.debounce';
+import StudentPresenceService from '../../../../services/StudentPresenceService';
+LogBox.ignoreLogs(['Text strings must be rendered within a <Text> component']);
 
 const ChatScreen = ({ navigation }) => {
   const [messages, setMessages] = useState([]);
@@ -41,6 +53,12 @@ const ChatScreen = ({ navigation }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const flatListRef = useRef(null);
   const insets = useSafeAreaInsets();
+  const [showActionSheet, setShowActionSheet] = useState(false);
+  const [actionSheetMessageId, setActionSheetMessageId] = useState(null);
+  const [actionSheetAnim] = useState(new Animated.Value(0));
+  const [adminStatus, setAdminStatus] = useState({ isOnline: false, lastActive: null });
+  const [keyboardHeight] = useState(new Animated.Value(0));
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -51,40 +69,81 @@ const ChatScreen = ({ navigation }) => {
     }
   }, []);
 
+  useEffect(() => {
+    // Listen for admin status
+    const adminStatusRef = firestoreDoc(db, 'adminStatus', 'main');
+    const unsubscribeAdmin = onSnapshot(adminStatusRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setAdminStatus({
+          isOnline: docSnap.data().isOnline,
+          lastActive: docSnap.data().lastActive,
+        });
+      }
+    });
+    return () => {
+      unsubscribeAdmin();
+    };
+  }, []);
+
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardVisible(true);
+      Animated.timing(keyboardHeight, {
+        toValue: event.endCoordinates.height,
+        duration: 250,
+        useNativeDriver: false,
+      }).start();
+    });
+
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+      Animated.timing(keyboardHeight, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: false,
+      }).start();
+    });
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
+
+  const getOrgId = async () => {
+    return await AsyncStorage.getItem('selectedOrgId');
+  };
+
   const markMessagesAsRead = async (userId) => {
     try {
-      const messagesRef = collection(db, 'messages');
+      const orgId = await getOrgId();
+      const messagesRef = collection(db, 'organizations', orgId, 'messages');
       const messagesQuery = query(
         messagesRef,
         where('participants', 'array-contains', userId),
         where('read', '==', false),
         where('senderRole', '==', 'admin')
       );
-      
       const snapshot = await getDocs(messagesQuery);
       const batch = writeBatch(db);
-      
       snapshot.docs.forEach((doc) => {
         batch.update(doc.ref, { read: true });
       });
-      
       await batch.commit();
     } catch (error) {
       console.error('Error marking messages as read:', error);
     }
   };
 
-  const fetchMessages = (userId) => {
+  const fetchMessages = async (userId) => {
     setLoading(true);
-    
-    // Query messages where the student is the sender or receiver
-    const messagesRef = collection(db, 'messages');
+    const orgId = await getOrgId();
+    const messagesRef = collection(db, 'organizations', orgId, 'messages');
     const q = query(
       messagesRef,
       where('participants', 'array-contains', userId),
       orderBy('timestamp', 'asc')
     );
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const messageList = [];
       snapshot.forEach((doc) => {
@@ -100,17 +159,13 @@ const ChatScreen = ({ navigation }) => {
       console.error('Error fetching messages:', error);
       setLoading(false);
     });
-
     return unsubscribe;
   };
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !currentUser) return;
-
     const messageContent = newMessage.trim();
     setNewMessage('');
-    
-    // Create temporary message with "sending" status
     const tempMessage = {
       id: `temp_${Date.now()}`,
       senderId: currentUser.uid,
@@ -123,16 +178,11 @@ const ChatScreen = ({ navigation }) => {
       read: false,
       status: 'sending',
     };
-
-    // Add temporary message to UI immediately
     setMessages(prev => [...prev, tempMessage]);
-
     try {
-      // Get user details from AsyncStorage or Firestore
-      const orgId = await AsyncStorage.getItem('selectedOrgId');
+      const orgId = await getOrgId();
       const userDoc = await getDoc(doc(db, 'organizations', orgId, 'users', currentUser.uid));
       const userData = userDoc.exists() ? userDoc.data() : {};
-
       const messageData = {
         senderId: currentUser.uid,
         senderName: userData.fullName || userData.username || 'Student',
@@ -145,23 +195,16 @@ const ChatScreen = ({ navigation }) => {
         status: 'delivered',
         deliveredAt: serverTimestamp(),
       };
-
-      // Add message to Firestore
-      const docRef = await addDoc(collection(db, 'messages'), messageData);
-
-      // Update the temporary message with the real message data
-      setMessages(prev => prev.map(msg => 
-        msg.id === tempMessage.id 
+      const docRef = await addDoc(collection(db, 'organizations', orgId, 'messages'), messageData);
+      setMessages(prev => prev.map(msg =>
+        msg.id === tempMessage.id
           ? { ...msg, id: docRef.id, status: 'delivered', deliveredAt: new Date() }
           : msg
       ));
-
     } catch (error) {
       console.error('Error sending message:', error);
-      
-      // Update the temporary message to show failed status
-      setMessages(prev => prev.map(msg => 
-        msg.id === tempMessage.id 
+      setMessages(prev => prev.map(msg =>
+        msg.id === tempMessage.id
           ? { ...msg, status: 'failed' }
           : msg
       ));
@@ -171,20 +214,15 @@ const ChatScreen = ({ navigation }) => {
   const retryMessage = async (messageId) => {
     const messageToRetry = messages.find(msg => msg.id === messageId);
     if (!messageToRetry) return;
-
-    // Update status to sending
-    setMessages(prev => prev.map(msg => 
-      msg.id === messageId 
+    setMessages(prev => prev.map(msg =>
+      msg.id === messageId
         ? { ...msg, status: 'sending' }
         : msg
     ));
-
     try {
-      // Get user details
-      const orgId = await AsyncStorage.getItem('selectedOrgId');
+      const orgId = await getOrgId();
       const userDoc = await getDoc(doc(db, 'organizations', orgId, 'users', currentUser.uid));
       const userData = userDoc.exists() ? userDoc.data() : {};
-
       const messageData = {
         senderId: currentUser.uid,
         senderName: userData.fullName || userData.username || 'Student',
@@ -197,87 +235,63 @@ const ChatScreen = ({ navigation }) => {
         status: 'delivered',
         deliveredAt: serverTimestamp(),
       };
-
-      // Add message to Firestore
-      const docRef = await addDoc(collection(db, 'messages'), messageData);
-
-      // Update the message with success
-      setMessages(prev => prev.map(msg => 
-        msg.id === messageId 
+      const docRef = await addDoc(collection(db, 'organizations', orgId, 'messages'), messageData);
+      setMessages(prev => prev.map(msg =>
+        msg.id === messageId
           ? { ...msg, id: docRef.id, status: 'delivered', deliveredAt: new Date() }
           : msg
       ));
-
     } catch (error) {
       console.error('Error retrying message:', error);
-      
-      // Update the message to show failed status
-      setMessages(prev => prev.map(msg => 
-        msg.id === messageId 
+      setMessages(prev => prev.map(msg =>
+        msg.id === messageId
           ? { ...msg, status: 'failed' }
           : msg
       ));
     }
   };
 
-  const handleDeleteMessage = async (messageId) => {
-    Alert.alert(
-      'Delete Message',
-      'Are you sure you want to delete this message for everyone?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteDoc(doc(db, 'messages', messageId));
-              setMessages(prev => prev.filter(msg => msg.id !== messageId));
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete message.');
-              console.error('Error deleting message:', error);
-            }
+  const handleDeleteMessage = (messageId, senderId) => {
+    if (currentUser?.uid === senderId) {
+      if (Platform.OS === 'ios') {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: ['Cancel', 'Delete'],
+            destructiveButtonIndex: 1,
+            cancelButtonIndex: 0,
           },
-        },
-      ]
-    );
-  };
-
-  const renderMessageStatus = (item) => {
-    const isMyMessage = item.senderId === currentUser?.uid;
-    
-    if (!isMyMessage) return null;
-
-    switch (item.status) {
-      case 'sending':
-        return (
-          <View style={styles.statusContainer}>
-            <ActivityIndicator size="small" color="#64748b" />
-            <Text style={styles.statusText}>Sending...</Text>
-          </View>
+          (buttonIndex) => {
+            if (buttonIndex === 1) {
+              confirmDeleteMessage(messageId);
+            }
+          }
         );
-      case 'failed':
-        return (
-          <View style={styles.statusContainer}>
-            <MaterialIcons name="error" size={14} color="#ef4444" />
-            <Text style={styles.statusText}>Failed</Text>
-            <TouchableOpacity 
-              onPress={() => retryMessage(item.id)}
-              style={styles.retryButton}
-            >
-              <MaterialIcons name="refresh" size={14} color="#007BFF" />
-              <Text style={styles.retryText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        );
-      default:
-        return null;
+      } else {
+        setActionSheetMessageId(messageId);
+        setShowActionSheet(true);
+      }
     }
   };
 
-  const renderMessage = ({ item }) => {
+  const confirmDeleteMessage = async (messageId) => {
+    // Optimistically remove the message from UI
+    setMessages(prev => prev.filter(msg => msg.id !== messageId));
+    setShowActionSheet(false);
+    setActionSheetMessageId(null);
+    try {
+      const orgId = await getOrgId();
+      await deleteDoc(doc(db, 'organizations', orgId, 'messages', messageId));
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete message.');
+      console.error('Error deleting message:', error);
+      // Optionally, re-add the message to UI if delete fails
+      // (You can implement this if you want full consistency)
+    }
+  };
+
+  // Memoized message component
+  const MemoMessage = memo(({ item, handleDeleteMessage, retryMessage, currentUser }) => {
     const isMyMessage = item.senderId === currentUser?.uid;
-    
     return (
       <View
         style={[
@@ -286,7 +300,7 @@ const ChatScreen = ({ navigation }) => {
         ]}
       >
         <TouchableOpacity
-          onLongPress={() => handleDeleteMessage(item.id)}
+          onLongPress={() => handleDeleteMessage(item.id, item.senderId)}
           delayLongPress={300}
           activeOpacity={0.8}
           style={[
@@ -298,24 +312,46 @@ const ChatScreen = ({ navigation }) => {
             styles.messageText,
             isMyMessage ? styles.myMessageText : styles.otherMessageText
           ]}>
-            {item.content}
+            {item.content || ''}
           </Text>
           <View style={styles.messageFooter}>
             <Text style={[
               styles.timestamp,
               isMyMessage ? styles.myTimestamp : styles.otherTimestamp
             ]}>
-              {formatUTCTime(item.timestamp)}
+              {item.timestamp ? formatUTCTime(item.timestamp) : 'Now'}
             </Text>
             {isMyMessage && item.status === 'delivered' && (
               <MaterialIcons name="check" size={12} color="rgba(255, 255, 255, 0.7)" style={styles.checkmark} />
             )}
           </View>
         </TouchableOpacity>
-        {renderMessageStatus(item)}
+        {isMyMessage && item.status === 'sending' && (
+          <View style={styles.statusContainer}>
+            <ActivityIndicator size="small" color="#64748b" />
+            <Text style={styles.statusText}>Sending...</Text>
+          </View>
+        )}
+        {isMyMessage && item.status === 'failed' && (
+          <View style={styles.statusContainer}>
+            <MaterialIcons name="error" size={14} color="#ef4444" />
+            <Text style={styles.statusText}>Failed</Text>
+            <TouchableOpacity 
+              onPress={() => retryMessage(item.id)}
+              style={styles.retryButton}
+            >
+              <MaterialIcons name="refresh" size={14} color="#007BFF" />
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
-  };
+  });
+
+  const renderMessage = useCallback(({ item }) => (
+    <MemoMessage item={item} handleDeleteMessage={handleDeleteMessage} retryMessage={retryMessage} currentUser={currentUser} />
+  ), [currentUser]);
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
@@ -327,37 +363,65 @@ const ChatScreen = ({ navigation }) => {
     </View>
   );
 
-  return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0} // Adjust if you have a header
-    >
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        {/* Messages List */}
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#007BFF" />
-            <Text style={styles.loadingText}>Loading messages...</Text>
-          </View>
-        ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            renderItem={renderMessage}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.messagesList}
-            showsVerticalScrollIndicator={false}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-            ListEmptyComponent={renderEmptyState}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            style={styles.messagesContainer}
-          />
-        )}
+  // Debounced scroll to end
+  const scrollToEnd = useRef(null);
+  useEffect(() => {
+    scrollToEnd.current = debounce(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    return () => scrollToEnd.current?.cancel && scrollToEnd.current.cancel();
+  }, []);
 
-        {/* Message Input */}
-        <View style={[styles.inputContainer, { paddingBottom: insets.bottom }]}>
+  // Show/hide action sheet with animation
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      if (showActionSheet) {
+        Animated.timing(actionSheetAnim, {
+          toValue: 1,
+          duration: 220,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }).start();
+      } else {
+        Animated.timing(actionSheetAnim, {
+          toValue: 0,
+          duration: 180,
+          easing: Easing.in(Easing.ease),
+          useNativeDriver: true,
+        }).start();
+      }
+    }
+  }, [showActionSheet]);
+
+  const { height: screenHeight } = Dimensions.get('window');
+  const translateY = actionSheetAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [screenHeight, 0],
+  });
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#f8f9fa' }}>
+      <View style={{ flex: 1, backgroundColor: 'red' }}>
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[
+            styles.messagesList,
+            { paddingBottom: keyboardVisible ? 0 : 16 }
+          ]}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => scrollToEnd.current?.()}
+          ListEmptyComponent={renderEmptyState}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          initialNumToRender={15}
+          maxToRenderPerBatch={20}
+          windowSize={10}
+          removeClippedSubviews={true}
+        />
+        <Animated.View style={[styles.inputContainer, { marginBottom: Math.max(0, keyboardHeight - 8) }]}>
           <TextInput
             style={styles.textInput}
             placeholder="Type your message..."
@@ -370,18 +434,86 @@ const ChatScreen = ({ navigation }) => {
             returnKeyType="default"
           />
           <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (!newMessage.trim() || sending) && styles.sendButtonDisabled
-            ]}
+            style={styles.sendButton}
             onPress={sendMessage}
             disabled={!newMessage.trim() || sending}
           >
             <MaterialIcons name="send" size={20} color="#fff" />
           </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    </KeyboardAvoidingView>
+        </Animated.View>
+      </View>
+      {Platform.OS === 'android' && (
+        <Modal
+          visible={showActionSheet}
+          transparent
+          animationType="none"
+          statusBarTranslucent={true}
+          onRequestClose={() => {
+            setShowActionSheet(false);
+            setActionSheetMessageId(null);
+          }}
+        >
+          <TouchableWithoutFeedback
+            onPress={() => {
+              setShowActionSheet(false);
+              setActionSheetMessageId(null);
+            }}
+          >
+            <View
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0,0,0,0.22)',
+                zIndex: 9999,
+                justifyContent: 'flex-end',
+              }}
+            >
+              <TouchableWithoutFeedback>
+                <Animated.View
+                  style={{
+                    backgroundColor: '#fff',
+                    borderTopLeftRadius: 22,
+                    borderTopRightRadius: 22,
+                    padding: 16,
+                    transform: [{ translateY }],
+                    zIndex: 10000,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: -2 },
+                    shadowOpacity: 0.18,
+                    shadowRadius: 12,
+                    elevation: 12,
+                  }}
+                >
+                  <View style={{ alignItems: 'center', marginBottom: 8 }}>
+                    <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#e0e0e0' }} />
+                  </View>
+                  <TouchableOpacity
+                    style={{ paddingVertical: 12, alignItems: 'center' }}
+                    onPress={() => {
+                      confirmDeleteMessage(actionSheetMessageId);
+                    }}
+                  >
+                    <Text style={{ color: '#e74c3c', fontWeight: 'bold', fontSize: 16 }}>Delete</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ paddingVertical: 12, alignItems: 'center' }}
+                    onPress={() => {
+                      setShowActionSheet(false);
+                      setActionSheetMessageId(null);
+                    }}
+                  >
+                    <Text style={{ color: '#222', fontSize: 16 }}>Cancel</Text>
+                  </TouchableOpacity>
+                </Animated.View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
+    </SafeAreaView>
   );
 };
 
@@ -391,7 +523,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
   },
   messagesContainer: {
-    flex: 1,
+ 
+    // flex: 1, // Remove this line
+    // backgrotundColor: 'red', // Remove debug color
   },
   loadingContainer: {
     flex: 1,
@@ -405,8 +539,7 @@ const styles = StyleSheet.create({
   },
   messagesList: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexGrow: 1,
+    // paddingVertical: 12, // Removed as per edit hint
   },
   messageContainer: {
     marginVertical: 4,
@@ -545,6 +678,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#007BFF',
     marginLeft: 4,
+  },
+  lastSeenText: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  fixedInputContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    zIndex: 10,
   },
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useLayoutEffect } from "react";
 import {
   View,
   Text,
@@ -46,6 +46,7 @@ import Icon from "react-native-vector-icons/Ionicons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { BarChart } from "react-native-chart-kit";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -69,10 +70,23 @@ const AdminReports = ({ navigation }) => {
   });
   const [finesByEvent, setFinesByEvent] = useState([]); // New state for fines breakdown by event
 
+  // Set navigation header title
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: 'Reports',
+    });
+  }, [navigation]);
+
   const fetchAllPaidFines = useCallback(async () => {
     setLoading(true);
     try {
-      const finesRef = collection(db, "fines");
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) {
+        setAllPaidFines([]);
+        setLoading(false);
+        return;
+      }
+      const finesRef = collection(db, "organizations", orgId, "fines");
       const q = query(finesRef, where("status", "==", "paid"));
       const snapshot = await getDocs(q);
       const paidFinesList = snapshot.docs
@@ -80,17 +94,15 @@ const AdminReports = ({ navigation }) => {
           id: doc.id,
           ...doc.data(),
           paidAt: doc.data().paidAt?.toDate(),
-          // Ensure user details are included for the list
           userFullName: doc.data().userFullName || "Unknown User",
           userStudentId: doc.data().userStudentId || "No ID",
           eventTitle: doc.data().eventTitle || "Unknown Event",
         }))
         .filter((fine) => fine.paidAt);
-
       setAllPaidFines(paidFinesList);
     } catch (error) {
       console.error("Error fetching all paid fines:", error);
-      // Optionally show an error message to the user
+      setAllPaidFines([]);
     } finally {
       setLoading(false);
     }
@@ -220,24 +232,8 @@ const AdminReports = ({ navigation }) => {
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      <StatusBar
-        backgroundColor="#0A2463"
-        barStyle="light-content"
-        translucent={true}
-      />
+     
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Icon name="arrow-back" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Reports</Text>
-          </View>
-        </View>
-
         <ScrollView style={styles.content}>
           {/* Date Range Selection */}
           <View style={styles.dateRangeContainer}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useLayoutEffect } from "react";
 import {
   View,
   Text,
@@ -117,6 +117,13 @@ const StudentOverview = ({ navigation }) => {
     fetchStudentData();
   }, []);
 
+  // Set navigation header title
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: 'Student Overview',
+    });
+  }, [navigation]);
+
   const chartConfig = {
     backgroundColor: "#ffffff",
     backgroundGradientFrom: "#ffffff",
@@ -156,23 +163,6 @@ const StudentOverview = ({ navigation }) => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-        <StatusBar
-          backgroundColor="#0A2463"
-          barStyle="light-content"
-          translucent={true}
-        />
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Icon name="arrow-back" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Student Overview</Text>
-          </View>
-          <View style={styles.headerRight} />
-        </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007BFF" />
           <Text style={styles.loadingText}>Loading student data...</Text>
@@ -184,23 +174,6 @@ const StudentOverview = ({ navigation }) => {
   if (error) {
     return (
       <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-        <StatusBar
-          backgroundColor="#0A2463"
-          barStyle="light-content"
-          translucent={true}
-        />
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Icon name="arrow-back" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Student Overview</Text>
-          </View>
-          <View style={styles.headerRight} />
-        </View>
         <View style={styles.errorContainer}>
           <Icon name="alert-circle-outline" size={48} color="#EF4444" />
           <Text style={styles.errorTitle}>Error Loading Data</Text>
@@ -212,24 +185,6 @@ const StudentOverview = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <StatusBar
-        backgroundColor="#0A2463"
-        barStyle="light-content"
-        translucent={true}
-      />
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Icon name="arrow-back" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Student Overview</Text>
-        </View>
-        <View style={styles.headerRight} />
-      </View>
-
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}

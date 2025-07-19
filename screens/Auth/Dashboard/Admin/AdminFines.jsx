@@ -266,12 +266,19 @@ const AdminFines = () => {
 
       // Get current admin details
       const currentUser = auth.currentUser;
-      const adminQuery = query(
-        collection(db, "admin"),
-        where("uid", "==", currentUser.uid)
-      );
-      const adminSnapshot = await getDocs(adminQuery);
-      const adminData = adminSnapshot.docs[0]?.data();
+      let adminUsername = "System";
+      let adminEmail = "";
+      if (currentUser) {
+        adminEmail = currentUser.email;
+        const adminDocRef = doc(db, "organizations", orgId, "admins", currentUser.uid);
+        const adminDocSnap = await getDoc(adminDocRef);
+        if (adminDocSnap.exists()) {
+          const adminData = adminDocSnap.data();
+          adminUsername = adminData.username || adminData.email || adminEmail || "System";
+        } else {
+          adminUsername = adminEmail || "System";
+        }
+      }
 
       // Update fine status
       await updateDoc(doc(finesRef, fineId), {
@@ -279,34 +286,35 @@ const AdminFines = () => {
         paidAt: Timestamp.now(),
         paidBy: {
           uid: currentUser.uid,
-          username: adminData?.username || "System",
+          username: adminUsername,
           role: "admin",
         },
       });
 
       // Create detailed activity log
+      const studentName = userData.username || userData.fullName || fineData.userFullName || "Unknown User";
       const activityData = {
         type: "fine_paid",
-        description: "Fine payment received", // This description might be overridden by formatActivityDescription
+        description: "Fine payment received",
         timestamp: Timestamp.now(),
         details: {
           fineId: fineId,
           amount: fineData.amount || 0,
-          // Use fetched user and event data, with fallbacks
-          studentName:
-            userData.fullName || fineData.userFullName || "Unknown User",
+          studentName: studentName,
           studentId: userData.studentId || fineData.userStudentId || "No ID",
           eventTitle: eventData.title || fineData.eventTitle || "Unknown Event",
           eventId: fineData.eventId,
-          issuedBy: adminData?.username || "System",
-          adminUid: currentUser.uid,
-          status: "paid", // Include status in details
-          paidAt: Timestamp.now(), // Include paidAt timestamp in details
+          paidBy: studentName, // Explicitly set paidBy
+          claimedBy: adminUsername, // Explicitly set claimedBy
+          adminUid: currentUser?.uid,
+          status: "paid",
+          paidAt: Timestamp.now(),
+          orgId: orgId,
         },
       };
 
       // Add activity to Firestore
-      await addDoc(collection(db, "activities"), activityData);
+      await addDoc(collection(db, "organizations", orgId, "activities"), activityData);
 
       // Update local state (assuming fineData includes userId)
       if (fineData.userId) {
@@ -409,6 +417,7 @@ const AdminFines = () => {
         }
 
         const userData = userDocSnap.data();
+        console.log("Assigning fine to userData:", userData);
         const amount =
           user.role === "officer"
             ? parseFloat(officerFineAmount || "0")
@@ -451,6 +460,7 @@ const AdminFines = () => {
         const fineRef = await addDoc(finesRef, fineData);
 
         // Create detailed activity log
+        const studentName = userData.username || userData.fullName || "Unknown User";
         const activityData = {
           type: "fine_added",
           description: "New fine assigned",
@@ -458,18 +468,19 @@ const AdminFines = () => {
           details: {
             fineId: fineRef.id,
             amount: amount,
-            studentName: userData.fullName || "Unknown User",
+            studentName: studentName,
             studentId: userData.studentId || "No ID",
             eventTitle: eventData.title || "Unknown Event",
             eventId: selectedEvent.id,
             issuedBy: adminData?.username || "System",
             adminUid: currentUser.uid,
             status: "unpaid",
+            orgId: orgId, // <-- Add orgId
           },
         };
 
         // Add activity to Firestore
-        await addDoc(collection(db, "activities"), activityData);
+        await addDoc(collection(db, "organizations", orgId, "activities"), activityData);
 
         // Update local state
         setFines((prevFines) => ({
@@ -1161,62 +1172,64 @@ const AdminFines = () => {
 
   // Header and filter content for FlatList
   const listHeader = (
-    <>
-      <View style={styles.tabContainer}>
+    <View style={{ backgroundColor: '#f8f9fa', zIndex: 10 }}>
+      <View style={styles.tabContainerModern}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === "students" && styles.activeTab]}
+          style={[styles.tabModern, activeTab === "students" && styles.activeTabModern]}
           onPress={() => setActiveTab("students")}
+          activeOpacity={0.85}
         >
           <MaterialIcons
             name="school"
-            size={24}
+            size={26}
             color={activeTab === "students" ? "#007BFF" : "#666"}
           />
           <Text
             style={[
-              styles.tabText,
-              activeTab === "students" && styles.activeTabText,
+              styles.tabTextModern,
+              activeTab === "students" && styles.activeTabTextModern,
             ]}
           >
             Students
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === "officers" && styles.activeTab]}
+          style={[styles.tabModern, activeTab === "officers" && styles.activeTabModern]}
           onPress={() => setActiveTab("officers")}
+          activeOpacity={0.85}
         >
           <MaterialIcons
             name="security"
-            size={24}
+            size={26}
             color={activeTab === "officers" ? "#007BFF" : "#666"}
           />
           <Text
             style={[
-              styles.tabText,
-              activeTab === "officers" && styles.activeTabText,
+              styles.tabTextModern,
+              activeTab === "officers" && styles.activeTabTextModern,
             ]}
           >
             Officers
           </Text>
         </TouchableOpacity>
       </View>
-      <View style={styles.searchAndFilterContainer}>
-        <View style={styles.searchContainer}>
+      <View style={styles.searchAndFilterContainerModern}>
+        <View style={styles.searchContainerModern}>
           <MaterialIcons
             name="search"
-            size={20}
+            size={22}
             color="#666"
             style={styles.searchIcon}
           />
           <TextInput
-            style={styles.searchBar}
+            style={styles.searchBarModern}
             placeholder={`Search ${activeTab} by username`}
             value={searchText}
             onChangeText={setSearchText}
           />
         </View>
         {activeTab === "students" && (
-          <View style={styles.filterContainer}>
+          <View style={styles.filterContainerModern}>
             <DropdownPicker
               options={yearLevelOptions}
               selectedValue={selectedYearLevel}
@@ -1226,18 +1239,18 @@ const AdminFines = () => {
           </View>
         )}
       </View>
-    </>
+    </View>
   );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f8f9fa" }}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
       <View style={styles.container}>
         {/* Main FlatList for users */}
         <FlatList
           data={filteredUsers}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 50 }]}
           showsVerticalScrollIndicator={true}
           renderItem={({ item }) => (
             <TouchableOpacity
@@ -1316,6 +1329,7 @@ const AdminFines = () => {
           onScroll={showFABs}
           scrollEventThrottle={16}
           onTouchStart={showFABs}
+          ListFooterComponent={<View style={{ height: 40 }} />}
         />
         {/* Floating Settings FAB - fade with opacity, user style and placement */}
         <Animated.View
@@ -1472,7 +1486,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#fff",
     borderRadius: 15,
-    marginBottom: 8,
+    marginBottom: 18,
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -1491,7 +1505,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 16,
+    padding: 22,
   },
   userInfo: {
     flexDirection: "row",
@@ -2025,6 +2039,90 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 0,
     paddingTop: 4,
+  },
+  tabContainerModern: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    marginHorizontal: 8,
+    marginTop: 10,
+    marginBottom: 10,
+    padding: 6,
+    elevation: 6, // higher elevation
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    zIndex: 50, // higher zIndex
+  },
+  tabModern: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18, // more padding
+    paddingHorizontal: 18, // more padding
+    minWidth: 120, // larger touch area
+    minHeight: 48, // larger touch area
+    borderRadius: 14,
+    marginHorizontal: 6,
+    backgroundColor: '#f8fafc',
+    elevation: 3,
+    zIndex: 51, // higher zIndex
+  },
+  activeTabModern: {
+    backgroundColor: '#e3f2fd',
+    elevation: 4,
+    shadowColor: '#007BFF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    zIndex: 52,
+  },
+  tabTextModern: {
+    marginLeft: 10,
+    fontSize: 17,
+    color: '#64748b',
+    fontWeight: '700',
+    letterSpacing: 0.1,
+  },
+  activeTabTextModern: {
+    color: '#007BFF',
+  },
+  searchAndFilterContainerModern: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 12,
+    marginHorizontal: 8,
+    zIndex: 20,
+  },
+  searchContainerModern: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    height: 48,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+  searchBarModern: {
+    flex: 1,
+    height: 48,
+    fontSize: 16,
+    color: '#1e293b',
+  },
+  filterContainerModern: {
+    width: 110,
+    zIndex: 9999, // ensure always on top
+    elevation: 20, // ensure always on top
+    marginLeft: 8,
+    position: 'relative',
   },
 });
 

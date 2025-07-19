@@ -17,12 +17,25 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    console.log("[AuthContext] useEffect: auth instance:", auth);
+    let unsubscribe = null;
+    if (auth && typeof auth.onAuthStateChanged === "function") {
+      console.log("[AuthContext] onAuthStateChanged is a function, setting up listener");
+      unsubscribe = auth.onAuthStateChanged((user) => {
+        console.log("[AuthContext] onAuthStateChanged callback: user=", user);
+        setUser(user);
+        setLoading(false);
+      });
+    } else {
+      console.error("[AuthContext] onAuthStateChanged is not a function on auth instance", auth);
       setLoading(false);
-    });
-
-    return () => unsubscribe();
+    }
+    return () => {
+      if (unsubscribe) {
+        console.log("[AuthContext] Cleaning up onAuthStateChanged listener");
+        unsubscribe();
+      }
+    };
   }, []);
 
   const value = {

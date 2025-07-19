@@ -325,7 +325,10 @@ const Fines = ({
           data={filteredFines}
           keyExtractor={(item) => item.id}
           renderItem={renderFineItem}
-          contentContainerStyle={styles.listContainer}
+          contentContainerStyle={[
+            styles.listContainer,
+            { paddingBottom: insets.bottom + 70 },
+          ]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
@@ -432,7 +435,7 @@ const styles = StyleSheet.create({
   listContainer: {
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 20,
+    // paddingBottom: 20, // Remove static padding to avoid double-padding
   },
   fineCard: {
     marginBottom: 15,

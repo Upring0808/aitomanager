@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   StatusBar,
   Platform,
+  Animated,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { QrCode } from "lucide-react-native";
@@ -16,8 +17,32 @@ import aitoLogo from "../assets/fivent1.png";
 const NAVY = "#203562";
 const WHITE = "#fff";
 
+const LOGO_SLIDE_DURATION = 800;
+const UI_FADE_DURATION = 400;
+const LOGO_START_OFFSET = 100; // px below final position
+
 const EntryScreen = () => {
   const navigation = useNavigation();
+  const logoTranslateY = useRef(new Animated.Value(LOGO_START_OFFSET)).current;
+  const uiOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Slide up the logo
+    Animated.timing(logoTranslateY, {
+      toValue: 0,
+      duration: LOGO_SLIDE_DURATION,
+      useNativeDriver: true,
+      easing: Animated.Easing ? Animated.Easing.out(Animated.Easing.cubic) : undefined,
+    }).start(() => {
+      // Fade in the rest of the UI
+      Animated.timing(uiOpacity, {
+        toValue: 1,
+        duration: UI_FADE_DURATION,
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [logoTranslateY, uiOpacity]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar
@@ -27,11 +52,15 @@ const EntryScreen = () => {
       />
       <View style={styles.container}>
         <View style={styles.centerContent}>
-          <Image source={aitoLogo} style={styles.logo} />
-          <Text style={styles.appName}>FIVENT</Text>
-          <Text style={styles.appSubtitle}>FLOW</Text>
+          <Animated.View style={{ transform: [{ translateY: logoTranslateY }] }}>
+            <Image source={aitoLogo} style={styles.logo} />
+          </Animated.View>
+          <Animated.View style={{ opacity: uiOpacity, alignItems: 'center' }}>
+            <Text style={styles.appName}>FIVENT</Text>
+            <Text style={styles.appSubtitle}>FLOW</Text>
+          </Animated.View>
         </View>
-        <View style={styles.bottomContent}>
+        <Animated.View style={[styles.bottomContent, { opacity: uiOpacity }]}>
           <TouchableOpacity
             style={styles.button}
             onPress={() => navigation.navigate("LandingScreen")}
@@ -52,7 +81,7 @@ const EntryScreen = () => {
 
           {/* Batanes State College Text */}
           <Text style={styles.collegeText}>Batanes State College</Text>
-        </View>
+        </Animated.View>
       </View>
     </SafeAreaView>
   );

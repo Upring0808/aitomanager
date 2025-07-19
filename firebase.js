@@ -1,6 +1,6 @@
 /**
  * firebase.js - Centralized Firebase configuration
- * Uses the recommended approach for Expo SDK 53 to avoid Firebase Auth issues
+ * Complete fixed version maintaining all original functionality
  */
 
 import { initializeApp, getApp, getApps } from "firebase/app";
@@ -13,7 +13,31 @@ import {
   getAuth as getFirebaseAuth,
 } from "firebase/auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as MockAuth from "./mockFirebaseAuth";
+
+// Mock Firebase Auth for development/testing
+const MockAuth = {
+  currentUser: null,
+  onAuthStateChanged: (callback) => {
+    // Mock implementation
+    return () => {}; // unsubscribe function
+  },
+  signInWithEmailAndPassword: async (email, password) => {
+    console.log("[MockAuth] Sign in attempt:", email);
+    return { user: { uid: "mock-uid", email } };
+  },
+  createUserWithEmailAndPassword: async (email, password) => {
+    console.log("[MockAuth] Create user attempt:", email);
+    return { user: { uid: "mock-uid", email } };
+  },
+  signOut: async () => {
+    console.log("[MockAuth] Sign out");
+    return Promise.resolve();
+  },
+  getCurrentUser: () => {
+    return MockAuth.currentUser;
+  },
+  _getRecaptchaConfig: () => null,
+};
 
 // Firebase configuration
 const firebaseConfig = {
@@ -24,15 +48,17 @@ const firebaseConfig = {
   messagingSenderId: "689997147601",
   appId: "1:689997147601:web:8b1fd5eda3ea5e17d3c4f0",
   measurementId: "G-VYNN9XMGFR",
-  databaseURL:
-    "https://aito-manage-default-rtdb.asia-southeast1.firebasedatabase.app",
+  databaseURL: "https://aito-manage-default-rtdb.asia-southeast1.firebasedatabase.app",
 };
 
 // Detect Expo Go environment
 const isExpoGo = !!(global.__expo || global.__turboModuleProxy);
 console.log("[Firebase] Running in Expo Go:", isExpoGo);
 
-// Initialize Firebase
+// Add at the very top
+console.log("[Firebase] firebase.js loaded");
+
+// Initialize Firebase App
 let app;
 if (getApps().length === 0) {
   console.log("[Firebase] Initializing Firebase app");
@@ -42,48 +68,40 @@ if (getApps().length === 0) {
   app = getApp();
 }
 
-// Initialize Auth with AsyncStorage persistence
+// Initialize Auth with proper fallback handling
 let auth;
 if (isExpoGo) {
   console.log("[Firebase] Using mock auth for Expo Go");
   auth = MockAuth;
-  // Add missing Recaptcha config method to mock auth
-  auth._getRecaptchaConfig = () => null;
+  console.log("[Firebase] auth set to MockAuth:", auth);
 } else {
   try {
-    console.log("[Firebase] Initializing Firebase Auth with persistence");
+    // Try to use initializeAuth with persistence (React Native only)
+    try {
+      console.log("[Firebase] Trying initializeAuth with persistence");
     auth = initializeAuth(app, {
       persistence: getReactNativePersistence(AsyncStorage),
     });
-    console.log("[Firebase] Auth initialized successfully");
+      console.log("[Firebase] auth set to initialized Auth (with persistence):", auth);
+    } catch (initError) {
+      console.warn("[Firebase] initializeAuth failed, falling back to getFirebaseAuth:", initError.message);
+      auth = getFirebaseAuth(app);
+      console.log("[Firebase] auth set to getFirebaseAuth(app):", auth);
+    }
     // Ensure Recaptcha config method exists
     if (!auth._getRecaptchaConfig) {
       auth._getRecaptchaConfig = () => null;
     }
   } catch (error) {
-    console.warn(
-      "[Firebase] Failed to initialize with persistence:",
-      error.message
-    );
-    try {
-      console.log("[Firebase] Trying getAuth() fallback");
-      auth = getFirebaseAuth(app);
-      console.log("[Firebase] Auth initialized without persistence");
-      // Ensure Recaptcha config method exists
-      if (!auth._getRecaptchaConfig) {
-        auth._getRecaptchaConfig = () => null;
-      }
-    } catch (innerError) {
-      console.error("[Firebase] Error with getAuth():", innerError.message);
+    console.error("[Firebase] Error initializing Auth:", error.message);
       console.log("[Firebase] Falling back to mock auth");
       auth = MockAuth;
-      // Add missing Recaptcha config method to mock auth
-      auth._getRecaptchaConfig = () => null;
-    }
+    console.log("[Firebase] auth set to MockAuth (fallback):", auth);
   }
 }
+console.log("[Firebase] Final auth object:", auth);
 
-// Initialize other Firebase services (will be lazy loaded)
+// Initialize other Firebase services with lazy loading
 let _db = null;
 let _storage = null;
 let _database = null;
@@ -97,10 +115,7 @@ const getDb = () => {
       _db = getFirestore(app);
       console.log("[Firebase] Firestore initialized");
     } catch (error) {
-      console.error(
-        "[Firebase] Failed to initialize Firestore:",
-        error.message
-      );
+      console.error("[Firebase] Failed to initialize Firestore:", error.message);
     }
   }
   return _db;
@@ -139,7 +154,14 @@ const getDatabaseInstance = () => {
 /**
  * Get Auth instance
  */
-const getAuth = () => auth;
+const getAuth = () => {
+  console.log("[Firebase] getAuth() called, current value:", auth);
+  if (!auth || typeof auth.onAuthStateChanged !== "function") {
+    console.error("[Firebase] getAuth() returned an invalid auth object:", auth);
+    throw new Error("[Firebase] getAuth() did not return a valid Auth instance");
+  }
+  return auth;
+};
 
 /**
  * Get current user
@@ -152,14 +174,17 @@ const getCurrentUser = () => {
 };
 
 // Initialize services immediately
-getDb();
-getStorageInstance();
-getDatabaseInstance();
+const db = getDb();
+const storage = getStorageInstance();
+const database = getDatabaseInstance();
 
 // Export Firebase services directly
 export {
   app,
   auth,
+  db,
+  storage,
+  database,
   getAuth,
   getCurrentUser,
   getDb,
@@ -167,16 +192,16 @@ export {
   getDatabaseInstance as getDatabase,
 };
 
-// Re-export initialized references for direct access
-export { _db as db, _storage as storage, _database as database };
-
 // Default export
 export default {
   app,
   auth,
+  db,
+  storage,
+  database,
   getAuth,
   getDb,
   getStorage: getStorageInstance,
   getDatabase: getDatabaseInstance,
   getCurrentUser,
-};
+}

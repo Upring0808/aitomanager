@@ -1487,6 +1487,7 @@ const People = ({ initialData = { officers: [], students: [] }, isDataPreloaded 
         )}
         contentContainerStyle={[
           styles.contentContainer,
+          { paddingBottom: insets.bottom + 75 }, // Increased bottom padding for FAB and safe area
           !isOnline && styles.contentContainerOffline,
         ]}
         showsVerticalScrollIndicator={true}
@@ -1664,7 +1665,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   contentContainer: {
-    paddingBottom: SPACING * 2,
+    // paddingBottom: SPACING * 2, // Remove this line to avoid double-padding
     paddingTop: SPACING,
     paddingHorizontal: SPACING,
     flexGrow: 1,

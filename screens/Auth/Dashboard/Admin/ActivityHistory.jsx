@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useLayoutEffect } from "react";
 import {
   View,
   Text,
@@ -13,9 +13,10 @@ import {
   Modal,
   TextInput,
   ActivityIndicator,
+  SectionList,
 } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
-import { format, isSameDay } from "date-fns";
+import { format, isSameDay, isValid } from "date-fns";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   getFirestore,
@@ -31,31 +32,85 @@ import {
   EmailAuthProvider,
   reauthenticateWithCredential,
 } from "firebase/auth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { db } from "../../../../config/firebaseconfig";
 
-const db = getFirestore();
 const auth = getAuth();
 
-const ActivityHistory = ({ route, navigation }) => {
-  const { activities: initialActivities } = route.params;
+// Add a safe date formatting utility
+const safeFormat = (date, fmt) => {
+  if (!date || !(date instanceof Date) || isNaN(date.getTime())) return "";
+  return format(date, fmt);
+};
+
+const ActivityHistory = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const [activities, setActivities] = useState(initialActivities);
+  const [activities, setActivities] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [passwordError, setPasswordError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [calendarMode, setCalendarMode] = useState(false);
 
   useEffect(() => {
-    const filtered = initialActivities.filter((activity) => {
+    const fetchActivities = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const orgId = await AsyncStorage.getItem("selectedOrgId");
+        if (!orgId) {
+          setActivities([]);
+          setLoading(false);
+          return;
+        }
+        const activitiesRef = collection(db, "organizations", orgId, "activities");
+        const q = query(activitiesRef, orderBy("timestamp", "desc"));
+        const snapshot = await getDocs(q);
+        // Only include relevant activity types
+        const allowedTypes = [
+          "fine_added",
+          "fine_paid",
+          "event_added",
+          "student_added",
+          "role_changed",
+          "settings_updated"
+        ];
+        const activitiesList = snapshot.docs
+          .map((doc) => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              timestamp: data.timestamp?.toDate ? data.timestamp.toDate() : data.timestamp,
+            };
+          })
+          .filter((activity) => allowedTypes.includes(activity.type));
+        setActivities(activitiesList);
+      } catch (err) {
+        setError("Failed to load activity history.");
+        setActivities([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchActivities();
+  }, []);
+
+  const [filteredActivities, setFilteredActivities] = useState([]);
+  useEffect(() => {
+    const filtered = activities.filter((activity) => {
       const activityDate = new Date(activity.timestamp);
       return isSameDay(activityDate, selectedDate);
     });
     const sortedFiltered = filtered.sort(
       (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
     );
-    setActivities(sortedFiltered);
-  }, [selectedDate, initialActivities]);
+    setFilteredActivities(sortedFiltered);
+  }, [selectedDate, activities]);
 
   const getActivityIcon = (type) => {
     switch (type) {
@@ -219,7 +274,12 @@ const ActivityHistory = ({ route, navigation }) => {
 
   const deleteAllActivities = async () => {
     try {
-      const activitiesRef = collection(db, "activities");
+      const orgId = await AsyncStorage.getItem("selectedOrgId");
+      if (!orgId) {
+        Alert.alert("Error", "Organization ID not found.");
+        return;
+      }
+      const activitiesRef = collection(db, "organizations", orgId, "activities");
       const q = query(activitiesRef);
 
       const querySnapshot = await getDocs(q);
@@ -237,48 +297,152 @@ const ActivityHistory = ({ route, navigation }) => {
     }
   };
 
+  // Move calendar and delete buttons to navigation header
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {calendarMode ? (
+            <TouchableOpacity onPress={() => setCalendarMode(false)} style={{ padding: 8, marginRight: 10 }}>
+              <Icon name="list-outline" size={24} color="#0A2463" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={() => setCalendarMode(true)} style={{ padding: 8, marginRight: 10 }}>
+              <Icon name="calendar-outline" size={24} color="#0A2463" />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={handleDeleteHistoryPress} style={{ padding: 8 }}>
+            <Icon name="trash-outline" size={24} color="#D92626" />
+          </TouchableOpacity>
+        </View>
+      ),
+      headerTitle: 'Activity History',
+    });
+  }, [navigation, calendarMode]);
+
+  // Group activities by date for SectionList
+  const groupedActivities = React.useMemo(() => {
+    const groups = {};
+    activities.forEach((activity) => {
+      const dateKey = format(new Date(activity.timestamp), "yyyy-MM-dd");
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(activity);
+    });
+    return Object.entries(groups)
+      .sort((a, b) => new Date(b[0]) - new Date(a[0]))
+      .map(([date, acts]) => ({
+        title: format(new Date(date), "MMM d, yyyy"),
+        data: acts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
+      }));
+  }, [activities]);
+
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      <StatusBar
-        backgroundColor="#0A2463"
-        barStyle="light-content"
-        translucent={true}
-      />
       <SafeAreaView style={styles.safeArea} edges={["top"]}>
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Icon name="arrow-back" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Activity History</Text>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#007BFF" />
+            <Text style={styles.loadingText}>Loading activity history...</Text>
           </View>
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              onPress={showDatepicker}
-              style={styles.datePickerButton}
-            >
-              <Icon name="calendar-outline" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={handleDeleteHistoryPress}
-            >
-              <Icon name="trash-outline" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
+        ) : error ? (
+          <View style={styles.noActivitiesContainer}>
+            <Text style={styles.noActivitiesText}>{error}</Text>
           </View>
-        </View>
-
-        {showDatePicker && (
-          <DateTimePicker
-            testID="dateTimePicker"
-            value={selectedDate}
-            mode={"date"}
-            is24Hour={true}
-            display={"default"}
-            onChange={handleDateChange}
+        ) : calendarMode ? (
+          <>
+            {showDatePicker && (
+              <DateTimePicker
+                testID="dateTimePicker"
+                value={selectedDate}
+                mode={"date"}
+                is24Hour={true}
+                display={"default"}
+                onChange={handleDateChange}
+              />
+            )}
+            <TouchableOpacity onPress={() => setCalendarMode(false)} style={{ alignSelf: 'flex-start', margin: 12, padding: 8, flexDirection: 'row', alignItems: 'center' }}>
+              <Icon name="arrow-back" size={20} color="#0A2463" />
+              <Text style={{ color: '#0A2463', fontWeight: '600', marginLeft: 6 }}>Back to All</Text>
+            </TouchableOpacity>
+            <View style={styles.filterDateContainer}>
+              <Text style={styles.filterDateText}>
+                Activities on: {format(selectedDate, "MMM d, yyyy")}
+              </Text>
+            </View>
+            {filteredActivities.length > 0 ? (
+              filteredActivities.map((activity) => (
+                <View key={activity.id} style={styles.activityItem}>
+                  <View
+                    style={[
+                      styles.activityIcon,
+                      { backgroundColor: `${getActivityColor(activity.type)}20` },
+                    ]}
+                  >
+                    <Icon
+                      name={getActivityIcon(activity.type)}
+                      size={20}
+                      color={getActivityColor(activity.type)}
+                    />
+                  </View>
+                  <View style={styles.activityContent}>
+                    <Text style={styles.activityText}>
+                      {formatActivityDescription(activity)}
+                    </Text>
+                    <Text style={styles.activityTime}>
+                      {safeFormat(activity.timestamp, "MMM d, yyyy 'at' h:mm a")}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <View style={styles.noActivitiesContainer}>
+                <Text style={styles.noActivitiesText}>
+                  No activities found for this date.
+                </Text>
+              </View>
+            )}
+          </>
+        ) : (
+          <SectionList
+            sections={groupedActivities}
+            keyExtractor={(item) => item.id}
+            renderSectionHeader={({ section: { title } }) => (
+              <View style={styles.filterDateContainer}>
+                <Text style={styles.filterDateText}>{title}</Text>
+              </View>
+            )}
+            renderItem={({ item: activity }) => (
+              <View key={activity.id} style={styles.activityItem}>
+                <View
+                  style={[
+                    styles.activityIcon,
+                    { backgroundColor: `${getActivityColor(activity.type)}20` },
+                  ]}
+                >
+                  <Icon
+                    name={getActivityIcon(activity.type)}
+                    size={20}
+                    color={getActivityColor(activity.type)}
+                  />
+                </View>
+                <View style={styles.activityContent}>
+                  <Text style={styles.activityText}>
+                    {formatActivityDescription(activity)}
+                  </Text>
+                  <Text style={styles.activityTime}>
+                    {safeFormat(activity.timestamp, "MMM d, yyyy 'at' h:mm a")}
+                  </Text>
+                </View>
+              </View>
+            )}
+            ListEmptyComponent={() => (
+              <View style={styles.noActivitiesContainer}>
+                <Text style={styles.noActivitiesText}>
+                  No activities found.
+                </Text>
+              </View>
+            )}
+            contentContainerStyle={styles.contentContainer}
           />
         )}
 
@@ -335,52 +499,6 @@ const ActivityHistory = ({ route, navigation }) => {
             </View>
           </View>
         </Modal>
-
-        <ScrollView
-          style={styles.content}
-          contentContainerStyle={styles.contentContainer}
-          showsVerticalScrollIndicator={false}
-        >
-          {activities.length > 0 && (
-            <View style={styles.filterDateContainer}>
-              <Text style={styles.filterDateText}>
-                Activities on: {format(selectedDate, "MMM d, yyyy")}
-              </Text>
-            </View>
-          )}
-
-          {activities.map((activity) => (
-            <View key={activity.id} style={styles.activityItem}>
-              <View
-                style={[
-                  styles.activityIcon,
-                  { backgroundColor: `${getActivityColor(activity.type)}20` },
-                ]}
-              >
-                <Icon
-                  name={getActivityIcon(activity.type)}
-                  size={20}
-                  color={getActivityColor(activity.type)}
-                />
-              </View>
-              <View style={styles.activityContent}>
-                <Text style={styles.activityText}>
-                  {formatActivityDescription(activity)}
-                </Text>
-                <Text style={styles.activityTime}>
-                  {format(new Date(activity.timestamp), "h:mm a")}
-                </Text>
-              </View>
-            </View>
-          ))}
-          {activities.length === 0 && (
-            <View style={styles.noActivitiesContainer}>
-              <Text style={styles.noActivitiesText}>
-                No activities found for this date.
-              </Text>
-            </View>
-          )}
-        </ScrollView>
       </SafeAreaView>
     </View>
   );
@@ -497,6 +615,17 @@ const styles = StyleSheet.create({
   noActivitiesText: {
     fontSize: 16,
     color: "#64748B",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 10,
+    color: "#64748B",
+    fontSize: 14,
   },
   modalOverlay: {
     position: "absolute",

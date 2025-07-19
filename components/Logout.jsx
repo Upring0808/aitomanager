@@ -7,6 +7,7 @@ import { Feather } from "@expo/vector-icons";
 import studentStatusService from "../services/StudentStatusService";
 import adminStatusService from "../services/AdminStatusService";
 import userPresenceService from "../services/UserPresenceService";
+import studentPresenceService from "../services/StudentPresenceService";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 const Logout = ({
@@ -45,7 +46,7 @@ const Logout = ({
         } else {
           console.log("[Logout] Forcing student offline immediately");
           await studentStatusService.forceOffline();
-          
+          await studentPresenceService.forceOffline();
           // Direct Firestore update for immediate effect
           if (user) {
             try {
@@ -63,7 +64,13 @@ const Logout = ({
             }
           }
         }
-        
+        // Step 1.5: Clean up presence service before sign out
+        try {
+          console.log("[Logout] Cleaning up userPresenceService before signOut");
+          await userPresenceService.cleanup();
+        } catch (error) {
+          console.error("[Logout] Error cleaning up userPresenceService before signOut:", error);
+        }
         // Step 2: Sign out from Firebase Auth
         console.log("[Logout] Signing out from Firebase Auth");
         await auth.signOut();
@@ -76,7 +83,6 @@ const Logout = ({
           } else {
             await studentStatusService.cleanup();
           }
-          await userPresenceService.cleanup();
         } catch (error) {
           console.error("[Logout] Error cleaning up services:", error);
         }

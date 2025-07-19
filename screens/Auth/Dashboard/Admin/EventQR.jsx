@@ -18,6 +18,7 @@ import Toast from "react-native-toast-message";
 import ViewShot from "react-native-view-shot";
 import { db } from "../../../../config/firebaseconfig";
 import { collection, getDocs, getDoc, doc, query, where, addDoc, updateDoc } from "firebase/firestore";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Helper to parse timeframe and return [startDate, endDate] as Date objects
 function parseLocalDateTime(date, timeStr) {
@@ -73,6 +74,7 @@ function getEventStartEnd(event) {
 
 const EventQR = ({ navigation, route }) => {
   const { event, organization } = route.params;
+  const insets = useSafeAreaInsets();
   const [saving, setSaving] = useState(false);
   const viewShotRef = useRef();
   const [now, setNow] = useState(Date.now());
@@ -265,8 +267,17 @@ const EventQR = ({ navigation, route }) => {
     // eslint-disable-next-line
   }, [eventEnded]);
 
+  useEffect(() => {
+    // Set navigation bar color to white (opaque)
+    if (Platform.OS === 'android') {
+      if (StatusBar.setBackgroundColor) {
+        StatusBar.setBackgroundColor('#ffffff', true);
+      }
+    }
+  }, []);
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8f9fa" />
 
       {/* Debug info for event times */}
@@ -406,6 +417,8 @@ const EventQR = ({ navigation, route }) => {
             </Text>
           </TouchableOpacity>
         </View>
+        {/* Add minimal extra space at the bottom for safe area */}
+        <View style={{ height: Math.max(insets.bottom, 4) }} />
       </ScrollView>
       <Toast />
     </View>
@@ -547,7 +560,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   actionButtons: {
-    marginBottom: 40,
+    marginBottom: 10,
   },
   actionButton: {
     flexDirection: "row",

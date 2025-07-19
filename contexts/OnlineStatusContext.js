@@ -534,34 +534,40 @@ export const OnlineStatusProvider = ({ children }) => {
     setupListeners();
 
     // Set up auth state listener to re-initialize when auth state changes
-    const unsubscribeAuth = getAuth().onAuthStateChanged((user) => {
-      if (user) {
-        // User signed in, set up listeners
-        setupListeners();
-      } else {
-        // User signed out, clean up listeners
-        if (connectionListener) {
-          off(ref(getDatabase(), ".info/connected"), connectionListener);
-          connectionListener = null;
-        }
-        if (refreshInterval) {
-          clearInterval(refreshInterval);
-          refreshInterval = null;
-        }
-        unregisterCallbacks();
+    const authInstance = getAuth();
+    let unsubscribeAuth = null;
+    if (authInstance && typeof authInstance.onAuthStateChanged === "function") {
+      unsubscribeAuth = authInstance.onAuthStateChanged((user) => {
+        if (user) {
+          // User signed in, set up listeners
+          setupListeners();
+        } else {
+          // User signed out, clean up listeners
+          if (connectionListener) {
+            off(ref(getDatabase(), ".info/connected"), connectionListener);
+            connectionListener = null;
+          }
+          if (refreshInterval) {
+            clearInterval(refreshInterval);
+            refreshInterval = null;
+          }
+          unregisterCallbacks();
 
-        // Reset state for signed out user
-        setState({
-          isOnline: false,
-          isFirebaseConnected: false,
-          isNetworkConnected: connectionState.current.isNetworkConnected,
-          lastOnlineAt: null,
-          onlineUsers: {},
-          offlineSince: null,
-          pendingSyncs: 0,
-        });
-      }
-    });
+          // Reset state for signed out user
+          setState({
+            isOnline: false,
+            isFirebaseConnected: false,
+            isNetworkConnected: connectionState.current.isNetworkConnected,
+            lastOnlineAt: null,
+            onlineUsers: {},
+            offlineSince: null,
+            pendingSyncs: 0,
+          });
+        }
+      });
+    } else {
+      console.error("[Auth] onAuthStateChanged is not a function on auth instance", authInstance);
+    }
 
     // Clear offline timer on cleanup
     if (offlineTimerRef.current) {

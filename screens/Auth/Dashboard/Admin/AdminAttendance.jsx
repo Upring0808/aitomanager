@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Animated,
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
 import { Calendar } from "react-native-calendars";
@@ -33,6 +34,7 @@ const AdminAttendance = ({ navigation }) => {
   );
   const [markedDates, setMarkedDates] = useState({});
   const [organization, setOrganization] = useState(null);
+  const scrollViewRef = useRef(null);
 
   useEffect(() => {
     loadEvents();
@@ -49,19 +51,15 @@ const AdminAttendance = ({ navigation }) => {
       setLoading(true);
       const orgId = await AsyncStorage.getItem("selectedOrgId");
       if (!orgId) return;
-
-      // Load organization info
       const orgRef = doc(db, "organizations", orgId);
       const orgDoc = await getDoc(orgRef);
       const infoDocRef = doc(db, "organizations", orgId, "info", "details");
       const infoSnap = await getDoc(infoDocRef);
-
       setOrganization({
         id: orgId,
         name: orgDoc.data().name || "Organization",
         logoUrl: infoSnap.exists() ? infoSnap.data().logo_url || null : null,
       });
-
       const eventsRef = collection(db, "organizations", orgId, "events");
       const snapshot = await getDocs(eventsRef);
       const eventsList = snapshot.docs.map((doc) => ({
@@ -69,8 +67,6 @@ const AdminAttendance = ({ navigation }) => {
         ...doc.data(),
       }));
       setEvents(eventsList);
-
-      // Create marked dates for calendar
       const marked = {};
       eventsList.forEach((event) => {
         if (event.dueDate) {
@@ -97,11 +93,9 @@ const AdminAttendance = ({ navigation }) => {
   };
 
   function parseLocalDateTime(date, timeStr) {
-    // timeStr: "21:00" or "9:00 PM"
     let hours = 0,
       minutes = 0;
     if (/AM|PM/i.test(timeStr)) {
-      // 12-hour format
       const [time, modifier] = timeStr.split(/\s+/);
       let [h, m] = time.split(":").map(Number);
       if (modifier.toUpperCase() === "PM" && h !== 12) h += 12;
@@ -109,7 +103,6 @@ const AdminAttendance = ({ navigation }) => {
       hours = h;
       minutes = m;
     } else {
-      // 24-hour format
       [hours, minutes] = timeStr.split(":").map(Number);
     }
     return new Date(
@@ -126,7 +119,6 @@ const AdminAttendance = ({ navigation }) => {
   function getEventStartEnd(event) {
     if (!event.dueDate || !event.timeframe) return [null, null];
     const date = new Date(event.dueDate.seconds * 1000);
-    // 12-hour
     let match = event.timeframe.match(
       /(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)/i
     );
@@ -136,7 +128,6 @@ const AdminAttendance = ({ navigation }) => {
       const endDate = parseLocalDateTime(date, endStr);
       return [startDate, endDate];
     }
-    // 24-hour
     match = event.timeframe.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
     if (match) {
       const [_, startStr, endStr] = match;
@@ -152,25 +143,20 @@ const AdminAttendance = ({ navigation }) => {
       setLoading(true);
       const orgId = await AsyncStorage.getItem("selectedOrgId");
       if (!orgId) return;
-      // Get all users in the organization
       const usersRef = collection(db, "organizations", orgId, "users");
       const usersSnapshot = await getDocs(usersRef);
       const users = usersSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
-      // Get attendance data for the selected event
       const attendees = event.attendees || [];
       const attendanceTimestamps = event.attendanceTimestamps || {};
-      // Use helper to get event start/end
       const [eventStart, eventEnd] = getEventStartEnd(event);
-      // Check if event has ended
       const now = new Date();
       const eventHasEnded = eventEnd ? now > eventEnd : false;
       const attendanceList = users.map((user) => {
         const hasAttended = attendees.includes(user.id);
         const attendanceTimestamp = attendanceTimestamps[user.id];
-        // Only mark as absent if event has ended and user hasn't attended
         const isAbsent = eventHasEnded && !hasAttended;
         return {
           id: user.id,
@@ -202,8 +188,6 @@ const AdminAttendance = ({ navigation }) => {
 
   const handleDateSelect = (date) => {
     setSelectedDate(date.dateString);
-
-    // Find events for the selected date
     const eventsOnDate = events.filter((event) => {
       if (event.dueDate) {
         const eventDate = new Date(event.dueDate.seconds * 1000);
@@ -212,9 +196,7 @@ const AdminAttendance = ({ navigation }) => {
       }
       return false;
     });
-
     if (eventsOnDate.length > 0) {
-      // If multiple events on same date, show selection
       if (eventsOnDate.length === 1) {
         setSelectedEvent(eventsOnDate[0]);
       } else {
@@ -290,10 +272,13 @@ const AdminAttendance = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.mainContainer}>
-      <ScrollView
+    <SafeAreaView style={styles.mainContainer}>
+      <Animated.ScrollView
+        ref={scrollViewRef}
         style={styles.scrollContainer}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Calendar Section */}
         <View style={styles.calendarSection}>
@@ -331,7 +316,6 @@ const AdminAttendance = ({ navigation }) => {
             }}
           />
         </View>
-
         {/* Event Selection */}
         <View style={styles.eventSelectionSection}>
           <Text style={styles.sectionTitle}>Select Event</Text>
@@ -350,20 +334,39 @@ const AdminAttendance = ({ navigation }) => {
                   selectedEvent?.id === event.id && styles.selectedEventCard,
                 ]}
                 onPress={() => handleEventSelect(event.title)}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
               >
-                <Text style={styles.eventCardTitle}>{event.title}</Text>
-                <Text style={styles.eventCardDate}>
+                <Text
+                  style={[
+                    styles.eventCardTitle,
+                    selectedEvent?.id === event.id && { color: "#fff" },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {event.title}
+                </Text>
+                <Text
+                  style={[
+                    styles.eventCardDate,
+                    selectedEvent?.id === event.id && { color: "#fff" },
+                  ]}
+                  numberOfLines={1}
+                >
                   {formatDate(event.dueDate)}
                 </Text>
-                <Text style={styles.eventCardTime}>
+                <Text
+                  style={[
+                    styles.eventCardTime,
+                    selectedEvent?.id === event.id && { color: "#fff" },
+                  ]}
+                  numberOfLines={1}
+                >
                   {formatTime(event.dueDate)}
                 </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
-
         {/* Selected Event Info */}
         {selectedEvent && (
           <View style={styles.eventInfoSection}>
@@ -410,14 +413,17 @@ const AdminAttendance = ({ navigation }) => {
             </View>
           </View>
         )}
-
         {/* Attendance List */}
         {selectedEvent && attendanceData.length > 0 && (
           <View style={styles.attendanceSection}>
             <Text style={styles.sectionTitle}>Attendance List</Text>
             <View style={styles.attendanceList}>
               {attendanceData.map((user, index) => (
-                <View key={user.id} style={styles.attendanceItem}>
+                <TouchableOpacity
+                  key={user.id}
+                  style={styles.attendanceItem}
+                  activeOpacity={0.85}
+                >
                   <View style={styles.userInfo}>
                     <View style={styles.avatarContainer}>
                       {user.avatarUrl ? (
@@ -432,26 +438,24 @@ const AdminAttendance = ({ navigation }) => {
                       )}
                     </View>
                     <View style={styles.userDetails}>
-                      <Text style={styles.userName}>{user.username}</Text>
-                      <Text style={styles.userEmail}>{user.email}</Text>
+                      <Text style={styles.userName} numberOfLines={1}>{user.username}</Text>
+                      <Text style={styles.userEmail} numberOfLines={1}>{user.email}</Text>
                       {user.hasAttended && user.attendanceTimestamp && (
                         <Text style={styles.attendanceTime}>
-                          Attended:{" "}
-                          {formatAttendanceTimestamp(user.attendanceTimestamp)}
+                          Attended: {formatAttendanceTimestamp(user.attendanceTimestamp)}
                         </Text>
                       )}
                     </View>
                   </View>
-                  <View
-                    style={[
-                      styles.attendanceStatus,
+                  <View style={styles.attendanceStatus}>
+                    <View style={[
+                      styles.statusIconCircle,
                       user.hasAttended
-                        ? styles.attended
+                        ? styles.statusAttended
                         : user.isAbsent
-                        ? styles.absent
-                        : styles.pending,
-                    ]}
-                  >
+                        ? styles.statusAbsent
+                        : styles.statusPending,
+                    ]}>
                     <FontAwesome
                       name={
                         user.hasAttended
@@ -460,7 +464,7 @@ const AdminAttendance = ({ navigation }) => {
                           ? "times"
                           : "clock-o"
                       }
-                      size={14}
+                        size={16}
                       color={
                         user.hasAttended
                           ? "#28a745"
@@ -469,29 +473,13 @@ const AdminAttendance = ({ navigation }) => {
                           : "#ffc107"
                       }
                     />
-                    <Text
-                      style={[
-                        styles.attendanceText,
-                        user.hasAttended
-                          ? styles.attendedText
-                          : user.isAbsent
-                          ? styles.absentText
-                          : styles.pendingText,
-                      ]}
-                    >
-                      {user.hasAttended
-                        ? "Attended"
-                        : user.isAbsent
-                        ? "Absent"
-                        : "Pending"}
-                    </Text>
+                    </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           </View>
         )}
-
         {/* Empty State */}
         {selectedEvent && attendanceData.length === 0 && (
           <View style={styles.emptyState}>
@@ -504,19 +492,27 @@ const AdminAttendance = ({ navigation }) => {
             </Text>
           </View>
         )}
-      </ScrollView>
+        {/* Add extra padding at the bottom so content is not cut off */}
+        <View style={{ height: 80 }} />
+      </Animated.ScrollView>
       <Toast />
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = {
   mainContainer: {
     flex: 1,
+    backgroundColor: "#f8f9fa",
   },
   scrollContainer: {
     flex: 1,
+    backgroundColor: "#f8f9fa",
+  },
+  scrollContent: {
     padding: 20,
+    paddingBottom: 24,
+    paddingTop: 4,
   },
   loadingContainer: {
     flex: 1,
@@ -647,12 +643,16 @@ const styles = {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    marginBottom: 8,
-    backgroundColor: "#f8f9fa",
-    borderRadius: 12,
-    borderLeftWidth: 4,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    marginBottom: 12,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
+    elevation: 2,
   },
   userInfo: {
     flexDirection: "row",
@@ -700,23 +700,25 @@ const styles = {
   attendanceStatus: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    minWidth: 100,
-    justifyContent: "center",
+    justifyContent: "flex-end",
+    minWidth: 70,
   },
-  attended: {
-    backgroundColor: "#d4edda",
-    borderLeftColor: "#28a745",
+  statusIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
   },
-  absent: {
-    backgroundColor: "#f8d7da",
-    borderLeftColor: "#dc3545",
+  statusAttended: {
+    backgroundColor: '#eafaf1',
   },
-  pending: {
-    backgroundColor: "#fff3cd",
-    borderLeftColor: "#ffc107",
+  statusAbsent: {
+    backgroundColor: '#fbeaea',
+  },
+  statusPending: {
+    backgroundColor: '#fff8e1',
   },
   attendanceText: {
     fontSize: 14,
@@ -758,32 +760,51 @@ const styles = {
     lineHeight: 20,
   },
   eventSlider: {
-    height: 100,
+    height: 140,
   },
   eventCard: {
-    width: 100,
-    height: 100,
-    borderRadius: 10,
+    width: 180,
+    height: 120,
+    borderRadius: 16,
     backgroundColor: "#f8f9fa",
-    marginHorizontal: 8,
+    marginHorizontal: 10,
     justifyContent: "center",
-    alignItems: "center",
+    alignItems: "flex-start",
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "#e9ecef",
   },
   selectedEventCard: {
     backgroundColor: "#3652AD",
+    borderColor: "#203562",
+    elevation: 5,
   },
   eventCardTitle: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 18,
+    fontWeight: "700",
     color: "#203562",
+    marginBottom: 6,
+    maxWidth: 140,
+    lineHeight: 22,
+    flexShrink: 1,
+    flexWrap: 'wrap',
+    // Allow up to 2 lines, ellipsis if too long
+    overflow: 'hidden',
+    textAlign: 'left',
   },
   eventCardDate: {
     fontSize: 14,
     color: "#666",
     fontWeight: "500",
+    marginBottom: 2,
   },
   eventCardTime: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#203562",
     fontWeight: "500",
   },

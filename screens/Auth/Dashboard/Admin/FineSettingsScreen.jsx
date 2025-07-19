@@ -49,51 +49,70 @@ const FineSettingsScreen = ({ navigation }) => {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#fff", padding: 24, justifyContent: "center" }}>
-      <TouchableOpacity onPress={() => navigation?.goBack?.()} style={{ position: "absolute", top: 40, left: 20, zIndex: 2 }}>
-        <MaterialIcons name="arrow-back" size={28} color="#203562" />
-      </TouchableOpacity>
-      <Text style={{ fontWeight: "bold", fontSize: 22, marginBottom: 24, color: "#203562", alignSelf: "center" }}>Fine Settings</Text>
-      <View style={{ marginBottom: 20 }}>
-        <Text style={{ fontSize: 16, marginBottom: 6 }}>Student Fine (₱):</Text>
-        <TextInput
-          style={{ borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 8, padding: 12, fontSize: 16 }}
-          keyboardType="numeric"
-          value={studentFine}
-          onChangeText={setStudentFine}
-          placeholder="e.g. 50"
-          editable={!loading}
-        />
+    <View style={{ flex: 1, backgroundColor: '#f8f9fa', justifyContent: 'center', alignItems: 'center', padding: 0 }}>
+      <View style={{ backgroundColor: '#fff', width: '92%', borderRadius: 16, padding: 22, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 18 }}>
+          <TouchableOpacity onPress={() => navigation?.goBack?.()} style={{ marginRight: 10 }}>
+            <MaterialIcons name="arrow-back" size={26} color="#203562" />
+          </TouchableOpacity>
+          <Text style={{ fontWeight: 'bold', fontSize: 20, color: '#203562' }}>Fine Settings</Text>
+        </View>
+        <View style={{ marginBottom: 20 }}>
+          <Text style={{ fontSize: 15, marginBottom: 6, color: '#203562', fontWeight: '600' }}>Student Fine</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 10 }}>
+            <MaterialIcons name="school" size={20} color="#007BFF" style={{ marginRight: 6 }} />
+            <Text style={{ fontSize: 16, color: '#64748b', marginRight: 2 }}>₱</Text>
+            <TextInput
+              style={{ flex: 1, height: 44, fontSize: 16, color: '#1e293b', backgroundColor: 'transparent' }}
+              keyboardType="numeric"
+              value={studentFine}
+              onChangeText={setStudentFine}
+              placeholder="e.g. 50"
+              editable={!loading}
+              placeholderTextColor="#b6c2d1"
+            />
+          </View>
+        </View>
+        <View style={{ marginBottom: 20 }}>
+          <Text style={{ fontSize: 15, marginBottom: 6, color: '#203562', fontWeight: '600' }}>Officer Fine</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 10 }}>
+            <MaterialIcons name="security" size={20} color="#007BFF" style={{ marginRight: 6 }} />
+            <Text style={{ fontSize: 16, color: '#64748b', marginRight: 2 }}>₱</Text>
+            <TextInput
+              style={{ flex: 1, height: 44, fontSize: 16, color: '#1e293b', backgroundColor: 'transparent' }}
+              keyboardType="numeric"
+              value={officerFine}
+              onChangeText={setOfficerFine}
+              placeholder="e.g. 100"
+              editable={!loading}
+              placeholderTextColor="#b6c2d1"
+            />
+          </View>
+        </View>
+        <TouchableOpacity
+          style={{
+            backgroundColor: loading ? '#b6c2d1' : '#007BFF',
+            borderRadius: 10,
+            paddingVertical: 16,
+            alignItems: 'center',
+            marginTop: 8,
+            shadowColor: '#007BFF',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.12,
+            shadowRadius: 6,
+            elevation: 2,
+            opacity: loading ? 0.7 : 1,
+          }}
+          onPress={saveFineSettings}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 17, letterSpacing: 0.2 }}>Save Fine Settings</Text>
+          )}
+        </TouchableOpacity>
       </View>
-      <View style={{ marginBottom: 20 }}>
-        <Text style={{ fontSize: 16, marginBottom: 6 }}>Officer Fine (₱):</Text>
-        <TextInput
-          style={{ borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 8, padding: 12, fontSize: 16 }}
-          keyboardType="numeric"
-          value={officerFine}
-          onChangeText={setOfficerFine}
-          placeholder="e.g. 100"
-          editable={!loading}
-        />
-      </View>
-      <TouchableOpacity
-        style={{
-          backgroundColor: "#007BFF",
-          borderRadius: 8,
-          paddingVertical: 14,
-          alignItems: "center",
-          marginTop: 8,
-          opacity: loading ? 0.6 : 1,
-        }}
-        onPress={saveFineSettings}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>Save Fine Settings</Text>
-        )}
-      </TouchableOpacity>
     </View>
   );
 };

@@ -9,22 +9,14 @@
  * @returns {string} - Formatted time string (e.g., "14:30")
  */
 export const formatUTCTime = (timestamp) => {
-  if (!timestamp) return '--:--';
-  
-  try {
-    // Convert to UTC and add 8 hours for Philippines timezone
-    const utcDate = new Date(timestamp);
-    const philippinesTime = new Date(utcDate.getTime() + (8 * 60 * 60 * 1000));
-    
-    // Format as HH:MM
-    const hours = philippinesTime.getUTCHours().toString().padStart(2, '0');
-    const minutes = philippinesTime.getUTCMinutes().toString().padStart(2, '0');
-    
-    return `${hours}:${minutes}`;
-  } catch (error) {
-    console.error('Error formatting UTC time:', error);
-    return '--:--';
-  }
+  if (!timestamp) return '';
+  const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  return date.toLocaleTimeString('en-PH', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Manila'
+  });
 };
 
 /**
@@ -63,22 +55,38 @@ export const formatUTCDateTime = (timestamp) => {
  * @returns {string} - Formatted relative time string
  */
 export const formatUTCRelativeTime = (timestamp) => {
-  if (!timestamp) return null;
-  
-  try {
-    const now = new Date();
-    const utcDate = new Date(timestamp);
-    const philippinesTime = new Date(utcDate.getTime() + (8 * 60 * 60 * 1000));
-    const philippinesNow = new Date(now.getTime() + (8 * 60 * 60 * 1000));
-    
-    const diffInMinutes = Math.floor((philippinesNow.getTime() - philippinesTime.getTime()) / (1000 * 60));
-    
-    if (diffInMinutes < 1) return 'Just now';
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
-    return `${Math.floor(diffInMinutes / 1440)}d ago`;
-  } catch (error) {
-    console.error('Error formatting UTC relative time:', error);
-    return null;
-  }
+  if (!timestamp) return '';
+  const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  const now = new Date();
+  // Use Asia/Manila time zone for both dates
+  const philippineDate = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  const philippineNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+  const diffInSeconds = Math.floor((philippineNow - philippineDate) / 1000);
+  if (diffInSeconds < 60) return 'Just now';
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+  return philippineDate.toLocaleDateString('en-PH', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'Asia/Manila'
+  });
 }; 
+
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+import localizedFormat from 'dayjs/plugin/localizedFormat';
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.extend(localizedFormat);
+
+export function formatChatTimestamp(utcTimestamp) {
+  if (!utcTimestamp) return '';
+  const manila = dayjs(utcTimestamp).tz('Asia/Manila');
+  const now = dayjs().tz('Asia/Manila');
+  if (manila.isSame(now, 'day')) {
+    return manila.format('h:mm A');
+  } else {
+    return manila.format('D MMM [at] h:mm A');
+  }
+} 

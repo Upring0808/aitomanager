@@ -617,28 +617,30 @@ const AdminPeople = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchContainer}>
-        <Ionicons
-          name="search"
-          size={20}
-          color="#64748B"
-          style={styles.searchIcon}
-        />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search users..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholderTextColor="#94A3B8"
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity
-            onPress={() => setSearchQuery("")}
-            style={styles.clearButton}
-          >
-            <Ionicons name="close-circle" size={20} color="#64748B" />
-          </TouchableOpacity>
-        )}
+      <View style={styles.stickyHeader}>
+        <View style={styles.searchContainer}>
+          <Ionicons
+            name="search"
+            size={20}
+            color="#64748B"
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search users..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#94A3B8"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearchQuery("")}
+              style={styles.clearButton}
+            >
+              <Ionicons name="close-circle" size={20} color="#64748B" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <FlatList
@@ -647,11 +649,12 @@ const AdminPeople = () => {
         ListHeaderComponent={() => {
           const { officers, students } = getGroupedUsers();
           return (
-            <View>
+            <View style={{ paddingBottom:10 }}>
               {officers.length > 0 && (
                 <View style={styles.sectionContainer}>
                   {renderSectionHeader("Officers", officers.length)}
-                  {officers.map((item) => (
+                  <View style={styles.sectionDivider} />
+                  {officers.map((item, idx) => (
                     <View key={item.id}>{renderUserCard(item)}</View>
                   ))}
                 </View>
@@ -659,7 +662,8 @@ const AdminPeople = () => {
               {students.length > 0 && (
                 <View style={styles.sectionContainer}>
                   {renderSectionHeader("Students", students.length)}
-                  {students.map((item) => (
+                  <View style={styles.sectionDivider} />
+                  {students.map((item, idx) => (
                     <View key={item.id}>{renderUserCard(item)}</View>
                   ))}
                 </View>
@@ -675,6 +679,10 @@ const AdminPeople = () => {
             tintColor={THEME_COLOR}
           />
         }
+        contentContainerStyle={{ paddingBottom: 60, paddingTop: 8 }}
+        ListFooterComponent={() => (
+          <View style={styles.fadeBottom} pointerEvents="none" />
+        )}
       />
 
       <RoleAssignmentModal
@@ -701,21 +709,35 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#F8FAFC", // Use neutral background matching the app
+  },
+  stickyHeader: {
+    backgroundColor: '#F8FAFC',
+    zIndex: 10,
+    paddingTop: 8,
+    paddingBottom: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
   },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
-    margin: SPACING,
+    marginHorizontal: SPACING,
+    marginBottom: 8,
     paddingHorizontal: SPACING,
-    borderRadius: 12,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: "#E2E8F0",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    height: 48,
   },
   searchIcon: {
     marginRight: 8,
@@ -731,22 +753,26 @@ const styles = StyleSheet.create({
   },
   sectionContainer: {
     marginBottom: SPACING,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#F8FAFC',
+    paddingBottom: 8,
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: SPACING,
-    paddingVertical: SPACING / 2,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-    marginBottom: 8,
+    paddingVertical: 10,
+    backgroundColor: "#F8FAFC",
+    borderBottomWidth: 0,
+    marginBottom: 0,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 20,
+    fontWeight: "800",
     color: THEME_COLOR,
+    letterSpacing: 0.2,
   },
   sectionCount: {
     backgroundColor: THEME_COLOR,
@@ -761,19 +787,21 @@ const styles = StyleSheet.create({
   },
   userCard: {
     marginHorizontal: SPACING,
-    marginVertical: 4,
-    borderRadius: 12,
+    marginVertical: 6,
+    borderRadius: 16,
     backgroundColor: "#FFFFFF",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
   userCardContent: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
+    padding: 16,
   },
   userAvatar: {
     width: 44,
@@ -1164,6 +1192,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#475569",
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    opacity: 0.5,
+  },
+  fadeBottom: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 40,
+    zIndex: 20,
+    backgroundColor: 'transparent',
+    // Fade effect using a gradient
+    // If using expo-linear-gradient, replace with a LinearGradient component
+    // Otherwise, fallback to a semi-transparent overlay
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    opacity: 0.7,
   },
 });
 

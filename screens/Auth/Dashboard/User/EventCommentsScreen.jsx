@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, SafeAreaView, Image, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, SafeAreaView, Image, Keyboard, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { db, auth } from '../../../../config/firebaseconfig';
-import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, arrayUnion, serverTimestamp, getDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, doc, arrayUnion, serverTimestamp, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome, MaterialIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
@@ -33,6 +33,15 @@ const EventCommentsScreen = ({ route }) => {
   const [replyContext, setReplyContext] = useState(null);
   const [expandedReplies, setExpandedReplies] = useState({}); // Track expanded state for replies
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [sendingReply, setSendingReply] = useState(false);
+
+  // Debug: log current user and profile
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (user) {
+      console.log('[EventCommentsScreen] Current user:', user.uid, user.displayName, user.email);
+    }
+  }, []);
 
   // Keyboard event listeners for input bar positioning
   useEffect(() => {
@@ -109,20 +118,32 @@ const EventCommentsScreen = ({ route }) => {
     return () => unsubscribe && unsubscribe();
   }, [eventId]);
 
+  // Helper to fetch comments (for manual refresh)
+  const fetchComments = async () => {
+    const orgId = await AsyncStorage.getItem('selectedOrgId');
+    if (!orgId || !eventId) return;
+    const commentsRef = collection(db, 'organizations', orgId, 'events', eventId, 'comments');
+    const q = query(commentsRef, orderBy('timestamp', 'asc'));
+    const snapshot = await getDocs(q);
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setComments(data);
+  };
+
   const handleAddComment = async () => {
     if (!newComment.trim()) return;
     const orgId = await AsyncStorage.getItem('selectedOrgId');
     const user = auth.currentUser;
     if (!orgId || !user) return;
-    // Get username from userProfiles if available
-    const username = userProfiles[user.uid]?.username || user.displayName || 'User';
+    // Only use username from userProfiles, fallback to 'Unknown'
+    const isUserAdmin = userProfiles[user.uid]?.role === 'admin';
+    const username = userProfiles[user.uid]?.username || 'Unknown';
     const commentsRef = collection(db, 'organizations', orgId, 'events', eventId, 'comments');
     await addDoc(commentsRef, {
       text: newComment,
       userId: user.uid,
       userName: username,
       timestamp: serverTimestamp(),
-      isAdmin: false,
+      isAdmin: isUserAdmin,
       replies: [],
     });
     setNewComment('');
@@ -152,38 +173,91 @@ const EventCommentsScreen = ({ route }) => {
     }
   };
 
-  const handleSendReply = async (commentId) => {
-    if (!replyText.trim()) return;
+  // Fix: always use replyContext.commentId if present
+  const handleSendReply = async (commentIdParam) => {
+    if (!replyText.trim() || sendingReply) return;
+    if (!replyContext || !replyContext.commentId) {
+      Alert.alert('Reply Error', 'No comment selected to reply to. Please tap Reply again.');
+      return;
+    }
+    setSendingReply(true);
     const orgId = await AsyncStorage.getItem('selectedOrgId');
     const user = auth.currentUser;
-    if (!orgId || !user) return;
-    // Get username from userProfiles if available
-    const username = userProfiles[user.uid]?.username || user.displayName || 'User';
+    if (!orgId || !user) { setSendingReply(false); return; }
+    const isUserAdmin = userProfiles[user.uid]?.role === 'admin';
+    const username = userProfiles[user.uid]?.username || 'Unknown';
+    const commentId = replyContext.commentId;
     const commentRef = doc(db, 'organizations', orgId, 'events', eventId, 'comments', commentId);
     const commentSnap = await getDoc(commentRef);
-    if (!commentSnap.exists()) return;
+    if (!commentSnap.exists()) { setSendingReply(false); return; }
     const commentData = commentSnap.data();
     let replies = Array.isArray(commentData.replies) ? [...commentData.replies] : [];
-    // If replying to a sub-reply, add a reply with context
     let replyTo = replyContext && replyContext.isSubReply && replyContext.subReplyIdx !== undefined
       ? replies[replyContext.subReplyIdx] : null;
-    await updateDoc(commentRef, {
-      replies: arrayUnion({
+    try {
+      // Add new reply with real timestamp
+      replies.push({
+        id: Date.now() + '_' + Math.random().toString(36).substr(2, 9),
         text: replyText,
         adminId: user.uid,
         adminName: username,
-        isAdmin: userProfiles[user.uid]?.role === 'admin',
+        isAdmin: isUserAdmin,
         timestamp: new Date(),
         replyTo: replyTo ? {
           adminId: replyTo.adminId,
           adminName: replyTo.adminName,
           text: replyTo.text,
         } : undefined,
-      })
-    });
-    setReplyContext(null);
-    setReplyText('');
-    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 300);
+      });
+      await updateDoc(commentRef, { replies });
+      setReplyContext(null);
+      setReplyText('');
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 300);
+      // Manually refresh comments to ensure UI updates
+      fetchComments();
+    } catch (err) {
+      Alert.alert('Reply Error', 'Failed to send reply. Please try again.');
+    } finally {
+      setSendingReply(false);
+    }
+  };
+
+  // Delete a comment (top-level)
+  const handleDeleteComment = async (commentId, ownerId) => {
+    const user = auth.currentUser;
+    const isUserAdmin = userProfiles[user.uid]?.role === 'admin';
+    if (!isUserAdmin && user.uid !== ownerId) return;
+    Alert.alert('Delete Comment', 'Are you sure you want to delete this comment?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        const orgId = await AsyncStorage.getItem('selectedOrgId');
+        if (!orgId) return;
+        const commentRef = doc(db, 'organizations', orgId, 'events', eventId, 'comments', commentId);
+        await deleteDoc(commentRef);
+        fetchComments();
+      }}
+    ]);
+  };
+
+  // Delete a reply (nested)
+  const handleDeleteReply = async (commentId, replyIdx, replyOwnerId) => {
+    const user = auth.currentUser;
+    const isUserAdmin = userProfiles[user.uid]?.role === 'admin';
+    if (!isUserAdmin && user.uid !== replyOwnerId) return;
+    Alert.alert('Delete Reply', 'Are you sure you want to delete this reply?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        const orgId = await AsyncStorage.getItem('selectedOrgId');
+        if (!orgId) return;
+        const commentRef = doc(db, 'organizations', orgId, 'events', eventId, 'comments', commentId);
+        const commentSnap = await getDoc(commentRef);
+        if (!commentSnap.exists()) return;
+        let replies = Array.isArray(commentSnap.data().replies) ? [...commentSnap.data().replies] : [];
+        replies.splice(replyIdx, 1);
+        await updateDoc(commentRef, { replies });
+        fetchComments();
+      }}
+    ]);
   };
 
   // Local like toggle (visual only)
@@ -226,15 +300,12 @@ const EventCommentsScreen = ({ route }) => {
       >
         <View style={{ flex: 1 }}>
           {/* Simple, modern event title header (no color, no banner) */}
-          <View style={styles.simpleHeaderCard}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-              <FontAwesome name="calendar" size={18} color="#888" style={{ marginRight: 8 }} />
-              <Text style={styles.simpleEventTitle}>{eventTitle}</Text>
-            </View>
-           
+          <View style={[styles.simpleHeaderCard, { paddingVertical: 18, paddingHorizontal: 20, minHeight: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }] }>
+            <FontAwesome name="calendar" size={18} color="#888" style={{ marginRight: 10 }} />
+            <Text style={[styles.simpleEventTitle, { flex: 1, textAlign: 'center', fontSize: 20, fontWeight: 'bold', color: '#203562', paddingRight: 10 }]} numberOfLines={2} ellipsizeMode="tail">{eventTitle}</Text>
           </View>
           <ScrollView
-            contentContainerStyle={styles.container}
+            contentContainerStyle={[styles.container, { paddingBottom: 60, paddingTop: 8 }]}
             ref={scrollViewRef}
             keyboardShouldPersistTaps="handled"
           >
@@ -248,19 +319,29 @@ const EventCommentsScreen = ({ route }) => {
                 const isExpanded = expandedReplies[comment.id];
                 const repliesToShow = isExpanded ? replies : replies.slice(0, 2);
                 const hiddenCount = replies.length - repliesToShow.length;
+                const isReplyingToThis = replyContext && replyContext.commentId === comment.id;
                 return (
-                  <View key={comment.id} style={styles.commentRow}>
+                  <TouchableOpacity
+                    key={comment.id}
+                    style={[styles.commentRow, isReplyingToThis && { backgroundColor: '#eaf2ff', borderRadius: 10 }]}
+                    onLongPress={() => handleDeleteComment(comment.id, comment.userId)}
+                    delayLongPress={400}
+                    activeOpacity={1}
+                  >
                     {renderAvatar(userProfiles[comment.userId], comment.userName)}
                     <View style={styles.commentBubbleWrap}>
                       <View style={styles.commentBubble}>
                         <View style={styles.commentHeaderRow}>
                           <Text style={styles.commentUserName}>{comment.userName}</Text>
+                          {comment.isAdmin && (
+                            <FontAwesome name="check-circle" size={13} color="#3ea6ff" style={{ marginLeft: 4 }} />
+                          )}
                           <Text style={styles.commentTimestamp}>{formatTimestamp(comment.timestamp)}</Text>
                         </View>
                         <Text style={styles.commentText}>{comment.text}</Text>
                       </View>
-                      {/* Only show reply if not the current user's comment */}
-                      {user && comment.userId !== user.uid && (
+                      {/* Show reply for admins on any comment, and for users on others' comments */}
+                      {user && ((isAdmin) || comment.userId !== user.uid) && (
                         <View style={styles.commentActionsRow}>
                           <TouchableOpacity onPress={() => handleReply(comment.id)} style={styles.actionBtn}>
                             <MaterialIcons name="reply" size={18} color="#203562" />
@@ -272,7 +353,13 @@ const EventCommentsScreen = ({ route }) => {
                       {replies.length > 0 && (
                         <View style={styles.repliesContainer}>
                           {repliesToShow.map((reply, idx) => (
-                            <View key={idx} style={styles.replyRow}>
+                            <TouchableOpacity
+                              key={idx}
+                              style={styles.replyRow}
+                              onLongPress={() => handleDeleteReply(comment.id, idx, reply.adminId)}
+                              delayLongPress={400}
+                              activeOpacity={1}
+                            >
                               {renderAvatar(userProfiles[reply.adminId], reply.adminName)}
                               <View style={styles.replyBubbleWrap}>
                                 <View style={styles.replyBubble}>
@@ -292,8 +379,8 @@ const EventCommentsScreen = ({ route }) => {
                                     </Text>
                                   )}
                                   <Text style={styles.replyText}>{reply.text}</Text>
-                                  {/* Allow replying to sub-comments */}
-                                  {user && reply.adminId !== user.uid && (
+                                  {/* Allow replying to sub-comments: admins can reply to any, users only to others' */}
+                                  {user && ((isAdmin) || reply.adminId !== user.uid) && (
                                     <TouchableOpacity onPress={() => handleReply(comment.id, idx)} style={[styles.actionBtn, { alignSelf: 'flex-end', marginTop: 2 }]}> 
                                       <MaterialIcons name="reply" size={16} color="#203562" />
                                       <Text style={styles.replyActionText}>Reply</Text>
@@ -301,7 +388,7 @@ const EventCommentsScreen = ({ route }) => {
                                   )}
                                 </View>
                               </View>
-                            </View>
+                            </TouchableOpacity>
                           ))}
                           {/* View replies button for 3+ replies */}
                           {replies.length > 2 && (
@@ -314,7 +401,7 @@ const EventCommentsScreen = ({ route }) => {
                         </View>
                       )}
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 );
               })
             )}
@@ -333,38 +420,57 @@ const EventCommentsScreen = ({ route }) => {
           </View>
         )}
         {/* Add comment input (all users) - minimal pill style */}
+        {replyContext ? (
         <View style={[
           styles.inputRowPill,
-          { paddingBottom: (keyboardVisible ? insets.bottom + 8 : insets.bottom + 8) }
+            { paddingBottom: (keyboardVisible ? insets.bottom + 8 : insets.bottom + 8), backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#e3e6ee' }
         ]}>
           {renderAvatar(userProfiles[user?.uid], user?.displayName || user?.email || 'User')}
           <View style={styles.inputPillContainer}>
             <TextInput
               style={styles.inputPill}
-              value={replyContext ? replyText : newComment}
-              onChangeText={replyContext ? setReplyText : setNewComment}
-              placeholder={replyContext ? `Reply to ${replyContext.userName}...` : 'Add comment...'}
+                value={replyText}
+                onChangeText={setReplyText}
+                placeholder={`Reply to ${replyContext.userName}...`}
               returnKeyType="send"
-              onSubmitEditing={() => {
-                if (replyContext) {
-                  handleSendReply(replyContext.commentId);
-                } else {
-                  handleAddComment();
-                }
-              }}
+                onSubmitEditing={() => handleSendReply()}
               placeholderTextColor="#b0b8c1"
             />
-            <TouchableOpacity style={styles.sendBtnPill} onPress={() => {
-              if (replyContext) {
-                handleSendReply(replyContext.commentId);
-              } else {
-                handleAddComment();
-              }
-            }}>
+              <TouchableOpacity
+                style={[styles.sendBtnPill, (sendingReply || !replyText.trim()) && { opacity: 0.5 }]}
+                onPress={() => handleSendReply()}
+                disabled={sendingReply || !replyText.trim()}
+              >
               <FontAwesome name="arrow-up" size={16} color="#fff" />
             </TouchableOpacity>
           </View>
         </View>
+        ) : (
+          <View style={[
+            styles.inputRowPill,
+            { paddingBottom: (keyboardVisible ? insets.bottom + 8 : insets.bottom + 8), backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#e3e6ee' }
+          ]}>
+            {renderAvatar(userProfiles[user?.uid], user?.displayName || user?.email || 'User')}
+            <View style={styles.inputPillContainer}>
+              <TextInput
+                style={styles.inputPill}
+                value={newComment}
+                onChangeText={setNewComment}
+                placeholder={'Add comment...'}
+                returnKeyType="send"
+                onSubmitEditing={handleAddComment}
+                placeholderTextColor="#b0b8c1"
+              />
+              <TouchableOpacity
+                style={[styles.sendBtnPill, (!newComment.trim()) && { opacity: 0.5 }]}
+                onPress={handleAddComment}
+                disabled={!newComment.trim()}
+              >
+                <FontAwesome name="arrow-up" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

@@ -208,11 +208,7 @@ const LoginScreen = () => {
 
   // Handle forgot password
   const handleForgotPassword = () => {
-    Alert.alert(
-      "Forgot Password",
-      "Please contact your organization administrator to reset your password.",
-      [{ text: "OK" }]
-    );
+    navigation.navigate('ForgotPasswordScreen');
   };
 
   // Handle sign up
@@ -416,21 +412,32 @@ const LoginScreen = () => {
                   )}
                 </TouchableOpacity>
                 {/* Forgot Password & Sign Up */}
-                <View style={styles.linksContainerMinimal}>
+                <View style={styles.linksRowCentered}>
                   <TouchableOpacity
                     style={styles.linkButton}
                     onPress={handleForgotPassword}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.linkTextMinimal}>Forgot Password?</Text>
+                    <Text
+                      style={styles.linkTextMinimal}
+                      allowFontScaling={false}
+                    >
+                      Forgot Password?
+                    </Text>
                   </TouchableOpacity>
+                  <Text style={styles.linkDividerText}>|</Text>
                   <TouchableOpacity
                     style={styles.linkButton}
                     onPress={handleSignUp}
                     onLongPress={() => navigation.navigate("RegisterAdmin")}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.linkTextMinimal}>Sign Up</Text>
+                    <Text
+                      style={styles.linkTextMinimal}
+                      allowFontScaling={false}
+                    >
+                      Sign Up
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -640,11 +647,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    flex: 1,
+    marginTop: 4,
+    marginBottom: 4,
+    minWidth: 0,
   },
   linkTextMinimal: {
     color: "#16325B",
     fontSize: 14,
     textDecorationLine: "underline",
+    backgroundColor: "transparent",
+    zIndex: 1,
+    textAlign: "center",
+    minWidth: 80,
+    paddingHorizontal: 4,
   },
   // Minimalistic header and version styles
   headerMinimal: {
@@ -683,6 +699,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 8,
     marginLeft: 8,
+  },
+  linksRowCentered: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  linkDividerText: {
+    color: '#16325B',
+    fontSize: 16,
+    marginHorizontal: 10,
+    fontWeight: '500',
   },
 });
 

@@ -118,7 +118,7 @@ export const Styles = StyleSheet.create({
   filterRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 4,
   },
   filterDropdown: {
     flex: 1,

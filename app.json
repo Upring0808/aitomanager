@@ -4,10 +4,10 @@
     "slug": "FirebaseAuth",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/fivent.png",
+    "icon": "./assets/fivent2.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/fivent.png",
+      "image": "./assets/fivent1.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -24,7 +24,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/fivent.png",
+        "foregroundImage": "./assets/fivent1.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.anonymous.FirebaseAuth",
@@ -42,7 +42,7 @@
           "cameraPermission": "Allow Fivent to access your camera to scan QR codes."
         }
       ],
-      "expo-barcode-scanner"
+   
     ],
     "experiments": {
       "tsconfigPaths": true

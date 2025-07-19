@@ -1,7 +1,6 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
-apply plugin: 'com.google.gms.google-services'
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
@@ -175,6 +174,4 @@ dependencies {
     } else {
         implementation jscFlavor
     }
-    implementation project(':@react-native-firebase_app')
-    implementation project(':@react-native-firebase_messaging')
 }

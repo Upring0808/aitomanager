@@ -269,24 +269,46 @@ class StudentPresenceService {
   /**
    * Format last seen timestamp for display in UTC (Philippines timezone)
    */
-  formatLastSeen(timestamp) {
-    if (!timestamp) return null;
-    
+  formatLastSeen(lastSeen) {
+    if (!lastSeen) return 'recently';
+    let date;
+    if (typeof lastSeen.toDate === 'function') {
+      date = lastSeen.toDate();
+    } else if (lastSeen instanceof Date) {
+      date = lastSeen;
+    } else {
+      date = new Date(lastSeen);
+    }
+    if (!date || isNaN(date.getTime())) return 'recently';
+
+    const now = new Date();
+    const diffInSeconds = Math.floor((now - date) / 1000);
+
+    if (diffInSeconds < 60) return 'just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    // Format as 'Jul 18' in Asia/Manila time
+    return date.toLocaleDateString('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'Asia/Manila'
+    });
+  }
+
+  async forceOffline() {
     try {
-      const now = new Date();
-      const utcDate = new Date(timestamp);
-      const philippinesTime = new Date(utcDate.getTime() + (8 * 60 * 60 * 1000));
-      const philippinesNow = new Date(now.getTime() + (8 * 60 * 60 * 1000));
-      
-      const timeDiff = philippinesNow.getTime() - philippinesTime.getTime();
-      
-      if (timeDiff < 60000) return 'Just now';
-      if (timeDiff < 3600000) return `${Math.floor(timeDiff / 60000)}m ago`;
-      if (timeDiff < 86400000) return `${Math.floor(timeDiff / 3600000)}h ago`;
-      return `${Math.floor(timeDiff / 86400000)}d ago`;
+      const uid = this.getUserId();
+      if (!uid) return;
+      const db = getDatabase();
+      const studentRef = ref(db, `studentPresence/${uid}`);
+      await update(studentRef, {
+        lastSeen: Date.now(),
+        isOnline: false,
+        updatedAt: Date.now(),
+      });
+      console.log("[StudentPresence] Forced student offline:", uid);
     } catch (error) {
-      console.error('Error formatting last seen time:', error);
-      return null;
+      console.error("[StudentPresence] Error forcing student offline:", error);
     }
   }
 }

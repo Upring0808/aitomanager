@@ -56,8 +56,9 @@ class UserPresenceService {
       if (this.authUnsubscribe) {
         this.authUnsubscribe();
       }
-
-      this.authUnsubscribe = onAuthStateChanged(getAuth(), async (user) => {
+      const authInstance = getAuth();
+      if (authInstance && typeof authInstance.onAuthStateChanged === "function") {
+        this.authUnsubscribe = authInstance.onAuthStateChanged(async (user) => {
         if (!user && this.initialized) {
           // User signed out, force offline status and clean up
           console.log("[Presence] User signed out, forcing offline status");
@@ -65,6 +66,9 @@ class UserPresenceService {
           await this.cleanup();
         }
       });
+      } else {
+        console.error("[Presence] onAuthStateChanged is not a function on auth instance", authInstance);
+      }
     } catch (error) {
       console.error("[Presence] Error setting up auth listener:", error);
     }

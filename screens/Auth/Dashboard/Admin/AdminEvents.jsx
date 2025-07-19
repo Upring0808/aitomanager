@@ -48,8 +48,10 @@ const AdminEvents = ({ navigation, route }) => {
   const [dueDate, setDueDate] = useState(new Date());
   const [editValues, setEditValues] = useState({
     newTitle: "",
-    newTimeframe: "",
     newDescription: "",
+    newDueDate: new Date(),
+    newStartTime: new Date(),
+    newEndTime: new Date(),
   });
   const [showCreateForm, setShowCreateForm] = useState(false);
   const arrowRotation = useRef(new Animated.Value(0)).current;
@@ -88,10 +90,17 @@ const AdminEvents = ({ navigation, route }) => {
 
         const eventsRef = collection(db, "organizations", orgId, "events");
         const snapshot = await getDocs(eventsRef);
-        const eventsList = snapshot.docs.map((doc) => ({
+        let eventsList = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
+        // Fetch comment counts for each event
+        for (let i = 0; i < eventsList.length; i++) {
+          const event = eventsList[i];
+          const commentsRef = collection(db, "organizations", orgId, "events", event.id, "comments");
+          const commentsSnap = await getDocs(commentsRef);
+          eventsList[i].commentCount = commentsSnap.size;
+        }
         setEvents(eventsList);
       } catch (error) {
         console.error("Error fetching events:", error);
@@ -271,10 +280,41 @@ const AdminEvents = ({ navigation, route }) => {
     setEditingEventId(event.id);
     setEditValues({
       newTitle: event.title,
-      newTimeframe: event.timeframe,
       newDescription: event.description || "",
+      newDueDate: event.dueDate?.seconds ? new Date(event.dueDate.seconds * 1000) : new Date(),
+      newStartTime: parseTimeFromTimeframe(event.timeframe, 0) || new Date(),
+      newEndTime: parseTimeFromTimeframe(event.timeframe, 1) || new Date(),
     });
   };
+
+  // Helper to parse start/end time from timeframe string
+  function parseTimeFromTimeframe(timeframe, index) {
+    if (!timeframe) return null;
+    const match12 = timeframe.match(/(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)/i);
+    if (match12) {
+      return parseTimeString(match12[index + 1]);
+    }
+    const match24 = timeframe.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+    if (match24) {
+      return parseTimeString(match24[index + 1]);
+    }
+    return null;
+  }
+  function parseTimeString(str) {
+    if (!str) return null;
+    let date = new Date();
+    let [time, modifier] = str.split(/\s+/);
+    let [h, m] = time.split(":").map(Number);
+    if (modifier) {
+      if (modifier.toUpperCase() === "PM" && h !== 12) h += 12;
+      if (modifier.toUpperCase() === "AM" && h === 12) h = 0;
+    }
+    date.setHours(h);
+    date.setMinutes(m);
+    date.setSeconds(0);
+    date.setMilliseconds(0);
+    return date;
+  }
 
   const handleTitleChange = (value) => {
     setEditValues((prev) => ({ ...prev, newTitle: value }));
@@ -299,30 +339,122 @@ const AdminEvents = ({ navigation, route }) => {
   const renderEventCard = (event) => {
     if (!event) return null;
 
+    // Comments icon and count
+    const handleCommentsPress = () => {
+      navigation.navigate('EventCommentsScreen', { eventId: event.id });
+    };
+
+    if (editingEventId === event.id) {
+      // Editing UI
     return (
       <View key={event.id} style={modernStyles.eventCardContainer}>
-        <AdminEventCard
-          event={{
-            ...event,
-            title: event.title || "",
-            timeframe: event.timeframe || "",
-            description: event.description || "",
-            createdBy: event.createdBy || "Unknown",
-            dueDate: event.dueDate || null,
-            createdAt: event.createdAt || null,
-          }}
-          isEditing={editingEventId === event.id}
-          newTitle={editingEventId === event.id ? editValues.newTitle : ""}
-          newTimeframe={
-            editingEventId === event.id ? editValues.newTimeframe : ""
-          }
-          newDescription={
-            editingEventId === event.id ? editValues.newDescription : ""
-          }
-          onEditTitle={handleTitleChange}
-          onEditTimeframe={handleTimeframeChange}
-          onEditDescription={handleDescriptionChange}
-          onSave={async () => {
+          <View style={modernStyles.formCard}>
+            <Text style={modernStyles.formTitle}>Edit Event</Text>
+            <TextInput
+              style={modernStyles.input}
+              placeholder="Event Title"
+              value={editValues.newTitle}
+              onChangeText={(value) => setEditValues((prev) => ({ ...prev, newTitle: value }))}
+              placeholderTextColor="#999"
+            />
+            <TextInput
+              style={[modernStyles.input, modernStyles.textArea]}
+              placeholder="Event Description"
+              value={editValues.newDescription}
+              onChangeText={(value) => setEditValues((prev) => ({ ...prev, newDescription: value }))}
+              multiline
+              numberOfLines={3}
+              placeholderTextColor="#999"
+            />
+            <TouchableOpacity
+              style={modernStyles.dateInput}
+              onPress={() => setEditValues((prev) => ({ ...prev, showDatePicker: true }))}
+            >
+              <FontAwesome name="calendar" size={16} color="#203562" />
+              <Text style={modernStyles.dateInputText}>
+                Date: {editValues.newDueDate.toLocaleDateString()}
+              </Text>
+            </TouchableOpacity>
+            {editValues.showDatePicker && (
+              <DateTimePicker
+                value={editValues.newDueDate}
+                mode="date"
+                display="default"
+                onChange={(event_, selectedDate) => {
+                  setEditValues((prev) => ({
+                    ...prev,
+                    showDatePicker: Platform.OS === "ios",
+                    newDueDate: selectedDate || prev.newDueDate,
+                  }));
+                }}
+              />
+            )}
+            <View style={modernStyles.timeInputContainer}>
+              <TouchableOpacity
+                style={modernStyles.timeInput}
+                onPress={() => setEditValues((prev) => ({ ...prev, showStartTimePicker: true }))}
+              >
+                <FontAwesome name="clock-o" size={16} color="#203562" />
+                <Text style={modernStyles.timeInputText}>
+                  Start: {formatTime(editValues.newStartTime)}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={modernStyles.timeInput}
+                onPress={() => setEditValues((prev) => ({ ...prev, showEndTimePicker: true }))}
+              >
+                <FontAwesome name="clock-o" size={16} color="#203562" />
+                <Text style={modernStyles.timeInputText}>
+                  End: {formatTime(editValues.newEndTime)}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {editValues.showStartTimePicker && (
+              <DateTimePicker
+                value={editValues.newStartTime}
+                mode="time"
+                is24Hour={false}
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={(event_, selectedTime) => {
+                  setEditValues((prev) => ({
+                    ...prev,
+                    showStartTimePicker: Platform.OS === "ios",
+                    newStartTime: selectedTime || prev.newStartTime,
+                  }));
+                }}
+              />
+            )}
+            {editValues.showEndTimePicker && (
+              <DateTimePicker
+                value={editValues.newEndTime}
+                mode="time"
+                is24Hour={false}
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={(event_, selectedTime) => {
+                  setEditValues((prev) => ({
+                    ...prev,
+                    showEndTimePicker: Platform.OS === "ios",
+                    newEndTime: selectedTime || prev.newEndTime,
+                  }));
+                }}
+              />
+            )}
+            {/* Read-only timeframe string */}
+            <View style={{ marginBottom: 16, marginTop: 8 }}>
+              <Text style={{ color: '#203562', fontWeight: '600' }}>
+                Timeframe: {formatTime(editValues.newStartTime)} - {formatTime(editValues.newEndTime)}
+              </Text>
+            </View>
+            <View style={modernStyles.formActions}>
+              <TouchableOpacity
+                style={modernStyles.cancelButton}
+                onPress={() => setEditingEventId(null)}
+              >
+                <Text style={modernStyles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={modernStyles.submitButton}
+                onPress={async () => {
             const orgId = await AsyncStorage.getItem("selectedOrgId");
             if (!orgId) {
               Toast.show({
@@ -332,22 +464,59 @@ const AdminEvents = ({ navigation, route }) => {
               });
               return;
             }
+                  // Compose timeframe string
+                  const timeframe = `${formatTime(editValues.newStartTime)} - ${formatTime(editValues.newEndTime)}`;
             await handleSaveEvent(
               event.id,
               editValues.newTitle,
-              editValues.newTimeframe,
+                    timeframe,
               editValues.newDescription,
               events,
               setEvents,
               setEditingEventId,
-              orgId
+                    orgId,
+                    editValues.newDueDate
             );
           }}
-          onCancel={() => setEditingEventId(null)}
-          onDelete={() => handleDeleteEvent(event.id)}
+              >
+                <Text style={modernStyles.submitButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      );
+    }
+    // Not editing: show normal card
+    return (
+      <View key={event.id} style={modernStyles.eventCardContainer}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ flex: 1 }}>
+            <AdminEventCard
+              event={{
+                ...event,
+                title: event.title || "",
+                timeframe: event.timeframe || "",
+                description: event.description || "",
+                createdBy: event.createdBy || "Unknown",
+                dueDate: event.dueDate || null,
+                createdAt: event.createdAt || null,
+              }}
+              isEditing={false}
           onStartEditing={() => handleEditStart(event)}
+              onDelete={() => handleDeleteEvent(event.id)}
           onNavigateToAttendance={() => handleCardPress(event)}
         />
+          </View>
+          {/* Comments icon and count */}
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 10, padding: 8, borderRadius: 16, backgroundColor: '#f6f8fa', borderWidth: 1, borderColor: '#e9ecef' }}
+            onPress={handleCommentsPress}
+            activeOpacity={0.8}
+          >
+            <FontAwesome name="comments" size={18} color="#203562" />
+            <Text style={{ marginLeft: 6, color: '#203562', fontWeight: 'bold', fontSize: 15 }}>{event.commentCount || 0}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -479,8 +648,13 @@ const AdminEvents = ({ navigation, route }) => {
           keyboardVerticalOffset={100}
         >
           <ScrollView
-            contentContainerStyle={modernStyles.scrollContainer}
+            contentContainerStyle={{
+              ...modernStyles.scrollContainer,
+              paddingBottom: 40,
+              flexGrow: 1,
+            }}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
             {/* Create Event Form */}
             <Animated.View
@@ -684,6 +858,8 @@ const AdminEvents = ({ navigation, route }) => {
                 </View>
               )}
             </View>
+            {/* Add extra padding at the bottom so content is not cut off */}
+            <View style={{ height: 40 }} />
           </ScrollView>
         </KeyboardAvoidingView>
         <Toast />
